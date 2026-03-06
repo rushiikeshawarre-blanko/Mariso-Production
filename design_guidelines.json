@@ -1,0 +1,231 @@
+{
+  "project_name": "Mariso Candles",
+  "theme_strategy": "light-mode-only",
+  "brand_identity": {
+    "name": "Mariso Candles",
+    "aesthetic": "Minimal, Luxury, Artisanal, Warm, Japandi",
+    "tone": "Quiet Confidence, Intimate, Grounded, Sophisticated"
+  },
+  "typography": {
+    "fonts": {
+      "heading": {
+        "family": "Playfair Display",
+        "url": "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap",
+        "usage": "Headings, Hero Titles, Pull Quotes",
+        "weights": ["400", "500", "600"],
+        "class": "font-heading"
+      },
+      "body": {
+        "family": "Inter",
+        "url": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap",
+        "usage": "Paragraphs, UI Elements, Buttons",
+        "weights": ["300", "400", "500"],
+        "class": "font-sans"
+      },
+      "accent": {
+        "family": "Cormorant Garamond",
+        "url": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap",
+        "usage": "Subtitles, Scent Notes, 'Handmade' tags",
+        "class": "font-serif-accent"
+      }
+    },
+    "scale": {
+      "h1": "text-5xl md:text-7xl tracking-tight leading-[1.1]",
+      "h2": "text-4xl md:text-5xl tracking-tight leading-[1.2]",
+      "h3": "text-2xl md:text-3xl tracking-normal",
+      "body": "text-base md:text-lg leading-relaxed text-muted-foreground",
+      "caption": "text-xs tracking-[0.2em] uppercase font-medium text-muted-foreground/80"
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "name": "Ivory Base",
+        "hex": "#F8F5F1",
+        "tailwind": "bg-[#F8F5F1]"
+      },
+      "secondary": {
+        "name": "Clay Beige",
+        "hex": "#D7C5B8",
+        "tailwind": "text-[#D7C5B8] bg-[#D7C5B8]"
+      },
+      "accent": {
+        "name": "Soft Terracotta",
+        "hex": "#C98E74",
+        "tailwind": "text-[#C98E74] bg-[#C98E74]"
+      },
+      "text": {
+        "main": "#1C1917",
+        "muted": "#57534E",
+        "inverted": "#FFFFFF"
+      },
+      "functional": {
+        "success": "#8B9D83",
+        "error": "#B87E7E",
+        "border": "#E6E1DC"
+      }
+    },
+    "tailwind_config_override": {
+      "background": "33 20% 96%",
+      "foreground": "24 10% 10%",
+      "card": "33 20% 96%",
+      "card-foreground": "24 10% 10%",
+      "primary": "24 10% 10%",
+      "primary-foreground": "33 20% 96%",
+      "secondary": "24 23% 78%",
+      "secondary-foreground": "24 10% 10%",
+      "accent": "18 45% 62%",
+      "accent-foreground": "0 0% 100%",
+      "muted": "30 15% 90%",
+      "muted-foreground": "24 5% 45%",
+      "border": "30 10% 88%",
+      "input": "30 10% 88%",
+      "ring": "18 45% 62%"
+    }
+  },
+  "layout_strategy": {
+    "container": {
+      "maxWidth": "max-w-[1440px]",
+      "padding": "px-4 md:px-8 lg:px-12"
+    },
+    "spacing": {
+      "section_gap": "py-24 md:py-32",
+      "element_gap": "gap-8"
+    },
+    "grid_system": {
+      "product_grid": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16",
+      "bento_grid": "grid grid-cols-1 md:grid-cols-12 gap-4 auto-rows-[minmax(200px,auto)]"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground h-12 px-8 rounded-full hover:bg-primary/90 transition-all duration-300 font-medium tracking-wide text-sm uppercase",
+      "secondary": "bg-transparent border border-primary text-primary h-12 px-8 rounded-full hover:bg-primary hover:text-primary-foreground transition-all duration-300",
+      "ghost": "hover:bg-muted text-foreground hover:text-foreground/80 px-4 py-2 rounded-md"
+    },
+    "cards": {
+      "product": "group relative bg-transparent border-none shadow-none rounded-none overflow-visible",
+      "feature": "bg-white/50 backdrop-blur-sm border border-border p-8 rounded-xl hover:bg-white/80 transition-all duration-500"
+    },
+    "inputs": {
+      "default": "bg-transparent border-b border-input rounded-none px-0 py-4 focus:ring-0 focus:border-primary transition-colors placeholder:text-muted-foreground/50 h-auto text-lg"
+    },
+    "navigation": {
+      "wrapper": "fixed top-0 w-full z-50 transition-all duration-300",
+      "scrolled": "bg-[#F8F5F1]/80 backdrop-blur-md border-b border-border/50 py-4",
+      "transparent": "bg-transparent py-6"
+    }
+  },
+  "visual_enhancers": {
+    "radius": "rounded-lg",
+    "shadows": {
+      "soft": "shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+      "hover": "hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]"
+    },
+    "textures": {
+      "grain": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\")"
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.6, "ease": [0.22, 1, 0.36, 1] }
+    },
+    "hover_lift": "hover:-translate-y-1 transition-transform duration-300 ease-out",
+    "image_reveal": "overflow-hidden [&>img]:hover:scale-105 [&>img]:transition-transform [&>img]:duration-700 [&>img]:ease-out"
+  },
+  "image_urls": {
+    "hero": [
+      {
+        "url": "https://images.unsplash.com/photo-1759157273068-42e6d441f772?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Minimalist beige podium with fern shadow",
+        "category": "hero-bg"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1760226642568-6b1e12b6d41c?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Golden podium with soft lighting",
+        "category": "hero-bg-2"
+      }
+    ],
+    "products": [
+      {
+        "url": "https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Sophisticated aroma candle with white flowers",
+        "category": "product-1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Floral candle holder",
+        "category": "product-2"
+      },
+      {
+        "url": "https://images.pexels.com/photos/34997529/pexels-photo-34997529.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Aesthetic white candle with coral",
+        "category": "product-3"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Clear glass candle holder",
+        "category": "product-4"
+      }
+    ],
+    "lifestyle": [
+      {
+        "url": "https://images.unsplash.com/photo-1766393030567-2204662b0be2?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Candle burning beside lamp in cozy room",
+        "category": "lifestyle-1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Spa setting with candle",
+        "category": "lifestyle-2"
+      }
+    ],
+    "textures": [
+      {
+        "url": "https://images.pexels.com/photos/4862928/pexels-photo-4862928.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Beige linen fabric texture",
+        "category": "texture-linen"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1759772237984-7dfaf867acc0?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Dried branches in vase",
+        "category": "texture-nature"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1662845114342-256fdc45981d?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "alt": "Craftsman hands working clay",
+        "category": "texture-craft"
+      }
+    ]
+  },
+  "accessibility": {
+    "contrast": "Ensure text contrast ratio of 4.5:1 against backgrounds.",
+    "focus_states": "Visible focus ring with 'ring-2 ring-accent ring-offset-2' class.",
+    "aria": "All interactive elements must have aria-labels if no text is present.",
+    "reduced_motion": "Respect 'prefers-reduced-motion' media query."
+  },
+  "instructions_to_main_agent": [
+    "INSTALL FONTS: Add Playfair Display and Inter from Google Fonts in index.html.",
+    "CONFIGURE TAILWIND: Update tailwind.config.js with the colors and font families specified above.",
+    "CLEAN SLATE: Remove default App.css styles. Use global CSS variables for colors.",
+    "COMPONENT OVERRIDES: When using Shadcn components, override default 'rounded-md' with 'rounded-lg' or 'rounded-full' based on component type.",
+    "NAVIGATION: Build a custom transparent-to-solid sticky navbar. Do not use a generic header.",
+    "HERO SECTION: Use a split layout or full-screen background image with overlay. Text must be readable.",
+    "PRODUCT CARDS: Do not use the default Card component. Create a custom minimal card: Image (aspect-[3/4]) -> Title (Playfair) -> Price (Inter). No borders, no shadows.",
+    "ADMIN DASHBOARD: Use a sidebar layout. Keep it clean but dense. Use the 'Secondary' color for the sidebar background.",
+    "DO NOT use gradients for backgrounds. Use solid colors or the grain texture overlay.",
+    "USE 'lucide-react' for icons. Stroke width: 1.5px (Thin/Elegant)."
+  ],
+  "universal_guidelines": [
+    "No generic centered layouts. Use asymmetry.",
+    "Use 2x more padding than you think is necessary.",
+    "Text hierarchy: Huge Headings vs Small Details.",
+    "Micro-interactions on every button and link.",
+    "Images must have 'object-cover' and consistent aspect ratios.",
+    "Data-testid attributes on all interactive elements.",
+    "NO LOREM IPSUM. Use real product names like 'Midnight Amber', 'Coastal Driftwood', 'Ivory Silk'."
+  ]
+}
