@@ -259,6 +259,125 @@ const HomePage = () => {
         </div>
       </section>
 
+      {/* Supporting Our Artisans */}
+      <section className="section-padding bg-white" data-testid="artisans-section">
+        <div className="max-w-[1440px] mx-auto container-padding">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24 items-center">
+            <div>
+              <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
+                Made with Love
+              </p>
+              <h2 className="font-heading text-4xl md:text-5xl tracking-tight mb-6">
+                Supporting Our Artisans
+              </h2>
+              <div className="space-y-4 text-muted-foreground leading-relaxed">
+                <p>
+                  At Mariso, every product tells a story. Our candles and handcrafted containers are 
+                  created in collaboration with skilled artisans who bring generations of craftsmanship 
+                  into every piece.
+                </p>
+                <p>
+                  By choosing Mariso, you are not just purchasing a candle — you are supporting 
+                  traditional artistry, sustainable craftsmanship, and the livelihoods of talented makers.
+                </p>
+                <p>
+                  Each terracotta container, handcrafted coaster, and candle bouquet reflects patience, 
+                  creativity, and dedication. Your purchase helps keep these crafts alive while bringing 
+                  warmth and beauty into your home.
+                </p>
+              </div>
+            </div>
+            <div className="relative">
+              <img
+                src="https://images.unsplash.com/photo-1662845114342-256fdc45981d?crop=entropy&cs=srgb&fm=jpg&q=85"
+                alt="Artisan crafting"
+                className="rounded-xl w-full aspect-[4/5] object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Video Content - Craftsmanship */}
+      <section className="section-padding bg-[#F8F5F1]" data-testid="video-section">
+        <div className="max-w-[1440px] mx-auto container-padding">
+          <div className="text-center mb-12">
+            <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
+              Behind the Scenes
+            </p>
+            <h2 className="font-heading text-4xl md:text-5xl tracking-tight">Our Craft Process</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Candle Making */}
+            <div className="bg-white rounded-xl overflow-hidden card-shadow">
+              <div className="aspect-video bg-muted relative group cursor-pointer">
+                <img
+                  src="https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"
+                  alt="Candle making process"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-foreground/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="font-heading text-xl mb-2">Candle Making</h3>
+                <p className="text-sm text-muted-foreground">Watch our artisans hand-pour premium soy wax candles with precision and care.</p>
+              </div>
+            </div>
+
+            {/* Terracotta Craftsmanship */}
+            <div className="bg-white rounded-xl overflow-hidden card-shadow">
+              <div className="aspect-video bg-muted relative group cursor-pointer">
+                <img
+                  src="https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800"
+                  alt="Terracotta craftsmanship"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-foreground/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="font-heading text-xl mb-2">Terracotta Craft</h3>
+                <p className="text-sm text-muted-foreground">Discover how our containers are shaped and finished by skilled clay artisans.</p>
+              </div>
+            </div>
+
+            {/* Candle Bouquet Guide */}
+            <div className="bg-white rounded-xl overflow-hidden card-shadow">
+              <div className="aspect-video bg-muted relative group cursor-pointer">
+                <img
+                  src="https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"
+                  alt="Candle bouquet guide"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-foreground/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="font-heading text-xl mb-2">Bouquet Burn Guide</h3>
+                <p className="text-sm text-muted-foreground">Learn how to safely burn and enjoy your candle bouquet flowers.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Testimonials */}
       <section className="section-padding bg-clay/20" data-testid="testimonials-section">
         <div className="max-w-[1440px] mx-auto container-padding">

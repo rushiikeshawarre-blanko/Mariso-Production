@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Heart } from 'lucide-react';
+import { Heart, Eye, ShoppingBag } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/button';
@@ -13,6 +13,7 @@ export const ProductCard = ({ product, testIdPrefix = 'product' }) => {
 
   const price = product.is_on_sale && product.sale_price ? product.sale_price : product.price;
   const originalPrice = product.is_on_sale && product.sale_price ? product.price : null;
+  const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -46,34 +47,50 @@ export const ProductCard = ({ product, testIdPrefix = 'product' }) => {
     >
       {/* Image */}
       <div className="product-image-wrapper relative">
+        {/* Sale Badge with Discount Percent */}
         {product.is_on_sale && (
           <span className="sale-badge" data-testid={`${testIdPrefix}-sale-badge`}>
-            Sale
+            {discountPercent}% OFF
           </span>
         )}
+        
         <img
           src={product.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'}
           alt={product.name}
           className="product-image"
           loading="lazy"
         />
-        {/* Hover Actions */}
-        <div className="absolute inset-0 bg-foreground/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-6 gap-2">
-          <Button
-            onClick={handleAddToCart}
-            className="bg-white/90 backdrop-blur-sm text-foreground hover:bg-white px-6 h-10 rounded-full text-sm font-medium shadow-lg"
-            data-testid={`${testIdPrefix}-add-to-cart`}
-          >
-            Add to Cart
-          </Button>
-          <Button
+        
+        {/* Quick Action Icons - Top Right */}
+        <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <button
             onClick={handleAddToWishlist}
-            variant="ghost"
-            size="icon"
-            className="bg-white/90 backdrop-blur-sm hover:bg-white rounded-full shadow-lg"
-            data-testid={`${testIdPrefix}-add-to-wishlist`}
+            className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
+            title="Add to Wishlist"
+            data-testid={`${testIdPrefix}-wishlist-icon-${product.id}`}
           >
             <Heart className="h-4 w-4" strokeWidth={1.5} />
+          </button>
+          <button
+            onClick={handleAddToCart}
+            className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
+            title="Quick Add to Cart"
+            data-testid={`${testIdPrefix}-quick-cart-icon-${product.id}`}
+          >
+            <Eye className="h-4 w-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        {/* Hover Add to Cart Button */}
+        <div className="absolute inset-x-0 bottom-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <Button
+            onClick={handleAddToCart}
+            className="w-full bg-white/95 backdrop-blur-sm text-foreground hover:bg-white h-11 rounded-full text-sm font-medium shadow-lg"
+            disabled={product.stock === 0}
+            data-testid={`${testIdPrefix}-add-to-cart`}
+          >
+            <ShoppingBag className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
           </Button>
         </div>
       </div>
@@ -91,9 +108,14 @@ export const ProductCard = ({ product, testIdPrefix = 'product' }) => {
             ₹{price.toLocaleString()}
           </span>
           {originalPrice && (
-            <span className="price-original" data-testid={`${testIdPrefix}-original-price`}>
-              ₹{originalPrice.toLocaleString()}
-            </span>
+            <>
+              <span className="price-original" data-testid={`${testIdPrefix}-original-price`}>
+                ₹{originalPrice.toLocaleString()}
+              </span>
+              <span className="text-xs text-terracotta font-medium">
+                ({discountPercent}% OFF)
+              </span>
+            </>
           )}
         </div>
         {product.stock <= 5 && product.stock > 0 && (

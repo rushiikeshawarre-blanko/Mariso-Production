@@ -1,13 +1,46 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
+import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
-import { Minus, Plus, X, ShoppingBag, ArrowRight } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox';
+import { Textarea } from '../components/ui/textarea';
+import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { getProducts } from '../lib/api';
 
 const CartPage = () => {
   const { items, removeItem, updateQuantity, getCartTotal, getCartCount } = useCart();
   const navigate = useNavigate();
+  const [giftPackaging, setGiftPackaging] = useState(false);
+  const [giftNote, setGiftNote] = useState('');
+  const [recommendedProducts, setRecommendedProducts] = useState([]);
+
+  const GIFT_PACKAGING_PRICE = 149;
+
+  useEffect(() => {
+    const fetchRecommendations = async () => {
+      try {
+        const products = await getProducts();
+        // Get products not in cart
+        const cartIds = items.map(item => item.id);
+        const recommendations = products
+          .filter(p => !cartIds.includes(p.id))
+          .slice(0, 4);
+        setRecommendedProducts(recommendations);
+      } catch (error) {
+        console.error('Error fetching recommendations:', error);
+      }
+    };
+
+    if (items.length > 0) {
+      fetchRecommendations();
+    }
+  }, [items]);
+
+  const getFinalTotal = () => {
+    return getCartTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+  };
 
   if (items.length === 0) {
     return (
@@ -39,6 +72,8 @@ const CartPage = () => {
             <div className="lg:col-span-2 space-y-6">
               {items.map((item) => {
                 const price = item.is_on_sale && item.sale_price ? item.sale_price : item.price;
+                const originalPrice = item.is_on_sale && item.sale_price ? item.price : null;
+                const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
                 
                 return (
                   <div 
@@ -65,6 +100,9 @@ const CartPage = () => {
                             </h3>
                           </Link>
                           <p className="text-sm text-muted-foreground">{item.category_name}</p>
+                          {item.selectedColor && (
+                            <p className="text-sm text-muted-foreground">Color: {item.selectedColor}</p>
+                          )}
                         </div>
                         <button
                           onClick={() => removeItem(item.id)}
@@ -99,10 +137,18 @@ const CartPage = () => {
 
                         {/* Price */}
                         <div className="text-right">
-                          <p className="font-medium" data-testid={`cart-item-total-${item.id}`}>
+                          <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${item.id}`}>
                             ₹{(price * item.quantity).toLocaleString()}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          {originalPrice && (
+                            <div className="flex items-center gap-2 justify-end">
+                              <p className="text-sm text-muted-foreground line-through">
+                                ₹{(originalPrice * item.quantity).toLocaleString()}
+                              </p>
+                              <span className="text-xs text-terracotta">-{discountPercent}%</span>
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground">
                             ₹{price.toLocaleString()} each
                           </p>
                         </div>
@@ -111,6 +157,43 @@ const CartPage = () => {
                   </div>
                 );
               })}
+
+              {/* Gift Packaging Option */}
+              <div className="bg-white rounded-xl p-6 card-shadow" data-testid="gift-packaging-section">
+                <div className="flex items-start gap-4">
+                  <Checkbox
+                    id="gift-packaging"
+                    checked={giftPackaging}
+                    onCheckedChange={setGiftPackaging}
+                    data-testid="gift-packaging-checkbox"
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="gift-packaging" className="cursor-pointer">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Gift className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
+                        <span className="font-medium">Add Gift Packaging</span>
+                        <span className="text-sm text-muted-foreground">+ ₹{GIFT_PACKAGING_PRICE}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Premium gift wrap with ribbon and a custom note card
+                      </p>
+                    </label>
+                    
+                    {giftPackaging && (
+                      <div className="mt-4">
+                        <Textarea
+                          placeholder="Add a personal message for the gift recipient..."
+                          value={giftNote}
+                          onChange={(e) => setGiftNote(e.target.value)}
+                          className="resize-none"
+                          rows={3}
+                          data-testid="gift-note-input"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Order Summary */}
@@ -123,6 +206,12 @@ const CartPage = () => {
                     <span className="text-muted-foreground">Subtotal ({getCartCount()} items)</span>
                     <span data-testid="cart-subtotal">₹{getCartTotal().toLocaleString()}</span>
                   </div>
+                  {giftPackaging && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Gift Packaging</span>
+                      <span>₹{GIFT_PACKAGING_PRICE}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Shipping</span>
                     <span className="text-[#8B9D83]">Free</span>
@@ -132,13 +221,13 @@ const CartPage = () => {
                 <div className="border-t border-border pt-4 mb-8">
                   <div className="flex justify-between font-medium">
                     <span>Total</span>
-                    <span className="text-xl" data-testid="cart-total">₹{getCartTotal().toLocaleString()}</span>
+                    <span className="text-xl" data-testid="cart-total">₹{getFinalTotal().toLocaleString()}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Including taxes</p>
                 </div>
 
                 <Button 
-                  onClick={() => navigate('/checkout')}
+                  onClick={() => navigate('/checkout', { state: { giftPackaging, giftNote } })}
                   className="btn-primary w-full"
                   data-testid="proceed-to-checkout"
                 >
@@ -151,9 +240,39 @@ const CartPage = () => {
                     Continue Shopping
                   </Button>
                 </Link>
+
+                {/* Why Choose Mariso */}
+                <div className="mt-8 pt-6 border-t border-border">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                    <span className="text-sm font-medium">Why Choose Mariso?</span>
+                  </div>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• Handcrafted with care</li>
+                    <li>• Premium quality soy wax</li>
+                    <li>• Unique candle bouquet designs</li>
+                    <li>• Sustainable containers</li>
+                    <li>• Supporting traditional craftsmanship</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Recommended Products */}
+          {recommendedProducts.length > 0 && (
+            <section className="mt-16" data-testid="recommended-products-section">
+              <div className="flex items-center gap-2 mb-8">
+                <Sparkles className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
+                <h2 className="font-heading text-2xl">You Might Also Like</h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
+                {recommendedProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} testIdPrefix="recommended" />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </Layout>

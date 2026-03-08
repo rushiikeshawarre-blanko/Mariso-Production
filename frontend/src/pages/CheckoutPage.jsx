@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,15 +9,19 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { createOrder } from '../lib/api';
 import { toast } from 'sonner';
-import { CreditCard, Smartphone, Building2, Banknote, Lock, ChevronLeft } from 'lucide-react';
+import { CreditCard, Smartphone, Building2, Banknote, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star } from 'lucide-react';
 
 const CheckoutPage = () => {
+  const location = useLocation();
+  const { giftPackaging = false, giftNote = '' } = location.state || {};
   const { items, getCartTotal, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
   
+  const GIFT_PACKAGING_PRICE = 149;
+
   const [formData, setFormData] = useState({
     name: user?.name || '',
     phone: '',
@@ -29,6 +33,10 @@ const CheckoutPage = () => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const getFinalTotal = () => {
+    return getCartTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
 
   const handleSubmit = async (e) => {
@@ -66,7 +74,7 @@ const CheckoutPage = () => {
         billing_city: formData.city,
         billing_postal_code: formData.postalCode,
         payment_method: paymentMethod,
-        total_price: getCartTotal()
+        total_price: getFinalTotal()
       };
 
       const order = await createOrder(orderData);
@@ -268,6 +276,58 @@ const CheckoutPage = () => {
                     </label>
                   </RadioGroup>
                 </div>
+
+                {/* Why Choose Mariso */}
+                <div className="bg-terracotta/5 rounded-xl p-8 border border-terracotta/20" data-testid="why-choose-mariso-section">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Sparkles className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
+                    <h2 className="font-heading text-xl">Why Choose Mariso?</h2>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                    <div className="flex items-start gap-3">
+                      <Heart className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Handcrafted with Care</p>
+                        <p className="text-xs text-muted-foreground">Each piece made with love</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Star className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Premium Quality</p>
+                        <p className="text-xs text-muted-foreground">100% natural soy wax</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Recycle className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Sustainable</p>
+                        <p className="text-xs text-muted-foreground">Reusable containers</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Gift className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Perfect for Gifting</p>
+                        <p className="text-xs text-muted-foreground">Beautiful presentation</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Truck className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Free Shipping</p>
+                        <p className="text-xs text-muted-foreground">On orders over ₹1500</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <div>
+                        <p className="font-medium text-sm">Artisan Made</p>
+                        <p className="text-xs text-muted-foreground">Supporting local crafts</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Order Summary */}
@@ -289,6 +349,9 @@ const CheckoutPage = () => {
                           <div className="flex-1">
                             <p className="font-medium text-sm">{item.name}</p>
                             <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                            {item.selectedColor && (
+                              <p className="text-xs text-muted-foreground">Color: {item.selectedColor}</p>
+                            )}
                             <p className="text-sm mt-1">₹{(price * item.quantity).toLocaleString()}</p>
                           </div>
                         </div>
@@ -296,11 +359,29 @@ const CheckoutPage = () => {
                     })}
                   </div>
 
+                  {/* Gift Packaging Indicator */}
+                  {giftPackaging && (
+                    <div className="flex items-center gap-2 p-3 bg-terracotta/10 rounded-lg mb-4">
+                      <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Gift Packaging</p>
+                        {giftNote && <p className="text-xs text-muted-foreground truncate">"{giftNote}"</p>}
+                      </div>
+                      <span className="text-sm">₹{GIFT_PACKAGING_PRICE}</span>
+                    </div>
+                  )}
+
                   <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
                       <span>₹{getCartTotal().toLocaleString()}</span>
                     </div>
+                    {giftPackaging && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Gift Packaging</span>
+                        <span>₹{GIFT_PACKAGING_PRICE}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Shipping</span>
                       <span className="text-[#8B9D83]">Free</span>
@@ -314,7 +395,7 @@ const CheckoutPage = () => {
                   <div className="border-t border-border mt-4 pt-4">
                     <div className="flex justify-between font-medium">
                       <span>Total</span>
-                      <span className="text-xl" data-testid="checkout-total">₹{getCartTotal().toLocaleString()}</span>
+                      <span className="text-xl" data-testid="checkout-total">₹{getFinalTotal().toLocaleString()}</span>
                     </div>
                   </div>
 

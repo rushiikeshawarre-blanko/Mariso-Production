@@ -17,9 +17,12 @@ export const Footer = () => {
             <p className="mt-4 text-muted-foreground leading-relaxed">
               Handcrafted homewares & hand-poured candles designed to elevate everyday living.
             </p>
-            <div className="flex gap-4 mt-6">
+            <p className="text-sm text-muted-foreground mt-4">
+              Follow us <span className="font-medium text-foreground">@marisocandles</span>
+            </p>
+            <div className="flex gap-4 mt-4">
               <a 
-                href="https://instagram.com" 
+                href="https://instagram.com/marisocandles" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-clay/30 transition-colors"

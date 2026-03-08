@@ -1,0 +1,1417 @@
+{
+  "config": {
+    "configFile": "/app/tests/playwright.config.ts",
+    "rootDir": "/app/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/app/tests/test-results",
+        "repeatEach": 1,
+        "retries": 1,
+        "metadata": {},
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/app/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "./test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "admin.spec.ts",
+      "file": "admin.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Admin Access & Dashboard",
+          "file": "admin.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "non-admin cannot access admin dashboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-d7a75dbdd70b3d3da003",
+              "file": "admin.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "admin login and dashboard access",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-dd6d7e0e07091858d74d",
+              "file": "admin.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "admin sees admin menu option in navbar",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-5d2707b136424cc7f37c",
+              "file": "admin.spec.ts",
+              "line": 25,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Admin Product Management",
+          "file": "admin.spec.ts",
+          "line": 33,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin products page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-5152c06dc38a3438accb",
+              "file": "admin.spec.ts",
+              "line": 39,
+              "column": 7
+            },
+            {
+              "title": "admin product search works",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-6419e45fec5e0c6ecaae",
+              "file": "admin.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "admin can open add product dialog",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-90c2ffe9f4d1bc75829c",
+              "file": "admin.spec.ts",
+              "line": 53,
+              "column": 7
+            },
+            {
+              "title": "admin can create a new product",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-630522f5347c63ef9610",
+              "file": "admin.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "admin can edit a product",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-84af98ac0bdb5b21d2b0",
+              "file": "admin.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "admin can delete a product",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-bf0f8ee8696dca32fd7c",
+              "file": "admin.spec.ts",
+              "line": 100,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Admin Category Management",
+          "file": "admin.spec.ts",
+          "line": 133,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin categories page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-6f7895054cf78a567912",
+              "file": "admin.spec.ts",
+              "line": 139,
+              "column": 7
+            },
+            {
+              "title": "admin can add a new category",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-c656dacbdc58f341eb27",
+              "file": "admin.spec.ts",
+              "line": 148,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Admin Order Management",
+          "file": "admin.spec.ts",
+          "line": 164,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin orders page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-a251289c64b97be023f4",
+              "file": "admin.spec.ts",
+              "line": 170,
+              "column": 7
+            },
+            {
+              "title": "admin can filter orders by status",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-09626eac9b9c2278739c",
+              "file": "admin.spec.ts",
+              "line": 175,
+              "column": 7
+            },
+            {
+              "title": "admin can view order details",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-f33b146b4d736bbd2b4b",
+              "file": "admin.spec.ts",
+              "line": 183,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Admin Customer Management",
+          "file": "admin.spec.ts",
+          "line": 196,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin customers page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-f770035bc68fb25bc578",
+              "file": "admin.spec.ts",
+              "line": 202,
+              "column": 7
+            },
+            {
+              "title": "admin customer list shows customers",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-7443d7020317218bff99",
+              "file": "admin.spec.ts",
+              "line": 207,
+              "column": 7
+            },
+            {
+              "title": "customer search works",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d4043a9dd1ab94463227-fc857d0b5d648b160fb9",
+              "file": "admin.spec.ts",
+              "line": 213,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "auth.spec.ts",
+      "file": "auth.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Authentication",
+          "file": "auth.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "login page loads with tabs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-5f817b58caf6aae829e6",
+              "file": "auth.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "user login with email and password",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-134ca61466c5ea151aed",
+              "file": "auth.spec.ts",
+              "line": 16,
+              "column": 7
+            },
+            {
+              "title": "admin login and sees admin menu",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-7919485b72bc682bd465",
+              "file": "auth.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "invalid login shows error toast",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-3af3895a1a41e0650081",
+              "file": "auth.spec.ts",
+              "line": 35,
+              "column": 7
+            },
+            {
+              "title": "OTP tab shows OTP login form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-a5e4b1c24cc2656cad23",
+              "file": "auth.spec.ts",
+              "line": 44,
+              "column": 7
+            },
+            {
+              "title": "OTP request sends OTP",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-6b74e9f6492e35b71093",
+              "file": "auth.spec.ts",
+              "line": 51,
+              "column": 7
+            },
+            {
+              "title": "register page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-a6f43a5be1e7800a3b74",
+              "file": "auth.spec.ts",
+              "line": 60,
+              "column": 7
+            },
+            {
+              "title": "new user registration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-fb2098f47ac4b45b5761",
+              "file": "auth.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "logout works",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-082f0ee96fe4ceb5ba44",
+              "file": "auth.spec.ts",
+              "line": 79,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "checkout-account.spec.ts",
+      "file": "checkout-account.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Checkout Flow",
+          "file": "checkout-account.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "checkout requires login - redirects to login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-ae36272f81ae4852e2f5",
+              "file": "checkout-account.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "checkout page loads with billing form when logged in",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-56cea243aa68c14af442",
+              "file": "checkout-account.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "checkout has payment options",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-4aa85c171f3fc9c720c1",
+              "file": "checkout-account.spec.ts",
+              "line": 35,
+              "column": 7
+            },
+            {
+              "title": "complete checkout flow with mock payment",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-8a049c31908ba9a87a3c",
+              "file": "checkout-account.spec.ts",
+              "line": 51,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "User Account",
+          "file": "checkout-account.spec.ts",
+          "line": 83,
+          "column": 6,
+          "specs": [
+            {
+              "title": "account requires authentication",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-cbdb4a45ba6acad351fc",
+              "file": "checkout-account.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "account page loads after login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-d0a05e6a64d9deffd7c5",
+              "file": "checkout-account.spec.ts",
+              "line": 93,
+              "column": 7
+            },
+            {
+              "title": "account orders page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-f80ec4efd3efba9fcf55",
+              "file": "checkout-account.spec.ts",
+              "line": 99,
+              "column": 7
+            },
+            {
+              "title": "account wishlist page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-e074c25ba2072b44ed62",
+              "file": "checkout-account.spec.ts",
+              "line": 109,
+              "column": 7
+            },
+            {
+              "title": "wishlist navigation from navbar menu",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "d3432a8411ac6b024d1e-46ad946fbd3b0aa3166a",
+              "file": "checkout-account.spec.ts",
+              "line": 119,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "core-flows.spec.ts",
+      "file": "core-flows.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Homepage",
+          "file": "core-flows.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "homepage loads with hero section",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-08e6e833e0cfa2bfbfcf",
+              "file": "core-flows.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "featured products section loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-eb64f8e291ff4292fa25",
+              "file": "core-flows.spec.ts",
+              "line": 16,
+              "column": 7
+            },
+            {
+              "title": "categories section displays categories",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-4ae29af23520c721fc50",
+              "file": "core-flows.spec.ts",
+              "line": 22,
+              "column": 7
+            },
+            {
+              "title": "bestsellers section loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-730d643bc08f99dabcc6",
+              "file": "core-flows.spec.ts",
+              "line": 30,
+              "column": 7
+            },
+            {
+              "title": "newsletter section is visible",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-06f27dc13226168f0650",
+              "file": "core-flows.spec.ts",
+              "line": 35,
+              "column": 7
+            },
+            {
+              "title": "navbar is visible with correct links",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-3f8794045fd560b296ed",
+              "file": "core-flows.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "hero CTA navigates to shop",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-5c20eca99655719131eb",
+              "file": "core-flows.spec.ts",
+              "line": 48,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Navigation",
+          "file": "core-flows.spec.ts",
+          "line": 55,
+          "column": 6,
+          "specs": [
+            {
+              "title": "navigates to shop page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-c44590a0ac66cc8e6fdf",
+              "file": "core-flows.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "navigates to cart page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-cda6f8724e0a9b22639c",
+              "file": "core-flows.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "login button navigates to login page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-33b1f0df485e8381eb4f",
+              "file": "core-flows.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "register link is present on login page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "28695e5e3430c54ac89e-70986bced86390ebe9d6",
+              "file": "core-flows.spec.ts",
+              "line": 74,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "shop-product.spec.ts",
+      "file": "shop-product.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Shop Page",
+          "file": "shop-product.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "shop page loads with products",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-60568d01d9a67457aa8e",
+              "file": "shop-product.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "shop page displays 13 products",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-2068a29f789c9875be5e",
+              "file": "shop-product.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "category filter works",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-c83c4577a9d22708e264",
+              "file": "shop-product.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "sort select is functional",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-b6fbdc1dcc3fe86fb794",
+              "file": "shop-product.spec.ts",
+              "line": 39,
+              "column": 7
+            },
+            {
+              "title": "sale filter checkbox is visible",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-fcdbfe07e6efce9f8500",
+              "file": "shop-product.spec.ts",
+              "line": 45,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Product Page",
+          "file": "shop-product.spec.ts",
+          "line": 51,
+          "column": 6,
+          "specs": [
+            {
+              "title": "product detail page loads correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-ac5bd53f1b93c5d8ce8a",
+              "file": "shop-product.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "product page has add to cart button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-3fda4d06ed82c44cfb4d",
+              "file": "shop-product.spec.ts",
+              "line": 69,
+              "column": 7
+            },
+            {
+              "title": "product quantity controls work",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-6f6cbd08c3a0fab5cd3b",
+              "file": "shop-product.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "product tabs work (details, care, shipping)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-f3aa7f0be77e79080501",
+              "file": "shop-product.spec.ts",
+              "line": 93,
+              "column": 7
+            },
+            {
+              "title": "add to cart from product page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-af699d5ec5e3a6be5adc",
+              "file": "shop-product.spec.ts",
+              "line": 107,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Cart",
+          "file": "shop-product.spec.ts",
+          "line": 121,
+          "column": 6,
+          "specs": [
+            {
+              "title": "empty cart page shows appropriate message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-f184ab5852a6b145c1de",
+              "file": "shop-product.spec.ts",
+              "line": 126,
+              "column": 7
+            },
+            {
+              "title": "add item to cart and verify cart page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-f9e09ceaee7178a27ba7",
+              "file": "shop-product.spec.ts",
+              "line": 135,
+              "column": 7
+            },
+            {
+              "title": "cart shows subtotal and total",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-f4a501acf7504483b960",
+              "file": "shop-product.spec.ts",
+              "line": 156,
+              "column": 7
+            },
+            {
+              "title": "proceed to checkout button visible in cart",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c12b85cc5a4cc0ccfdc7-7f70c04c4e2dd62e9d80",
+              "file": "shop-product.spec.ts",
+              "line": 171,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-08T10:13:39.156Z",
+    "duration": 419.77700000000004,
+    "expected": 0,
+    "skipped": 60,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
