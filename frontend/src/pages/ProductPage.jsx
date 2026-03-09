@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
+import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { Heart, Minus, Plus, ChevronLeft, ChevronRight, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets } from 'lucide-react';
+import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets, ShoppingBag, Zap } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { getProduct, getProducts, addToWishlist } from '../lib/api';
@@ -13,14 +13,14 @@ import { toast } from 'sonner';
 
 const ProductPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  const [selectedImage, setSelectedImage] = useState(0);
   const [selectedColor, setSelectedColor] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const { isAuthenticated } = useAuth();
 
   // Color variants (can be extended based on product data)
@@ -30,6 +30,64 @@ const ProductPage = () => {
     { name: 'Sandstone', color: '#D7C5B8' },
     { name: 'Terracotta', color: '#C98E74' },
   ];
+
+  // Enhanced product images - multiple angles for each product
+  const getEnhancedImages = (productImages, categoryName) => {
+    const baseImages = productImages || [];
+    
+    // Supplementary lifestyle and detail images based on category
+    const supplementaryImages = {
+      'Container Candles': [
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
+        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800',
+        'https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800',
+        'https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?w=800'
+      ],
+      'Candle Bouquets': [
+        'https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800',
+        'https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800',
+        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800',
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
+      ],
+      'Jesmonite Coasters': [
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
+        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800'
+      ],
+      'Ceramic Coasters': [
+        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
+      ],
+      'Reusable Containers': [
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
+        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
+      ]
+    };
+
+    const categoryImages = supplementaryImages[categoryName] || supplementaryImages['Container Candles'];
+    
+    // Combine base images with supplementary to ensure at least 5 images
+    const allImages = [...baseImages];
+    let index = 0;
+    while (allImages.length < 5 && index < categoryImages.length) {
+      if (!allImages.includes(categoryImages[index])) {
+        allImages.push(categoryImages[index]);
+      }
+      index++;
+    }
+    
+    return allImages.slice(0, 5);
+  };
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -51,7 +109,6 @@ const ProductPage = () => {
     
     fetchProduct();
     setQuantity(1);
-    setSelectedImage(0);
     window.scrollTo(0, 0);
   }, [id]);
 
@@ -64,6 +121,15 @@ const ProductPage = () => {
     toast.success('Added to cart', {
       description: `${quantity}x ${product.name}${selectedColor ? ` (${selectedColor.name})` : ''}`
     });
+  };
+
+  const handleBuyNow = () => {
+    if (product.stock === 0) {
+      toast.error('This product is out of stock');
+      return;
+    }
+    addItem({ ...product, selectedColor: selectedColor?.name }, quantity);
+    navigate('/checkout');
   };
 
   const handleAddToWishlist = async () => {
@@ -80,18 +146,6 @@ const ProductPage = () => {
     }
   };
 
-  const nextImage = () => {
-    if (product?.images?.length > 1) {
-      setSelectedImage((prev) => (prev + 1) % product.images.length);
-    }
-  };
-
-  const prevImage = () => {
-    if (product?.images?.length > 1) {
-      setSelectedImage((prev) => (prev - 1 + product.images.length) % product.images.length);
-    }
-  };
-
   const price = product?.is_on_sale && product?.sale_price ? product.sale_price : product?.price;
   const originalPrice = product?.is_on_sale && product?.sale_price ? product.price : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
@@ -102,7 +156,14 @@ const ProductPage = () => {
         <div className="pt-32 pb-24 min-h-screen">
           <div className="max-w-[1440px] mx-auto container-padding">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
+              <div className="space-y-4">
+                <div className="aspect-[3/4] bg-muted rounded-xl animate-pulse" />
+                <div className="flex gap-3">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="w-20 h-24 bg-muted rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              </div>
               <div className="space-y-6">
                 <div className="h-8 bg-muted rounded w-1/4 animate-pulse" />
                 <div className="h-12 bg-muted rounded w-3/4 animate-pulse" />
@@ -131,6 +192,8 @@ const ProductPage = () => {
     );
   }
 
+  const enhancedImages = getEnhancedImages(product.images, product.category_name);
+
   return (
     <Layout>
       <div className="pt-32 pb-24" data-testid="product-page">
@@ -146,127 +209,80 @@ const ProductPage = () => {
           </Link>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
-            {/* Images - Swipeable Gallery */}
-            <div className="space-y-4">
-              <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-muted group">
-                {product.is_on_sale && (
-                  <span className="sale-badge z-10">{discountPercent}% OFF</span>
-                )}
-                
-                {/* Wishlist Icon on Image */}
-                <button
-                  onClick={handleAddToWishlist}
-                  className={`absolute top-4 right-4 z-10 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all ${
-                    isWishlisted ? 'bg-terracotta text-white' : 'bg-white/90 hover:bg-white'
-                  }`}
-                  data-testid="product-wishlist-icon"
-                >
-                  <Heart className={`h-5 w-5 ${isWishlisted ? 'fill-current' : ''}`} strokeWidth={1.5} />
-                </button>
-
-                <img
-                  src={product.images?.[selectedImage] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'}
-                  alt={product.name}
-                  className="w-full h-full object-cover transition-transform duration-500"
-                  data-testid="product-main-image"
-                />
-                
-                {/* Navigation Arrows */}
-                {product.images?.length > 1 && (
-                  <>
-                    <button
-                      onClick={prevImage}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-white"
-                      data-testid="prev-image"
-                    >
-                      <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={nextImage}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-white"
-                      data-testid="next-image"
-                    >
-                      <ChevronRight className="h-5 w-5" strokeWidth={1.5} />
-                    </button>
-                  </>
-                )}
-
-                {/* Image Dots Indicator */}
-                {product.images?.length > 1 && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                    {product.images.map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setSelectedImage(index)}
-                        className={`w-2 h-2 rounded-full transition-all ${
-                          selectedImage === index ? 'bg-foreground w-6' : 'bg-foreground/30'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              {/* Thumbnail Gallery */}
-              {product.images?.length > 1 && (
-                <div className="grid grid-cols-4 gap-4">
-                  {product.images.map((img, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setSelectedImage(index)}
-                      className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                        selectedImage === index ? 'border-foreground' : 'border-transparent hover:border-foreground/30'
-                      }`}
-                      data-testid={`product-thumbnail-${index}`}
-                    >
-                      <img src={img} alt={`${product.name} ${index + 1}`} className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
+            {/* Left Side - Image Gallery */}
+            <div className="relative">
+              {/* Sale Badge */}
+              {product.is_on_sale && (
+                <span className="absolute top-4 left-4 z-20 bg-terracotta text-white text-sm font-medium px-4 py-1.5 rounded-full">
+                  {discountPercent}% OFF
+                </span>
               )}
+              
+              {/* Wishlist Button */}
+              <button
+                onClick={handleAddToWishlist}
+                className={`absolute top-4 right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                  isWishlisted 
+                    ? 'bg-terracotta text-white' 
+                    : 'bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110'
+                }`}
+                data-testid="product-wishlist-icon"
+              >
+                <Heart className={`h-5 w-5 ${isWishlisted ? 'fill-current' : ''}`} strokeWidth={1.5} />
+              </button>
+
+              {/* Image Gallery Component */}
+              <ProductImageGallery 
+                images={enhancedImages}
+                productName={product.name}
+              />
             </div>
 
-            {/* Details */}
-            <div className="lg:sticky lg:top-32 lg:self-start">
-              <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
+            {/* Right Side - Product Details */}
+            <div className="lg:sticky lg:top-32 lg:self-start space-y-6">
+              {/* Category */}
+              <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground">
                 {product.category_name}
               </p>
-              <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-4" data-testid="product-title">
+              
+              {/* Product Name */}
+              <h1 className="font-heading text-4xl md:text-5xl tracking-tight" data-testid="product-title">
                 {product.name}
               </h1>
               
-              {/* Price with Discount */}
-              <div className="flex items-center gap-3 mb-6">
-                <span className={`text-2xl font-medium ${product.is_on_sale ? 'text-terracotta' : ''}`} data-testid="product-price">
+              {/* Price */}
+              <div className="flex items-center gap-3">
+                <span className={`text-3xl font-medium ${product.is_on_sale ? 'text-terracotta' : ''}`} data-testid="product-price">
                   ₹{price?.toLocaleString()}
                 </span>
                 {originalPrice && (
                   <>
-                    <span className="text-lg text-muted-foreground line-through" data-testid="product-original-price">
+                    <span className="text-xl text-muted-foreground line-through" data-testid="product-original-price">
                       ₹{originalPrice.toLocaleString()}
                     </span>
-                    <span className="bg-terracotta/10 text-terracotta text-sm font-medium px-2 py-1 rounded">
-                      {discountPercent}% OFF
+                    <span className="bg-terracotta/10 text-terracotta text-sm font-medium px-3 py-1 rounded-full">
+                      Save ₹{(originalPrice - price).toLocaleString()}
                     </span>
                   </>
                 )}
               </div>
 
-              <p className="text-muted-foreground leading-relaxed mb-6" data-testid="product-description">
+              {/* Description */}
+              <p className="text-muted-foreground leading-relaxed" data-testid="product-description">
                 {product.description}
               </p>
 
               {/* Color Variants */}
-              <div className="mb-6">
-                <p className="text-sm font-medium mb-3">Color: {selectedColor?.name}</p>
+              <div>
+                <p className="text-sm font-medium mb-3">Color: <span className="text-muted-foreground">{selectedColor?.name}</span></p>
                 <div className="flex gap-3">
                   {colorVariants.map((variant) => (
                     <button
                       key={variant.name}
                       onClick={() => setSelectedColor(variant)}
-                      className={`w-10 h-10 rounded-full border-2 transition-all ${
+                      className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 ${
                         selectedColor?.name === variant.name 
-                          ? 'border-foreground scale-110' 
+                          ? 'border-foreground scale-110 shadow-lg' 
                           : 'border-border hover:border-foreground/50'
                       }`}
                       style={{ backgroundColor: variant.color }}
@@ -277,31 +293,32 @@ const ProductPage = () => {
                 </div>
               </div>
 
-              {/* Stock */}
-              <div className="mb-6">
+              {/* Stock Status */}
+              <div>
                 {product.stock > 0 ? (
                   product.stock <= 5 ? (
-                    <p className="text-sm text-terracotta" data-testid="product-stock-low">
-                      Only {product.stock} left in stock
+                    <p className="text-sm text-terracotta font-medium" data-testid="product-stock-low">
+                      🔥 Only {product.stock} left in stock - order soon!
                     </p>
                   ) : (
-                    <p className="text-sm text-[#8B9D83]" data-testid="product-stock-available">
-                      In Stock
+                    <p className="text-sm text-[#8B9D83] font-medium" data-testid="product-stock-available">
+                      ✓ In Stock - Ready to ship
                     </p>
                   )
                 ) : (
-                  <p className="text-sm text-destructive" data-testid="product-out-of-stock">
+                  <p className="text-sm text-destructive font-medium" data-testid="product-out-of-stock">
                     Out of Stock
                   </p>
                 )}
               </div>
 
-              {/* Quantity & Add to Cart */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              {/* Quantity Selector */}
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium">Quantity:</span>
                 <div className="flex items-center border border-border rounded-full">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="qty-btn"
+                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
                     disabled={quantity <= 1}
                     data-testid="quantity-decrease"
                   >
@@ -312,53 +329,60 @@ const ProductPage = () => {
                   </span>
                   <button
                     onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                    className="qty-btn"
+                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
                     disabled={quantity >= product.stock}
                     data-testid="quantity-increase"
                   >
                     <Plus className="h-4 w-4" strokeWidth={1.5} />
                   </button>
                 </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4">
                 <Button 
                   onClick={handleAddToCart}
-                  className="btn-primary flex-1"
+                  variant="outline"
+                  className="flex-1 h-14 rounded-full text-base font-medium border-2 border-foreground hover:bg-foreground hover:text-primary-foreground transition-all"
                   disabled={product.stock === 0}
                   data-testid="add-to-cart-button"
                 >
-                  {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                  <ShoppingBag className="h-5 w-5 mr-2" strokeWidth={1.5} />
+                  Add to Cart
                 </Button>
-                <Button
-                  onClick={handleAddToWishlist}
-                  variant="outline"
-                  className={`rounded-full px-4 ${isWishlisted ? 'bg-terracotta/10 border-terracotta text-terracotta' : ''}`}
-                  data-testid="add-to-wishlist-button"
+                <Button 
+                  onClick={handleBuyNow}
+                  className="flex-1 h-14 rounded-full text-base font-medium bg-foreground hover:bg-foreground/90"
+                  disabled={product.stock === 0}
+                  data-testid="buy-now-button"
                 >
-                  <Heart className={`h-5 w-5 ${isWishlisted ? 'fill-current' : ''}`} strokeWidth={1.5} />
+                  <Zap className="h-5 w-5 mr-2" strokeWidth={1.5} />
+                  Buy Now
                 </Button>
               </div>
 
               {/* Benefits */}
-              <div className="grid grid-cols-4 gap-4 py-6 border-y border-border mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-y border-border">
                 <div className="text-center">
-                  <Truck className="h-5 w-5 mx-auto mb-2 text-muted-foreground" strokeWidth={1.5} />
+                  <Truck className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
                   <p className="text-xs text-muted-foreground">Free Shipping<br />Over ₹1500</p>
                 </div>
                 <div className="text-center">
-                  <RotateCcw className="h-5 w-5 mx-auto mb-2 text-muted-foreground" strokeWidth={1.5} />
-                  <p className="text-xs text-muted-foreground">Easy<br />Returns</p>
+                  <RotateCcw className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
+                  <p className="text-xs text-muted-foreground">7-Day<br />Returns</p>
                 </div>
                 <div className="text-center">
-                  <Recycle className="h-5 w-5 mx-auto mb-2 text-muted-foreground" strokeWidth={1.5} />
+                  <Recycle className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
                   <p className="text-xs text-muted-foreground">Reusable<br />Container</p>
                 </div>
                 <div className="text-center">
-                  <Gift className="h-5 w-5 mx-auto mb-2 text-muted-foreground" strokeWidth={1.5} />
+                  <Gift className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
                   <p className="text-xs text-muted-foreground">Gift<br />Packaging</p>
                 </div>
               </div>
 
               {/* Product Details Accordion */}
-              <Accordion type="single" collapsible className="w-full">
+              <Accordion type="single" collapsible defaultValue="details" className="w-full">
                 <AccordionItem value="details">
                   <AccordionTrigger className="text-base font-medium" data-testid="accordion-details">
                     Product Details
@@ -369,19 +393,19 @@ const ProductPage = () => {
                       
                       <div className="grid grid-cols-2 gap-4 pt-4">
                         <div className="flex items-center gap-2">
-                          <Droplets className="h-4 w-4" strokeWidth={1.5} />
+                          <Droplets className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
                           <span>Premium Soy Wax</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Flame className="h-4 w-4" strokeWidth={1.5} />
+                          <Flame className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
                           <span>45+ Hour Burn Time</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Ruler className="h-4 w-4" strokeWidth={1.5} />
+                          <Ruler className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
                           <span>8cm × 10cm</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" strokeWidth={1.5} />
+                          <Clock className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
                           <span>Handcrafted</span>
                         </div>
                       </div>

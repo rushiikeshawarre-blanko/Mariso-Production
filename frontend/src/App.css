@@ -282,6 +282,15 @@
     background: hsl(var(--muted));
 }
 
+/* Hide scrollbar for thumbnail strip */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
 /* Order status colors */
 .status-pending {
     background: rgb(254 249 195);
