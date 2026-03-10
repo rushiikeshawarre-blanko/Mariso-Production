@@ -322,6 +322,81 @@ def ensure_product_defaults(product: dict) -> dict:
             product[key] = value
     return product
 
+def generate_variant_combinations(color_options: list, flavor_options: list, existing_variants: list = None) -> list:
+    """Generate all possible variant combinations from colors and flavors"""
+    existing_variants = existing_variants or []
+    existing_combos = {(v.get('color_id'), v.get('flavor_id')) for v in existing_variants}
+    
+    new_variants = []
+    
+    # Case 1: Both colors and flavors exist
+    if color_options and flavor_options:
+        for color in color_options:
+            for flavor in flavor_options:
+                combo = (color.get('id'), flavor.get('id'))
+                if combo not in existing_combos:
+                    new_variants.append({
+                        'id': str(uuid.uuid4()),
+                        'color_id': color.get('id'),
+                        'color_name': color.get('name'),
+                        'flavor_id': flavor.get('id'),
+                        'flavor_name': flavor.get('name'),
+                        'sku': '',
+                        'price_override': None,
+                        'stock': 0,
+                        'is_active': True
+                    })
+    # Case 2: Only colors exist
+    elif color_options:
+        for color in color_options:
+            combo = (color.get('id'), None)
+            if combo not in existing_combos:
+                new_variants.append({
+                    'id': str(uuid.uuid4()),
+                    'color_id': color.get('id'),
+                    'color_name': color.get('name'),
+                    'flavor_id': None,
+                    'flavor_name': None,
+                    'sku': '',
+                    'price_override': None,
+                    'stock': 0,
+                    'is_active': True
+                })
+    # Case 3: Only flavors exist
+    elif flavor_options:
+        for flavor in flavor_options:
+            combo = (None, flavor.get('id'))
+            if combo not in existing_combos:
+                new_variants.append({
+                    'id': str(uuid.uuid4()),
+                    'color_id': None,
+                    'color_name': None,
+                    'flavor_id': flavor.get('id'),
+                    'flavor_name': flavor.get('name'),
+                    'sku': '',
+                    'price_override': None,
+                    'stock': 0,
+                    'is_active': True
+                })
+    
+    return existing_variants + new_variants
+
+def get_variant_stock(product: dict, color_id: str = None, flavor_id: str = None) -> int:
+    """Get stock for a specific variant combination"""
+    variants = product.get('variants', [])
+    
+    # If no variants exist, use base product stock
+    if not variants:
+        return product.get('stock', 0)
+    
+    # Find matching variant
+    for variant in variants:
+        if variant.get('color_id') == color_id and variant.get('flavor_id') == flavor_id:
+            return variant.get('stock', 0)
+    
+    # Fallback to base stock if no match
+    return product.get('stock', 0)
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register", response_model=dict)
@@ -743,6 +818,58 @@ async def delete_product(product_id: str, admin: dict = Depends(get_admin_user))
         raise HTTPException(status_code=404, detail="Product not found")
     return {"message": "Product deleted"}
 
+@api_router.post("/admin/products/{product_id}/generate-variants", response_model=dict)
+async def generate_product_variants(product_id: str, admin: dict = Depends(get_admin_user)):
+    """Auto-generate variant combinations from colors and flavors"""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    color_options = product.get('color_options', [])
+    flavor_options = product.get('flavor_options', [])
+    existing_variants = product.get('variants', [])
+    
+    # Generate new combinations
+    new_variants = generate_variant_combinations(color_options, flavor_options, existing_variants)
+    
+    # Update product with new variants
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"variants": new_variants}}
+    )
+    
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    category = await db.categories.find_one({"id": updated.get('category_id')}, {"_id": 0})
+    updated['category_name'] = category['name'] if category else ""
+    ensure_product_defaults(updated)
+    
+    return updated
+
+@api_router.get("/products/{product_id}/stock", response_model=dict)
+async def get_product_variant_stock(product_id: str, color_id: Optional[str] = None, flavor_id: Optional[str] = None):
+    """Get stock for a specific variant combination"""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    stock = get_variant_stock(product, color_id, flavor_id)
+    
+    # Find variant details if exists
+    variant_info = None
+    for variant in product.get('variants', []):
+        if variant.get('color_id') == color_id and variant.get('flavor_id') == flavor_id:
+            variant_info = variant
+            break
+    
+    return {
+        "product_id": product_id,
+        "color_id": color_id,
+        "flavor_id": flavor_id,
+        "stock": stock,
+        "is_available": stock > 0,
+        "variant": variant_info
+    }
+
 # ==================== ORDER ROUTES ====================
 
 @api_router.post("/orders", response_model=dict)
@@ -803,10 +930,10 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     return order
 
 @api_router.get("/admin/orders", response_model=List[dict])
-async def get_all_orders(status: Optional[str] = None, admin: dict = Depends(get_admin_user)):
+async def get_all_orders(order_status: Optional[str] = None, admin: dict = Depends(get_admin_user)):
     query = {}
-    if status:
-        query["status"] = status
+    if order_status:
+        query["status"] = order_status
     
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
@@ -1010,8 +1137,13 @@ async def seed_database():
     await db.categories.insert_many(categories)
     
     # Create products with variant support
+    
+    # Product 1: COLOR only variants with 5 images per color
+    color1_id = str(uuid.uuid4())
+    color2_id = str(uuid.uuid4())
+    color3_id = str(uuid.uuid4())
+    
     products = [
-        # Product with COLOR variants
         {
             "id": str(uuid.uuid4()),
             "name": "Sandstone Ripple Coaster Set",
@@ -1034,12 +1166,49 @@ async def seed_database():
             "has_color_options": True,
             "has_flavor_options": False,
             "color_options": [
-                {"id": str(uuid.uuid4()), "name": "Natural White", "hex_code": "#F5F0E8", "images": ["https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800", "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Sandstone", "hex_code": "#D7C5B8", "images": ["https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800", "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Charcoal", "hex_code": "#36454F", "images": ["https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]}
+                {
+                    "id": color1_id, 
+                    "name": "Natural White", 
+                    "hex_code": "#F5F0E8", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800",
+                        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                        "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+                    ]
+                },
+                {
+                    "id": color2_id, 
+                    "name": "Sandstone", 
+                    "hex_code": "#D7C5B8", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                        "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800",
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+                    ]
+                },
+                {
+                    "id": color3_id, 
+                    "name": "Charcoal", 
+                    "hex_code": "#36454F", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800",
+                        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                        "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                        "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800"
+                    ]
+                }
             ],
             "flavor_options": [],
-            "variants": [],
+            "variants": [
+                {"id": str(uuid.uuid4()), "color_id": color1_id, "color_name": "Natural White", "flavor_id": None, "flavor_name": None, "sku": "JC-001-WHT", "price_override": None, "stock": 12, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": color2_id, "color_name": "Sandstone", "flavor_id": None, "flavor_name": None, "sku": "JC-001-SND", "price_override": None, "stock": 8, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": color3_id, "color_name": "Charcoal", "flavor_id": None, "flavor_name": None, "sku": "JC-001-CHR", "price_override": None, "stock": 5, "is_active": True}
+            ],
             "is_active": True,
             "is_featured": True,
             "is_bestseller": False,
@@ -1078,12 +1247,17 @@ async def seed_database():
             "has_flavor_options": True,
             "color_options": [],
             "flavor_options": [
-                {"id": str(uuid.uuid4()), "name": "Vanilla", "description": "Warm and comforting vanilla", "images": ["https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800", "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Lavender", "description": "Calming lavender fields", "images": ["https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800", "https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Rose", "description": "Fresh rose petals", "images": ["https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Oud & Amber", "description": "Luxurious oud with warm amber", "images": ["https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]}
+                {"id": "flv-vanilla", "name": "Vanilla", "description": "Warm and comforting vanilla", "images": []},
+                {"id": "flv-lavender", "name": "Lavender", "description": "Calming lavender fields", "images": []},
+                {"id": "flv-rose", "name": "Rose", "description": "Fresh rose petals", "images": []},
+                {"id": "flv-oud", "name": "Oud & Amber", "description": "Luxurious oud with warm amber", "images": []}
             ],
-            "variants": [],
+            "variants": [
+                {"id": str(uuid.uuid4()), "color_id": None, "color_name": None, "flavor_id": "flv-vanilla", "flavor_name": "Vanilla", "sku": "CC-001-VAN", "price_override": None, "stock": 15, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": None, "color_name": None, "flavor_id": "flv-lavender", "flavor_name": "Lavender", "sku": "CC-001-LAV", "price_override": None, "stock": 10, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": None, "color_name": None, "flavor_id": "flv-rose", "flavor_name": "Rose", "sku": "CC-001-ROS", "price_override": None, "stock": 8, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": None, "color_name": None, "flavor_id": "flv-oud", "flavor_name": "Oud & Amber", "sku": "CC-001-OUD", "price_override": 1499, "stock": 2, "is_active": True}
+            ],
             "is_active": True,
             "is_featured": True,
             "is_bestseller": True,
@@ -1098,7 +1272,7 @@ async def seed_database():
             "burn_time": "45+ hours",
             "created_at": datetime.now(timezone.utc).isoformat()
         },
-        # Product with BOTH color and flavor variants
+        # Product with BOTH color and flavor variants (full matrix)
         {
             "id": str(uuid.uuid4()),
             "name": "Rose Candle Bouquet",
@@ -1121,16 +1295,62 @@ async def seed_database():
             "has_color_options": True,
             "has_flavor_options": True,
             "color_options": [
-                {"id": str(uuid.uuid4()), "name": "White", "hex_code": "#FFFFFF", "images": ["https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Blush Pink", "hex_code": "#FFB6C1", "images": ["https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800"]},
-                {"id": str(uuid.uuid4()), "name": "Lavender", "hex_code": "#E6E6FA", "images": ["https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800"]}
+                {
+                    "id": "cb-white", 
+                    "name": "White", 
+                    "hex_code": "#FFFFFF", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800",
+                        "https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800",
+                        "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+                    ]
+                },
+                {
+                    "id": "cb-pink", 
+                    "name": "Blush Pink", 
+                    "hex_code": "#FFB6C1", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800",
+                        "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                        "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+                    ]
+                },
+                {
+                    "id": "cb-lav", 
+                    "name": "Lavender", 
+                    "hex_code": "#E6E6FA", 
+                    "images": [
+                        "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                        "https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800",
+                        "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800",
+                        "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800",
+                        "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"
+                    ]
+                }
             ],
             "flavor_options": [
-                {"id": str(uuid.uuid4()), "name": "Rose", "description": "Classic rose fragrance", "images": []},
-                {"id": str(uuid.uuid4()), "name": "Jasmine", "description": "Sweet jasmine blooms", "images": []},
-                {"id": str(uuid.uuid4()), "name": "Peony", "description": "Delicate peony petals", "images": []}
+                {"id": "cb-rose", "name": "Rose", "description": "Classic rose fragrance", "images": []},
+                {"id": "cb-jasmine", "name": "Jasmine", "description": "Sweet jasmine blooms", "images": []},
+                {"id": "cb-peony", "name": "Peony", "description": "Delicate peony petals", "images": []}
             ],
-            "variants": [],
+            "variants": [
+                # White + Rose, Jasmine, Peony
+                {"id": str(uuid.uuid4()), "color_id": "cb-white", "color_name": "White", "flavor_id": "cb-rose", "flavor_name": "Rose", "sku": "CB-WHT-ROS", "price_override": None, "stock": 10, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-white", "color_name": "White", "flavor_id": "cb-jasmine", "flavor_name": "Jasmine", "sku": "CB-WHT-JAS", "price_override": None, "stock": 8, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-white", "color_name": "White", "flavor_id": "cb-peony", "flavor_name": "Peony", "sku": "CB-WHT-PEO", "price_override": None, "stock": 5, "is_active": True},
+                # Pink + Rose, Jasmine, Peony
+                {"id": str(uuid.uuid4()), "color_id": "cb-pink", "color_name": "Blush Pink", "flavor_id": "cb-rose", "flavor_name": "Rose", "sku": "CB-PNK-ROS", "price_override": None, "stock": 12, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-pink", "color_name": "Blush Pink", "flavor_id": "cb-jasmine", "flavor_name": "Jasmine", "sku": "CB-PNK-JAS", "price_override": None, "stock": 6, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-pink", "color_name": "Blush Pink", "flavor_id": "cb-peony", "flavor_name": "Peony", "sku": "CB-PNK-PEO", "price_override": None, "stock": 0, "is_active": True},
+                # Lavender + Rose, Jasmine, Peony
+                {"id": str(uuid.uuid4()), "color_id": "cb-lav", "color_name": "Lavender", "flavor_id": "cb-rose", "flavor_name": "Rose", "sku": "CB-LAV-ROS", "price_override": None, "stock": 4, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-lav", "color_name": "Lavender", "flavor_id": "cb-jasmine", "flavor_name": "Jasmine", "sku": "CB-LAV-JAS", "price_override": None, "stock": 0, "is_active": True},
+                {"id": str(uuid.uuid4()), "color_id": "cb-lav", "color_name": "Lavender", "flavor_id": "cb-peony", "flavor_name": "Peony", "sku": "CB-LAV-PEO", "price_override": None, "stock": 3, "is_active": True}
+            ],
             "is_active": True,
             "is_featured": True,
             "is_bestseller": False,

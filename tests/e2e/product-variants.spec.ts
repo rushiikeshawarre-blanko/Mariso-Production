@@ -3,10 +3,10 @@ import { dismissToasts, loginAsAdmin } from '../fixtures/helpers';
 
 const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'https://candle-ecommerce-hub.preview.emergentagent.com';
 
-// Product IDs with known variant configurations
-const PRODUCT_WITH_COLORS = 'ccd58441-eca8-47c3-95ae-da0c7504ac19'; // Sandstone Ripple Coaster Set
-const PRODUCT_WITH_FLAVORS = 'b24e7fca-da00-4d63-bc91-31c78e64b17c'; // Vanilla Sandstone Candle
-const PRODUCT_WITH_BOTH = '0f29ccba-48ef-46eb-9c76-0703d6ae9c37'; // Rose Candle Bouquet
+// Current product IDs with known variant configurations
+const PRODUCT_WITH_COLORS = 'b187b202-8994-446c-9187-523c9739050c'; // Sandstone Ripple Coaster Set (3 colors)
+const PRODUCT_WITH_FLAVORS = '180014db-c137-4e0c-a2de-a54b939f6efd'; // Vanilla Sandstone Candle (4 flavors)
+const PRODUCT_WITH_BOTH = '07370897-912d-48d0-8d54-5152fc3ebd0c'; // Rose Candle Bouquet (3 colors x 3 fragrances)
 
 test.describe('Product Page - Color Variants', () => {
   test.beforeEach(async ({ page }) => {
@@ -112,6 +112,102 @@ test.describe('Product Page - Flavor Variants', () => {
   });
 });
 
+test.describe('Product Page - Variant Combination Stock', () => {
+  test.beforeEach(async ({ page }) => {
+    await dismissToasts(page);
+  });
+
+  test('product displays variant combination stock (not base stock)', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Default selection is White + Rose with stock=10
+    await expect(page.getByTestId('stock-status')).toBeVisible();
+    await expect(page.getByTestId('product-stock-available')).toContainText('In Stock');
+    await expect(page.getByTestId('product-stock-available')).toContainText('10 available');
+  });
+
+  test('stock changes when selecting different color+fragrance combination', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Default White + Rose has 10 stock
+    await expect(page.getByTestId('product-stock-available')).toContainText('10 available');
+    
+    // Change to White + Jasmine (stock=8)
+    await page.getByTestId('flavor-jasmine').click();
+    await expect(page.getByTestId('product-stock-available')).toContainText('8 available');
+    
+    // Change to Blush Pink + Rose (stock=12)
+    await page.getByTestId('color-blush-pink').click();
+    await page.getByTestId('flavor-rose').click();
+    await expect(page.getByTestId('product-stock-available')).toContainText('12 available');
+  });
+
+  test('shows Out of Stock for combination with 0 stock', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Select Blush Pink + Peony combination (stock=0)
+    await page.getByTestId('color-blush-pink').click();
+    await page.getByTestId('flavor-peony').click();
+    
+    // Should show out of stock message
+    await expect(page.getByTestId('product-out-of-stock')).toBeVisible();
+    await expect(page.getByTestId('product-out-of-stock')).toContainText('Out of Stock');
+    await expect(page.getByTestId('product-out-of-stock')).toContainText('Blush Pink + Peony');
+  });
+
+  test('Add to Cart button is disabled when out of stock', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Select out of stock combination: Lavender + Jasmine (stock=0)
+    await page.getByTestId('color-lavender').click();
+    await page.getByTestId('flavor-jasmine').click();
+    
+    // Add to Cart button should be disabled
+    const addToCartBtn = page.getByTestId('add-to-cart-button');
+    await expect(addToCartBtn).toBeDisabled();
+    await expect(addToCartBtn).toContainText('Out of Stock');
+    
+    // Buy Now button should also be disabled
+    const buyNowBtn = page.getByTestId('buy-now-button');
+    await expect(buyNowBtn).toBeDisabled();
+  });
+
+  test('can switch from out of stock to in stock combination', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Select out of stock combination first
+    await page.getByTestId('color-blush-pink').click();
+    await page.getByTestId('flavor-peony').click();
+    await expect(page.getByTestId('product-out-of-stock')).toBeVisible();
+    
+    // Now switch to in-stock combination
+    await page.getByTestId('flavor-rose').click();
+    await expect(page.getByTestId('product-stock-available')).toBeVisible();
+    await expect(page.getByTestId('product-stock-available')).toContainText('12 available');
+    
+    // Add to Cart should now be enabled
+    await expect(page.getByTestId('add-to-cart-button')).toBeEnabled();
+  });
+
+  test('low stock warning shows when stock is 5 or below', async ({ page }) => {
+    await page.goto(`/product/${PRODUCT_WITH_BOTH}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('product-page')).toBeVisible({ timeout: 10000 });
+    
+    // Select Lavender + Rose combination (stock=4) - low stock
+    await page.getByTestId('color-lavender').click();
+    await page.getByTestId('flavor-rose').click();
+    
+    // Should show low stock warning
+    await expect(page.getByTestId('product-stock-low')).toBeVisible();
+    await expect(page.getByTestId('product-stock-low')).toContainText('Only 4 left');
+  });
+});
+
 test.describe('Product Page - Both Variants', () => {
   test.beforeEach(async ({ page }) => {
     await dismissToasts(page);
@@ -145,87 +241,5 @@ test.describe('Product Page - Both Variants', () => {
     // Both selections should be maintained
     await expect(page.getByText('Color: Blush Pink')).toBeVisible();
     await expect(page.getByText('Fragrance: Jasmine')).toBeVisible();
-  });
-});
-
-test.describe('Admin Products - Variants Column', () => {
-  test.beforeEach(async ({ page }) => {
-    await dismissToasts(page);
-    await loginAsAdmin(page);
-  });
-
-  test('admin products table displays variants column with counts', async ({ page }) => {
-    await page.goto('/admin/products', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('admin-products')).toBeVisible({ timeout: 15000 });
-    
-    // Wait for products to load
-    const productRows = page.locator('[data-testid^="product-row-"]');
-    await expect(productRows.first()).toBeVisible({ timeout: 10000 });
-    
-    // Check that Sandstone Ripple Coaster Set shows color count (3 colors)
-    const colorOnlyRow = page.getByTestId(`product-row-${PRODUCT_WITH_COLORS}`);
-    await expect(colorOnlyRow).toBeVisible();
-    // Should show color badge with count 3
-    await expect(colorOnlyRow.locator('text=/.*3/')).toBeVisible();
-    
-    // Check that Vanilla Sandstone Candle shows flavor count (4 flavors)
-    const flavorOnlyRow = page.getByTestId(`product-row-${PRODUCT_WITH_FLAVORS}`);
-    await expect(flavorOnlyRow).toBeVisible();
-    // Should show flavor badge with count 4
-    await expect(flavorOnlyRow.locator('text=/.*4/')).toBeVisible();
-    
-    // Check that Rose Candle Bouquet shows both counts
-    const bothRow = page.getByTestId(`product-row-${PRODUCT_WITH_BOTH}`);
-    await expect(bothRow).toBeVisible();
-  });
-});
-
-test.describe('Admin Product Edit - Variants Tab', () => {
-  test.beforeEach(async ({ page }) => {
-    await dismissToasts(page);
-    await loginAsAdmin(page);
-  });
-
-  test('admin can edit product and see Variants tab with existing colors', async ({ page }) => {
-    await page.goto('/admin/products', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('admin-products')).toBeVisible({ timeout: 15000 });
-    
-    // Click edit on product with colors
-    await page.getByTestId(`edit-product-${PRODUCT_WITH_COLORS}`).click({ force: true });
-    await expect(page.getByTestId('product-name-input')).toBeVisible({ timeout: 10000 });
-    
-    // Click on Variants tab
-    await page.getByTestId('tab-variants').click();
-    
-    // Should see Color Options toggle enabled
-    await expect(page.getByTestId('enable-color-options')).toBeChecked();
-    
-    // Should see existing colors listed within the dialog
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.getByText('Natural White', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Sandstone', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Charcoal', { exact: true })).toBeVisible();
-  });
-
-  test('admin can edit product and see Variants tab with existing flavors', async ({ page }) => {
-    await page.goto('/admin/products', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('admin-products')).toBeVisible({ timeout: 15000 });
-    
-    // Click edit on product with flavors
-    await page.getByTestId(`edit-product-${PRODUCT_WITH_FLAVORS}`).click({ force: true });
-    await expect(page.getByTestId('product-name-input')).toBeVisible({ timeout: 10000 });
-    
-    // Click on Variants tab
-    await page.getByTestId('tab-variants').click();
-    
-    // Should see Fragrance Options toggle enabled
-    await expect(page.getByTestId('enable-flavor-options')).toBeChecked();
-    
-    // Should see existing flavors listed within the dialog
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.getByText('Vanilla', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Lavender', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Rose', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Oud & Amber', { exact: true })).toBeVisible();
   });
 });

@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets, ShoppingBag, Zap } from 'lucide-react';
+import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { getProduct, getProducts, addToWishlist } from '../lib/api';
@@ -21,49 +21,80 @@ const ProductPage = () => {
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
-  const { addItem, items } = useCart();
+  const { addItem } = useCart();
   const { isAuthenticated } = useAuth();
 
-  // Get current images based on selected variant
+  // Get variant combination stock
+  const getVariantStock = useCallback(() => {
+    if (!product) return 0;
+    
+    const variants = product.variants || [];
+    
+    // If no variants exist, use base product stock
+    if (variants.length === 0) {
+      return product.stock || 0;
+    }
+    
+    // Find matching variant for the selected combination
+    const colorId = selectedColor?.id || null;
+    const flavorId = selectedFlavor?.id || null;
+    
+    for (const variant of variants) {
+      if (variant.color_id === colorId && variant.flavor_id === flavorId) {
+        return variant.stock ?? 0;
+      }
+    }
+    
+    // Fallback to base stock if no match found
+    return product.stock || 0;
+  }, [product, selectedColor, selectedFlavor]);
+
+  // Get current variant info
+  const currentVariant = useMemo(() => {
+    if (!product?.variants?.length) return null;
+    
+    const colorId = selectedColor?.id || null;
+    const flavorId = selectedFlavor?.id || null;
+    
+    return product.variants.find(v => 
+      v.color_id === colorId && v.flavor_id === flavorId
+    ) || null;
+  }, [product, selectedColor, selectedFlavor]);
+
+  // Current stock based on selected variant combination
+  const currentStock = useMemo(() => getVariantStock(), [getVariantStock]);
+  
+  // Is current combination available?
+  const isAvailable = currentStock > 0;
+
+  // Get current images based on selected color (color-based gallery switching)
   const currentImages = useMemo(() => {
     if (!product) return [];
     
-    // If color is selected and has images, use those
+    // Priority: selected color's images (up to 5)
     if (selectedColor?.images?.length > 0) {
-      return selectedColor.images;
+      return selectedColor.images.slice(0, 5);
     }
     
-    // If flavor is selected and has images, use those
-    if (selectedFlavor?.images?.length > 0) {
-      return selectedFlavor.images;
-    }
-    
-    // Otherwise use default product images
+    // Fallback to default product images
     return product.images || [];
-  }, [product, selectedColor, selectedFlavor]);
+  }, [product, selectedColor]);
 
-  // Fallback images if product doesn't have enough
-  const getEnhancedImages = (images) => {
-    const baseImages = images || [];
-    if (baseImages.length >= 3) return baseImages;
+  // Ensure we have at least some images to display
+  const displayImages = useMemo(() => {
+    const images = currentImages.length > 0 ? currentImages : (product?.images || []);
     
-    // Add some fallback images if needed
-    const fallbackImages = [
-      'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-      'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
-      'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
-    ];
-    
-    const allImages = [...baseImages];
-    let index = 0;
-    while (allImages.length < 3 && index < fallbackImages.length) {
-      if (!allImages.includes(fallbackImages[index])) {
-        allImages.push(fallbackImages[index]);
-      }
-      index++;
+    // If still no images, use fallback
+    if (images.length === 0) {
+      return [
+        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
+        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
+      ];
     }
-    return allImages;
-  };
+    
+    return images;
+  }, [currentImages, product]);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -101,37 +132,59 @@ const ProductPage = () => {
     window.scrollTo(0, 0);
   }, [id]);
 
+  // Reset quantity when variant changes
+  useEffect(() => {
+    setQuantity(1);
+  }, [selectedColor, selectedFlavor]);
+
   const handleAddToCart = () => {
-    if (product.stock === 0) {
-      toast.error('This product is out of stock');
+    if (!isAvailable) {
+      toast.error('This combination is out of stock');
       return;
     }
+    
     const variantInfo = [];
     if (selectedColor) variantInfo.push(selectedColor.name);
     if (selectedFlavor) variantInfo.push(selectedFlavor.name);
     
+    // Get variant-specific price if exists
+    const variantPrice = currentVariant?.price_override || (product.is_on_sale && product.discount_price ? product.discount_price : product.price);
+    
     addItem({ 
-      ...product, 
+      ...product,
+      price: variantPrice,
       selectedColor: selectedColor?.name,
+      selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
-      variantId: `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`
+      selectedFlavorId: selectedFlavor?.id,
+      variantId: currentVariant?.id || `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`,
+      variantStock: currentStock
     }, quantity);
+    
     toast.success('Added to cart', {
       description: `${quantity}x ${product.name}${variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : ''}`
     });
   };
 
   const handleBuyNow = () => {
-    if (product.stock === 0) {
-      toast.error('This product is out of stock');
+    if (!isAvailable) {
+      toast.error('This combination is out of stock');
       return;
     }
+    
+    const variantPrice = currentVariant?.price_override || (product.is_on_sale && product.discount_price ? product.discount_price : product.price);
+    
     addItem({ 
-      ...product, 
+      ...product,
+      price: variantPrice,
       selectedColor: selectedColor?.name,
+      selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
-      variantId: `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`
+      selectedFlavorId: selectedFlavor?.id,
+      variantId: currentVariant?.id || `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`,
+      variantStock: currentStock
     }, quantity);
+    
     navigate('/checkout');
   };
 
@@ -149,12 +202,25 @@ const ProductPage = () => {
     }
   };
 
-  const price = product?.is_on_sale && product?.discount_price ? product.discount_price : product?.price;
-  const originalPrice = product?.is_on_sale && product?.discount_price ? product.price : null;
-  const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
+  // Calculate price (considering variant price override)
+  const displayPrice = useMemo(() => {
+    if (!product) return 0;
+    
+    // Check for variant-specific price
+    if (currentVariant?.price_override) {
+      return currentVariant.price_override;
+    }
+    
+    // Use sale price if on sale
+    if (product.is_on_sale && product.discount_price) {
+      return product.discount_price;
+    }
+    
+    return product.price;
+  }, [product, currentVariant]);
 
-  // Get the display images for the gallery
-  const displayImages = getEnhancedImages(currentImages);
+  const originalPrice = product?.is_on_sale && product?.discount_price ? product.price : null;
+  const discountPercent = originalPrice ? Math.round((1 - displayPrice / originalPrice) * 100) : 0;
 
   if (loading) {
     return (
@@ -198,8 +264,6 @@ const ProductPage = () => {
     );
   }
 
-  const enhancedImages = displayImages;
-
   return (
     <Layout>
       <div className="pt-32 pb-24" data-testid="product-page">
@@ -239,7 +303,7 @@ const ProductPage = () => {
 
               {/* Image Gallery Component */}
               <ProductImageGallery 
-                images={enhancedImages}
+                images={displayImages}
                 productName={product.name}
               />
             </div>
@@ -259,7 +323,7 @@ const ProductPage = () => {
               {/* Price */}
               <div className="flex items-center gap-3">
                 <span className={`text-3xl font-medium ${product.is_on_sale ? 'text-terracotta' : ''}`} data-testid="product-price">
-                  ₹{price?.toLocaleString()}
+                  ₹{displayPrice?.toLocaleString()}
                 </span>
                 {originalPrice && (
                   <>
@@ -267,7 +331,7 @@ const ProductPage = () => {
                       ₹{originalPrice.toLocaleString()}
                     </span>
                     <span className="bg-terracotta/10 text-terracotta text-sm font-medium px-3 py-1 rounded-full">
-                      Save ₹{(originalPrice - price).toLocaleString()}
+                      Save ₹{(originalPrice - displayPrice).toLocaleString()}
                     </span>
                   </>
                 )}
@@ -281,7 +345,12 @@ const ProductPage = () => {
               {/* Color Variants - Only show if product has color options */}
               {product.has_color_options && product.color_options?.length > 0 && (
                 <div data-testid="color-variants">
-                  <p className="text-sm font-medium mb-3">Color: <span className="text-muted-foreground">{selectedColor?.name}</span></p>
+                  <p className="text-sm font-medium mb-3">
+                    Color: <span className="text-muted-foreground">{selectedColor?.name}</span>
+                    {selectedColor?.images?.length > 0 && (
+                      <span className="text-xs text-muted-foreground ml-2">({selectedColor.images.length} images)</span>
+                    )}
+                  </p>
                   <div className="flex flex-wrap gap-3">
                     {product.color_options.map((color) => (
                       <button
@@ -293,7 +362,7 @@ const ProductPage = () => {
                             : 'border-border hover:border-foreground/50'
                         }`}
                         style={{ backgroundColor: color.hex_code }}
-                        title={color.name}
+                        title={`${color.name}${color.images?.length ? ` (${color.images.length} images)` : ''}`}
                         data-testid={`color-${color.name.toLowerCase().replace(/\s+/g, '-')}`}
                       />
                     ))}
@@ -328,22 +397,30 @@ const ProductPage = () => {
                 </div>
               )}
 
-              {/* Stock Status */}
-              <div>
-                {product.stock > 0 ? (
-                  product.stock <= 5 ? (
+              {/* Stock Status - Based on selected variant combination */}
+              <div data-testid="stock-status">
+                {isAvailable ? (
+                  currentStock <= 5 ? (
                     <p className="text-sm text-terracotta font-medium" data-testid="product-stock-low">
-                      🔥 Only {product.stock} left in stock - order soon!
+                      🔥 Only {currentStock} left in stock - order soon!
                     </p>
                   ) : (
                     <p className="text-sm text-[#8B9D83] font-medium" data-testid="product-stock-available">
-                      ✓ In Stock - Ready to ship
+                      ✓ In Stock ({currentStock} available) - Ready to ship
                     </p>
                   )
                 ) : (
-                  <p className="text-sm text-destructive font-medium" data-testid="product-out-of-stock">
-                    Out of Stock
-                  </p>
+                  <div className="flex items-center gap-2 text-destructive" data-testid="product-out-of-stock">
+                    <AlertCircle className="h-4 w-4" />
+                    <p className="text-sm font-medium">
+                      Out of Stock
+                      {(selectedColor || selectedFlavor) && (
+                        <span className="text-muted-foreground font-normal">
+                          {' '}for {[selectedColor?.name, selectedFlavor?.name].filter(Boolean).join(' + ')}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -353,8 +430,8 @@ const ProductPage = () => {
                 <div className="flex items-center border border-border rounded-full">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
-                    disabled={quantity <= 1}
+                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
+                    disabled={quantity <= 1 || !isAvailable}
                     data-testid="quantity-decrease"
                   >
                     <Minus className="h-4 w-4" strokeWidth={1.5} />
@@ -363,9 +440,9 @@ const ProductPage = () => {
                     {quantity}
                   </span>
                   <button
-                    onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
-                    disabled={quantity >= product.stock}
+                    onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
+                    className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
+                    disabled={quantity >= currentStock || !isAvailable}
                     data-testid="quantity-increase"
                   >
                     <Plus className="h-4 w-4" strokeWidth={1.5} />
@@ -378,17 +455,25 @@ const ProductPage = () => {
                 <Button 
                   onClick={handleAddToCart}
                   variant="outline"
-                  className="flex-1 h-14 rounded-full text-base font-medium border-2 border-foreground hover:bg-foreground hover:text-primary-foreground transition-all"
-                  disabled={product.stock === 0}
+                  className={`flex-1 h-14 rounded-full text-base font-medium border-2 transition-all ${
+                    isAvailable 
+                      ? 'border-foreground hover:bg-foreground hover:text-primary-foreground' 
+                      : 'border-muted-foreground/30 text-muted-foreground cursor-not-allowed'
+                  }`}
+                  disabled={!isAvailable}
                   data-testid="add-to-cart-button"
                 >
                   <ShoppingBag className="h-5 w-5 mr-2" strokeWidth={1.5} />
-                  Add to Cart
+                  {isAvailable ? 'Add to Cart' : 'Out of Stock'}
                 </Button>
                 <Button 
                   onClick={handleBuyNow}
-                  className="flex-1 h-14 rounded-full text-base font-medium bg-foreground hover:bg-foreground/90"
-                  disabled={product.stock === 0}
+                  className={`flex-1 h-14 rounded-full text-base font-medium ${
+                    isAvailable 
+                      ? 'bg-foreground hover:bg-foreground/90' 
+                      : 'bg-muted-foreground/30 cursor-not-allowed'
+                  }`}
+                  disabled={!isAvailable}
                   data-testid="buy-now-button"
                 >
                   <Zap className="h-5 w-5 mr-2" strokeWidth={1.5} />
@@ -427,18 +512,24 @@ const ProductPage = () => {
                       <p>{product.description}</p>
                       
                       <div className="grid grid-cols-2 gap-4 pt-4">
-                        <div className="flex items-center gap-2">
-                          <Droplets className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                          <span>Premium Soy Wax</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Flame className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                          <span>45+ Hour Burn Time</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Ruler className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                          <span>8cm × 10cm</span>
-                        </div>
+                        {product.materials && (
+                          <div className="flex items-center gap-2">
+                            <Droplets className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                            <span>{product.materials}</span>
+                          </div>
+                        )}
+                        {product.burn_time && (
+                          <div className="flex items-center gap-2">
+                            <Flame className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                            <span>{product.burn_time}</span>
+                          </div>
+                        )}
+                        {product.dimensions && (
+                          <div className="flex items-center gap-2">
+                            <Ruler className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                            <span>{product.dimensions}</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <Clock className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
                           <span>Handcrafted</span>
@@ -458,12 +549,18 @@ const ProductPage = () => {
                   </AccordionTrigger>
                   <AccordionContent>
                     <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-4">
-                      <li>Trim wick to 1/4 inch before each burn</li>
-                      <li>Allow wax to melt to the edges on first burn</li>
-                      <li>Keep away from drafts and vibrations</li>
-                      <li>Never leave burning candle unattended</li>
-                      <li>Stop burning when 1/2 inch of wax remains</li>
-                      <li>Keep out of reach of children and pets</li>
+                      {product.care_instructions ? (
+                        <li>{product.care_instructions}</li>
+                      ) : (
+                        <>
+                          <li>Trim wick to 1/4 inch before each burn</li>
+                          <li>Allow wax to melt to the edges on first burn</li>
+                          <li>Keep away from drafts and vibrations</li>
+                          <li>Never leave burning candle unattended</li>
+                          <li>Stop burning when 1/2 inch of wax remains</li>
+                          <li>Keep out of reach of children and pets</li>
+                        </>
+                      )}
                     </ul>
                   </AccordionContent>
                 </AccordionItem>
@@ -477,7 +574,7 @@ const ProductPage = () => {
                       <div>
                         <p className="font-medium text-foreground mb-1">Shipping</p>
                         <ul className="space-y-1 list-disc pl-4">
-                          <li>Ships within 3-5 business days</li>
+                          <li>{product.shipping_info || 'Ships within 3-5 business days'}</li>
                           <li>Free shipping on orders over ₹1500</li>
                           <li>Standard shipping: ₹99</li>
                           <li>Express shipping: ₹199 (2-3 days)</li>

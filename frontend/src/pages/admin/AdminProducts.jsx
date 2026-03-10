@@ -9,8 +9,10 @@ import { Switch } from '../../components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Plus, Pencil, Trash2, Search, Palette, Droplets, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+
+const API_BASE = process.env.REACT_APP_BACKEND_URL;
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -20,6 +22,7 @@ const AdminProducts = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
+  const [generating, setGenerating] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -28,12 +31,14 @@ const AdminProducts = () => {
     price: '',
     discount_price: '',
     category_id: '',
+    sku: '',
     stock: '',
     images: '',
     is_on_sale: false,
     is_featured: false,
     is_bestseller: false,
     is_new_arrival: false,
+    is_active: true,
     care_instructions: '',
     shipping_info: '',
     materials: '',
@@ -42,12 +47,13 @@ const AdminProducts = () => {
     has_color_options: false,
     has_flavor_options: false,
     color_options: [],
-    flavor_options: []
+    flavor_options: [],
+    variants: []
   });
 
   // Temporary state for adding new color/flavor
-  const [newColor, setNewColor] = useState({ name: '', hex_code: '#F5F0E8', images: '' });
-  const [newFlavor, setNewFlavor] = useState({ name: '', description: '', images: '' });
+  const [newColor, setNewColor] = useState({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
+  const [newFlavor, setNewFlavor] = useState({ name: '', description: '' });
 
   useEffect(() => {
     fetchData();
@@ -80,12 +86,14 @@ const AdminProducts = () => {
       price: '',
       discount_price: '',
       category_id: '',
+      sku: '',
       stock: '',
       images: '',
       is_on_sale: false,
       is_featured: false,
       is_bestseller: false,
       is_new_arrival: false,
+      is_active: true,
       care_instructions: '',
       shipping_info: '',
       materials: '',
@@ -94,10 +102,11 @@ const AdminProducts = () => {
       has_color_options: false,
       has_flavor_options: false,
       color_options: [],
-      flavor_options: []
+      flavor_options: [],
+      variants: []
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', images: '' });
-    setNewFlavor({ name: '', description: '', images: '' });
+    setNewColor({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
+    setNewFlavor({ name: '', description: '' });
     setActiveTab('basic');
   };
 
@@ -116,12 +125,14 @@ const AdminProducts = () => {
       price: product.price.toString(),
       discount_price: product.discount_price?.toString() || '',
       category_id: product.category_id,
+      sku: product.sku || '',
       stock: product.stock.toString(),
       images: product.images?.join(', ') || '',
       is_on_sale: product.is_on_sale || false,
       is_featured: product.is_featured || false,
       is_bestseller: product.is_bestseller || false,
       is_new_arrival: product.is_new_arrival || false,
+      is_active: product.is_active !== false,
       care_instructions: product.care_instructions || '',
       shipping_info: product.shipping_info || '',
       materials: product.materials || '',
@@ -130,68 +141,237 @@ const AdminProducts = () => {
       has_color_options: product.has_color_options || false,
       has_flavor_options: product.has_flavor_options || false,
       color_options: product.color_options || [],
-      flavor_options: product.flavor_options || []
+      flavor_options: product.flavor_options || [],
+      variants: product.variants || []
     });
     setActiveTab('basic');
     setDialogOpen(true);
   };
 
-  // Add a new color option
+  // ==================== COLOR OPTIONS ====================
+  
   const addColorOption = () => {
     if (!newColor.name.trim()) {
       toast.error('Color name is required');
       return;
     }
-    const colorImages = newColor.images.split(',').map(url => url.trim()).filter(Boolean);
+    const colorImages = newColor.images.filter(url => url.trim() !== '');
+    const newColorOption = {
+      id: `temp-${Date.now()}`,
+      name: newColor.name,
+      hex_code: newColor.hex_code,
+      images: colorImages
+    };
     setFormData({
       ...formData,
-      color_options: [...formData.color_options, {
-        name: newColor.name,
-        hex_code: newColor.hex_code,
-        images: colorImages
-      }]
+      color_options: [...formData.color_options, newColorOption]
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', images: '' });
+    setNewColor({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
     toast.success('Color option added');
   };
 
-  // Remove a color option
   const removeColorOption = (index) => {
+    const colorToRemove = formData.color_options[index];
+    // Also remove variants that use this color
+    const updatedVariants = formData.variants.filter(v => v.color_id !== colorToRemove.id);
     setFormData({
       ...formData,
-      color_options: formData.color_options.filter((_, i) => i !== index)
+      color_options: formData.color_options.filter((_, i) => i !== index),
+      variants: updatedVariants
     });
+    toast.success('Color option removed');
   };
 
-  // Add a new flavor option
+  const updateColorImage = (colorIndex, imageIndex, url) => {
+    const updatedColors = [...formData.color_options];
+    if (!updatedColors[colorIndex].images) {
+      updatedColors[colorIndex].images = ['', '', '', '', ''];
+    }
+    // Ensure we have 5 slots
+    while (updatedColors[colorIndex].images.length < 5) {
+      updatedColors[colorIndex].images.push('');
+    }
+    updatedColors[colorIndex].images[imageIndex] = url;
+    setFormData({ ...formData, color_options: updatedColors });
+  };
+
+  const moveColorImage = (colorIndex, imageIndex, direction) => {
+    const updatedColors = [...formData.color_options];
+    const images = [...updatedColors[colorIndex].images];
+    const newIndex = direction === 'up' ? imageIndex - 1 : imageIndex + 1;
+    if (newIndex >= 0 && newIndex < images.length) {
+      [images[imageIndex], images[newIndex]] = [images[newIndex], images[imageIndex]];
+      updatedColors[colorIndex].images = images;
+      setFormData({ ...formData, color_options: updatedColors });
+    }
+  };
+
+  // ==================== FLAVOR OPTIONS ====================
+
   const addFlavorOption = () => {
     if (!newFlavor.name.trim()) {
-      toast.error('Flavor name is required');
+      toast.error('Fragrance name is required');
       return;
     }
-    const flavorImages = newFlavor.images.split(',').map(url => url.trim()).filter(Boolean);
+    const newFlavorOption = {
+      id: `temp-${Date.now()}`,
+      name: newFlavor.name,
+      description: newFlavor.description,
+      images: []
+    };
     setFormData({
       ...formData,
-      flavor_options: [...formData.flavor_options, {
-        name: newFlavor.name,
-        description: newFlavor.description,
-        images: flavorImages
-      }]
+      flavor_options: [...formData.flavor_options, newFlavorOption]
     });
-    setNewFlavor({ name: '', description: '', images: '' });
-    toast.success('Flavor option added');
+    setNewFlavor({ name: '', description: '' });
+    toast.success('Fragrance option added');
   };
 
-  // Remove a flavor option
   const removeFlavorOption = (index) => {
+    const flavorToRemove = formData.flavor_options[index];
+    // Also remove variants that use this flavor
+    const updatedVariants = formData.variants.filter(v => v.flavor_id !== flavorToRemove.id);
     setFormData({
       ...formData,
-      flavor_options: formData.flavor_options.filter((_, i) => i !== index)
+      flavor_options: formData.flavor_options.filter((_, i) => i !== index),
+      variants: updatedVariants
     });
+    toast.success('Fragrance option removed');
   };
+
+  const updateFlavorOption = (index, field, value) => {
+    const updatedFlavors = [...formData.flavor_options];
+    updatedFlavors[index] = { ...updatedFlavors[index], [field]: value };
+    setFormData({ ...formData, flavor_options: updatedFlavors });
+  };
+
+  // ==================== VARIANT COMBINATIONS ====================
+
+  const generateVariantCombinations = async () => {
+    if (editingProduct) {
+      // If editing, call the API to generate variants
+      setGenerating(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE}/api/admin/products/${editingProduct.id}/generate-variants`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          const updatedProduct = await response.json();
+          setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
+          toast.success('Variant combinations generated');
+        }
+      } catch (error) {
+        console.error('Error generating variants:', error);
+        toast.error('Failed to generate variants');
+      } finally {
+        setGenerating(false);
+      }
+    } else {
+      // For new products, generate locally
+      const newVariants = [];
+      const existingCombos = new Set(formData.variants.map(v => `${v.color_id}-${v.flavor_id}`));
+      
+      if (formData.color_options.length > 0 && formData.flavor_options.length > 0) {
+        // Both colors and flavors
+        for (const color of formData.color_options) {
+          for (const flavor of formData.flavor_options) {
+            const comboKey = `${color.id}-${flavor.id}`;
+            if (!existingCombos.has(comboKey)) {
+              newVariants.push({
+                id: `temp-${Date.now()}-${newVariants.length}`,
+                color_id: color.id,
+                color_name: color.name,
+                flavor_id: flavor.id,
+                flavor_name: flavor.name,
+                sku: '',
+                price_override: null,
+                stock: 0,
+                is_active: true
+              });
+            }
+          }
+        }
+      } else if (formData.color_options.length > 0) {
+        // Only colors
+        for (const color of formData.color_options) {
+          const comboKey = `${color.id}-null`;
+          if (!existingCombos.has(comboKey)) {
+            newVariants.push({
+              id: `temp-${Date.now()}-${newVariants.length}`,
+              color_id: color.id,
+              color_name: color.name,
+              flavor_id: null,
+              flavor_name: null,
+              sku: '',
+              price_override: null,
+              stock: 0,
+              is_active: true
+            });
+          }
+        }
+      } else if (formData.flavor_options.length > 0) {
+        // Only flavors
+        for (const flavor of formData.flavor_options) {
+          const comboKey = `null-${flavor.id}`;
+          if (!existingCombos.has(comboKey)) {
+            newVariants.push({
+              id: `temp-${Date.now()}-${newVariants.length}`,
+              color_id: null,
+              color_name: null,
+              flavor_id: flavor.id,
+              flavor_name: flavor.name,
+              sku: '',
+              price_override: null,
+              stock: 0,
+              is_active: true
+            });
+          }
+        }
+      }
+      
+      setFormData(prev => ({ ...prev, variants: [...prev.variants, ...newVariants] }));
+      toast.success(`Generated ${newVariants.length} new variant combinations`);
+    }
+  };
+
+  const updateVariant = (index, field, value) => {
+    const updatedVariants = [...formData.variants];
+    if (field === 'stock' || field === 'price_override') {
+      updatedVariants[index] = { 
+        ...updatedVariants[index], 
+        [field]: value === '' ? (field === 'stock' ? 0 : null) : parseFloat(value) 
+      };
+    } else if (field === 'is_active') {
+      updatedVariants[index] = { ...updatedVariants[index], [field]: value };
+    } else {
+      updatedVariants[index] = { ...updatedVariants[index], [field]: value };
+    }
+    setFormData({ ...formData, variants: updatedVariants });
+  };
+
+  const removeVariant = (index) => {
+    setFormData({
+      ...formData,
+      variants: formData.variants.filter((_, i) => i !== index)
+    });
+    toast.success('Variant removed');
+  };
+
+  // ==================== FORM SUBMISSION ====================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Clean up color images (remove empty strings)
+    const cleanedColorOptions = formData.color_options.map(color => ({
+      ...color,
+      images: (color.images || []).filter(url => url.trim() !== '')
+    }));
     
     const productData = {
       name: formData.name,
@@ -200,12 +380,14 @@ const AdminProducts = () => {
       price: parseFloat(formData.price),
       discount_price: formData.discount_price ? parseFloat(formData.discount_price) : null,
       category_id: formData.category_id,
-      stock: parseInt(formData.stock),
+      sku: formData.sku,
+      stock: parseInt(formData.stock) || 0,
       images: formData.images.split(',').map(url => url.trim()).filter(Boolean),
       is_on_sale: formData.is_on_sale,
       is_featured: formData.is_featured,
       is_bestseller: formData.is_bestseller,
       is_new_arrival: formData.is_new_arrival,
+      is_active: formData.is_active,
       care_instructions: formData.care_instructions,
       shipping_info: formData.shipping_info,
       materials: formData.materials,
@@ -213,8 +395,9 @@ const AdminProducts = () => {
       burn_time: formData.burn_time,
       has_color_options: formData.has_color_options,
       has_flavor_options: formData.has_flavor_options,
-      color_options: formData.has_color_options ? formData.color_options : [],
-      flavor_options: formData.has_flavor_options ? formData.flavor_options : []
+      color_options: formData.has_color_options ? cleanedColorOptions : [],
+      flavor_options: formData.has_flavor_options ? formData.flavor_options : [],
+      variants: formData.variants
     };
 
     try {
@@ -249,6 +432,13 @@ const AdminProducts = () => {
     product.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Get variant count summary
+  const getVariantSummary = (product) => {
+    const variants = product.variants || [];
+    const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+    return { count: variants.length, totalStock };
+  };
+
   return (
     <div data-testid="admin-products">
       <div className="flex items-center justify-between mb-8">
@@ -260,7 +450,7 @@ const AdminProducts = () => {
               Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-heading text-xl">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -268,26 +458,46 @@ const AdminProducts = () => {
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="variants" data-testid="tab-variants">Variants</TabsTrigger>
-                <TabsTrigger value="details" data-testid="tab-details">Details</TabsTrigger>
+                <TabsTrigger value="colors" data-testid="tab-colors">
+                  <Palette className="h-4 w-4 mr-1" /> Colors
+                </TabsTrigger>
+                <TabsTrigger value="fragrances" data-testid="tab-fragrances">
+                  <Droplets className="h-4 w-4 mr-1" /> Fragrances
+                </TabsTrigger>
+                <TabsTrigger value="variants" data-testid="tab-variants">
+                  <Package className="h-4 w-4 mr-1" /> Stock
+                </TabsTrigger>
               </TabsList>
               
               <form onSubmit={handleSubmit}>
-                {/* Basic Info Tab */}
+                {/* ==================== BASIC INFO TAB ==================== */}
                 <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="name">Product Name *</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      required
-                      className="mt-1"
-                      data-testid="product-name-input"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2 md:col-span-1">
+                      <Label htmlFor="name">Product Name *</Label>
+                      <Input
+                        id="name"
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        required
+                        className="mt-1"
+                        data-testid="product-name-input"
+                      />
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <Label htmlFor="sku">SKU</Label>
+                      <Input
+                        id="sku"
+                        name="sku"
+                        value={formData.sku}
+                        onChange={handleChange}
+                        placeholder="Auto-generated if empty"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
                   <div>
                     <Label htmlFor="short_description">Short Description</Label>
@@ -312,9 +522,9 @@ const AdminProducts = () => {
                       data-testid="product-description-input"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
-                      <Label htmlFor="price">Price (₹) *</Label>
+                      <Label htmlFor="price">Base Price (₹) *</Label>
                       <Input
                         id="price"
                         name="price"
@@ -338,40 +548,38 @@ const AdminProducts = () => {
                         data-testid="product-sale-price-input"
                       />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="category_id">Category *</Label>
-                      <Select 
-                        value={formData.category_id} 
-                        onValueChange={(value) => setFormData({ ...formData, category_id: value })}
-                      >
-                        <SelectTrigger className="mt-1" data-testid="product-category-select">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="stock">Stock *</Label>
+                      <Label htmlFor="stock">Base Stock</Label>
                       <Input
                         id="stock"
                         name="stock"
                         type="number"
                         value={formData.stock}
                         onChange={handleChange}
-                        required
                         className="mt-1"
+                        placeholder="Used if no variants"
                         data-testid="product-stock-input"
                       />
                     </div>
                   </div>
                   <div>
-                    <Label htmlFor="images">Image URLs (comma-separated)</Label>
+                    <Label htmlFor="category_id">Category *</Label>
+                    <Select 
+                      value={formData.category_id} 
+                      onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+                    >
+                      <SelectTrigger className="mt-1" data-testid="product-category-select">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="images">Default Image URLs (comma-separated)</Label>
                     <Textarea
                       id="images"
                       name="images"
@@ -382,8 +590,16 @@ const AdminProducts = () => {
                       rows={2}
                       data-testid="product-images-input"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">Used when no color-specific images exist</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={formData.is_active}
+                        onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                      />
+                      <Label>Active</Label>
+                    </div>
                     <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.is_on_sale}
@@ -414,63 +630,182 @@ const AdminProducts = () => {
                       <Label>New Arrival</Label>
                     </div>
                   </div>
+                  
+                  {/* Additional Details */}
+                  <div className="pt-4 border-t space-y-4">
+                    <h3 className="font-medium">Additional Details</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="materials">Materials</Label>
+                        <Input
+                          id="materials"
+                          name="materials"
+                          value={formData.materials}
+                          onChange={handleChange}
+                          placeholder="e.g., 100% Natural Soy Wax"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dimensions">Dimensions</Label>
+                        <Input
+                          id="dimensions"
+                          name="dimensions"
+                          value={formData.dimensions}
+                          onChange={handleChange}
+                          placeholder="e.g., 8cm x 10cm"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="burn_time">Burn Time</Label>
+                        <Input
+                          id="burn_time"
+                          name="burn_time"
+                          value={formData.burn_time}
+                          onChange={handleChange}
+                          placeholder="e.g., 45+ hours"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="care_instructions">Care Instructions</Label>
+                      <Textarea
+                        id="care_instructions"
+                        name="care_instructions"
+                        value={formData.care_instructions}
+                        onChange={handleChange}
+                        rows={2}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="shipping_info">Shipping Information</Label>
+                      <Textarea
+                        id="shipping_info"
+                        name="shipping_info"
+                        value={formData.shipping_info}
+                        onChange={handleChange}
+                        rows={2}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
                 </TabsContent>
 
-                {/* Variants Tab */}
-                <TabsContent value="variants" className="space-y-6 mt-4">
-                  {/* Color Options */}
-                  <div className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <Palette className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
-                        <Label className="text-base font-medium">Color Options</Label>
-                      </div>
+                {/* ==================== COLORS TAB ==================== */}
+                <TabsContent value="colors" className="space-y-6 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.has_color_options}
                         onCheckedChange={(checked) => setFormData({ ...formData, has_color_options: checked })}
                         data-testid="enable-color-options"
                       />
+                      <Label className="text-base font-medium">Enable Color Options</Label>
                     </div>
-                    
-                    {formData.has_color_options && (
-                      <div className="space-y-4">
-                        {/* Existing Colors */}
-                        {formData.color_options.length > 0 && (
-                          <div className="space-y-2">
-                            {formData.color_options.map((color, index) => (
-                              <div key={index} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                                <div 
-                                  className="w-8 h-8 rounded-full border-2 border-border"
-                                  style={{ backgroundColor: color.hex_code }}
-                                />
-                                <div className="flex-1">
-                                  <p className="font-medium">{color.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {color.images?.length || 0} images
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeColorOption(index)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
+                    <p className="text-sm text-muted-foreground">{formData.color_options.length} colors</p>
+                  </div>
+                  
+                  {formData.has_color_options && (
+                    <div className="space-y-6">
+                      {/* Existing Colors with Image Galleries */}
+                      {formData.color_options.map((color, colorIndex) => (
+                        <div key={color.id} className="border rounded-lg p-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-10 h-10 rounded-full border-2 border-border shadow-sm"
+                                style={{ backgroundColor: color.hex_code }}
+                              />
+                              <div>
+                                <p className="font-medium">{color.name}</p>
+                                <p className="text-xs text-muted-foreground">{color.hex_code}</p>
                               </div>
-                            ))}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeColorOption(colorIndex)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                        )}
-                        
-                        {/* Add New Color */}
-                        <div className="grid grid-cols-3 gap-3 pt-3 border-t">
+                          
+                          {/* Image Gallery for this color (up to 5 images) */}
+                          <div>
+                            <Label className="text-sm mb-2 block">
+                              <Image className="h-4 w-4 inline mr-1" />
+                              Images for {color.name} (up to 5)
+                            </Label>
+                            <div className="grid grid-cols-5 gap-2">
+                              {[0, 1, 2, 3, 4].map((imageIndex) => {
+                                const imageUrl = color.images?.[imageIndex] || '';
+                                return (
+                                  <div key={imageIndex} className="space-y-1">
+                                    <div className="aspect-square bg-muted rounded-lg overflow-hidden border relative group">
+                                      {imageUrl ? (
+                                        <>
+                                          <img 
+                                            src={imageUrl} 
+                                            alt={`${color.name} ${imageIndex + 1}`}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                          />
+                                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                            {imageIndex > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => moveColorImage(colorIndex, imageIndex, 'up')}
+                                                className="p-1 bg-white rounded"
+                                              >
+                                                <ChevronUp className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                            {imageIndex < 4 && color.images?.[imageIndex + 1] && (
+                                              <button
+                                                type="button"
+                                                onClick={() => moveColorImage(colorIndex, imageIndex, 'down')}
+                                                className="p-1 bg-white rounded"
+                                              >
+                                                <ChevronDown className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          <Image className="h-6 w-6 text-muted-foreground/40" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <Input
+                                      value={imageUrl}
+                                      onChange={(e) => updateColorImage(colorIndex, imageIndex, e.target.value)}
+                                      placeholder={`Image ${imageIndex + 1}`}
+                                      className="text-xs h-7"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {/* Add New Color */}
+                      <div className="border-2 border-dashed rounded-lg p-4 space-y-4">
+                        <h4 className="font-medium text-sm">Add New Color</h4>
+                        <div className="grid grid-cols-3 gap-3">
                           <div>
                             <Label className="text-xs">Name</Label>
                             <Input
                               value={newColor.name}
                               onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
-                              placeholder="e.g., Natural White"
+                              placeholder="e.g., Blush Pink"
                               className="mt-1"
                               data-testid="new-color-name"
                             />
@@ -487,23 +822,33 @@ const AdminProducts = () => {
                               <Input
                                 value={newColor.hex_code}
                                 onChange={(e) => setNewColor({ ...newColor, hex_code: e.target.value })}
-                                placeholder="#F5F0E8"
                                 className="flex-1"
                                 data-testid="new-color-hex"
                               />
                             </div>
                           </div>
-                          <div>
-                            <Label className="text-xs">Image URLs</Label>
-                            <Input
-                              value={newColor.images}
-                              onChange={(e) => setNewColor({ ...newColor, images: e.target.value })}
-                              placeholder="URL1, URL2"
-                              className="mt-1"
-                              data-testid="new-color-images"
-                            />
+                        </div>
+                        
+                        {/* Images for new color */}
+                        <div>
+                          <Label className="text-xs mb-2 block">Images (up to 5)</Label>
+                          <div className="grid grid-cols-5 gap-2">
+                            {[0, 1, 2, 3, 4].map((i) => (
+                              <Input
+                                key={i}
+                                value={newColor.images[i] || ''}
+                                onChange={(e) => {
+                                  const newImages = [...newColor.images];
+                                  newImages[i] = e.target.value;
+                                  setNewColor({ ...newColor, images: newImages });
+                                }}
+                                placeholder={`Image ${i + 1}`}
+                                className="text-xs"
+                              />
+                            ))}
                           </div>
                         </div>
+                        
                         <Button
                           type="button"
                           variant="outline"
@@ -515,55 +860,62 @@ const AdminProducts = () => {
                           <Plus className="h-4 w-4 mr-2" /> Add Color
                         </Button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </TabsContent>
 
-                  {/* Flavor Options */}
-                  <div className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <Droplets className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
-                        <Label className="text-base font-medium">Fragrance Options</Label>
-                      </div>
+                {/* ==================== FRAGRANCES TAB ==================== */}
+                <TabsContent value="fragrances" className="space-y-6 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.has_flavor_options}
                         onCheckedChange={(checked) => setFormData({ ...formData, has_flavor_options: checked })}
                         data-testid="enable-flavor-options"
                       />
+                      <Label className="text-base font-medium">Enable Fragrance Options</Label>
                     </div>
-                    
-                    {formData.has_flavor_options && (
-                      <div className="space-y-4">
-                        {/* Existing Flavors */}
-                        {formData.flavor_options.length > 0 && (
-                          <div className="space-y-2">
-                            {formData.flavor_options.map((flavor, index) => (
-                              <div key={index} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                                <div className="w-8 h-8 rounded-full bg-terracotta/20 flex items-center justify-center">
-                                  <Droplets className="h-4 w-4 text-terracotta" />
-                                </div>
-                                <div className="flex-1">
-                                  <p className="font-medium">{flavor.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {flavor.description || 'No description'}
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeFlavorOption(index)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
+                    <p className="text-sm text-muted-foreground">{formData.flavor_options.length} fragrances</p>
+                  </div>
+                  
+                  {formData.has_flavor_options && (
+                    <div className="space-y-4">
+                      {/* Existing Fragrances */}
+                      {formData.flavor_options.map((flavor, index) => (
+                        <div key={flavor.id} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                          <div className="w-10 h-10 rounded-full bg-terracotta/20 flex items-center justify-center flex-shrink-0">
+                            <Droplets className="h-5 w-5 text-terracotta" />
                           </div>
-                        )}
-                        
-                        {/* Add New Flavor */}
-                        <div className="grid grid-cols-3 gap-3 pt-3 border-t">
+                          <div className="flex-1 space-y-2">
+                            <Input
+                              value={flavor.name}
+                              onChange={(e) => updateFlavorOption(index, 'name', e.target.value)}
+                              className="font-medium"
+                              placeholder="Fragrance name"
+                            />
+                            <Input
+                              value={flavor.description || ''}
+                              onChange={(e) => updateFlavorOption(index, 'description', e.target.value)}
+                              className="text-sm"
+                              placeholder="Description (optional)"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeFlavorOption(index)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {/* Add New Fragrance */}
+                      <div className="border-2 border-dashed rounded-lg p-4 space-y-3">
+                        <h4 className="font-medium text-sm">Add New Fragrance</h4>
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                             <Label className="text-xs">Name</Label>
                             <Input
@@ -584,16 +936,6 @@ const AdminProducts = () => {
                               data-testid="new-flavor-description"
                             />
                           </div>
-                          <div>
-                            <Label className="text-xs">Image URLs</Label>
-                            <Input
-                              value={newFlavor.images}
-                              onChange={(e) => setNewFlavor({ ...newFlavor, images: e.target.value })}
-                              placeholder="URL1, URL2"
-                              className="mt-1"
-                              data-testid="new-flavor-images"
-                            />
-                          </div>
                         </div>
                         <Button
                           type="button"
@@ -606,73 +948,147 @@ const AdminProducts = () => {
                           <Plus className="h-4 w-4 mr-2" /> Add Fragrance
                         </Button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </TabsContent>
 
-                {/* Details Tab */}
-                <TabsContent value="details" className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="materials">Materials</Label>
-                    <Input
-                      id="materials"
-                      name="materials"
-                      value={formData.materials}
-                      onChange={handleChange}
-                      placeholder="e.g., 100% Natural Soy Wax, Cotton Wick"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                {/* ==================== VARIANT STOCK TAB ==================== */}
+                <TabsContent value="variants" className="space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="dimensions">Dimensions</Label>
-                      <Input
-                        id="dimensions"
-                        name="dimensions"
-                        value={formData.dimensions}
-                        onChange={handleChange}
-                        placeholder="e.g., 8cm x 10cm"
-                        className="mt-1"
-                      />
+                      <h3 className="font-medium">Variant Combination Stock</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Manage stock for each color + fragrance combination
+                      </p>
                     </div>
-                    <div>
-                      <Label htmlFor="burn_time">Burn Time</Label>
-                      <Input
-                        id="burn_time"
-                        name="burn_time"
-                        value={formData.burn_time}
-                        onChange={handleChange}
-                        placeholder="e.g., 45+ hours"
-                        className="mt-1"
-                      />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={generateVariantCombinations}
+                      disabled={generating || (formData.color_options.length === 0 && formData.flavor_options.length === 0)}
+                      data-testid="generate-variants-button"
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${generating ? 'animate-spin' : ''}`} />
+                      Generate Combinations
+                    </Button>
+                  </div>
+                  
+                  {formData.variants.length === 0 ? (
+                    <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                      <Package className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
+                      <p className="text-muted-foreground">No variant combinations yet</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Add colors and/or fragrances, then click "Generate Combinations"
+                      </p>
                     </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="care_instructions">Care Instructions</Label>
-                    <Textarea
-                      id="care_instructions"
-                      name="care_instructions"
-                      value={formData.care_instructions}
-                      onChange={handleChange}
-                      rows={3}
-                      placeholder="How to care for this product..."
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="shipping_info">Shipping Information</Label>
-                    <Textarea
-                      id="shipping_info"
-                      name="shipping_info"
-                      value={formData.shipping_info}
-                      onChange={handleChange}
-                      rows={3}
-                      placeholder="Shipping details and timelines..."
-                      className="mt-1"
-                    />
-                  </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Color</TableHead>
+                            <TableHead>Fragrance</TableHead>
+                            <TableHead className="w-24">SKU</TableHead>
+                            <TableHead className="w-28">Price Override</TableHead>
+                            <TableHead className="w-24">Stock</TableHead>
+                            <TableHead className="w-20">Active</TableHead>
+                            <TableHead className="w-12"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {formData.variants.map((variant, index) => (
+                            <TableRow key={variant.id} data-testid={`variant-row-${index}`}>
+                              <TableCell>
+                                {variant.color_name ? (
+                                  <div className="flex items-center gap-2">
+                                    <div 
+                                      className="w-6 h-6 rounded-full border"
+                                      style={{ backgroundColor: formData.color_options.find(c => c.id === variant.color_id)?.hex_code || '#ccc' }}
+                                    />
+                                    <span>{variant.color_name}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {variant.flavor_name || <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  value={variant.sku || ''}
+                                  onChange={(e) => updateVariant(index, 'sku', e.target.value)}
+                                  placeholder="SKU"
+                                  className="h-8 text-xs"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  value={variant.price_override || ''}
+                                  onChange={(e) => updateVariant(index, 'price_override', e.target.value)}
+                                  placeholder="Base"
+                                  className="h-8 text-xs"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  value={variant.stock ?? 0}
+                                  onChange={(e) => updateVariant(index, 'stock', e.target.value)}
+                                  className={`h-8 text-xs ${variant.stock === 0 ? 'border-destructive' : ''}`}
+                                  data-testid={`variant-stock-${index}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Switch
+                                  checked={variant.is_active !== false}
+                                  onCheckedChange={(checked) => updateVariant(index, 'is_active', checked)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeVariant(index)}
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  
+                  {/* Summary */}
+                  {formData.variants.length > 0 && (
+                    <div className="flex gap-4 p-4 bg-muted/50 rounded-lg text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Total Combinations:</span>
+                        <span className="font-medium ml-2">{formData.variants.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total Stock:</span>
+                        <span className="font-medium ml-2">
+                          {formData.variants.reduce((sum, v) => sum + (v.stock || 0), 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Out of Stock:</span>
+                        <span className="font-medium ml-2 text-destructive">
+                          {formData.variants.filter(v => (v.stock || 0) === 0).length}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
 
+                {/* Submit Buttons */}
                 <div className="flex gap-3 mt-6 pt-4 border-t">
                   <Button 
                     type="button" 
@@ -712,8 +1128,8 @@ const AdminProducts = () => {
               <TableHead>Product</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Price</TableHead>
-              <TableHead>Stock</TableHead>
               <TableHead>Variants</TableHead>
+              <TableHead>Total Stock</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -730,100 +1146,113 @@ const AdminProducts = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProducts.map((product) => (
-                <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={product.images?.[0] || 'https://via.placeholder.com/40'}
-                        alt={product.name}
-                        className="w-10 h-12 object-cover rounded"
-                      />
-                      <div>
-                        <span className="font-medium block">{product.name}</span>
-                        {product.short_description && (
-                          <span className="text-xs text-muted-foreground line-clamp-1">
-                            {product.short_description}
+              filteredProducts.map((product) => {
+                const variantSummary = getVariantSummary(product);
+                const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
+                
+                return (
+                  <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={product.images?.[0] || 'https://via.placeholder.com/40'}
+                          alt={product.name}
+                          className="w-10 h-12 object-cover rounded"
+                        />
+                        <div>
+                          <span className="font-medium block">{product.name}</span>
+                          {product.sku && (
+                            <span className="text-xs text-muted-foreground">{product.sku}</span>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>{product.category_name}</TableCell>
+                    <TableCell>
+                      {product.is_on_sale && product.discount_price ? (
+                        <div>
+                          <span className="text-terracotta font-medium">₹{product.discount_price.toLocaleString()}</span>
+                          <span className="text-muted-foreground line-through text-sm ml-2">
+                            ₹{product.price.toLocaleString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span>₹{product.price.toLocaleString()}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {product.has_color_options && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                            <Palette className="h-3 w-3" /> {product.color_options?.length || 0} colors
+                          </span>
+                        )}
+                        {product.has_flavor_options && (
+                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                            <Droplets className="h-3 w-3" /> {product.flavor_options?.length || 0} fragrances
+                          </span>
+                        )}
+                        {variantSummary.count > 0 && (
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                            <Package className="h-3 w-3" /> {variantSummary.count} combos
+                          </span>
+                        )}
+                        {!product.has_color_options && !product.has_flavor_options && (
+                          <span className="text-xs text-muted-foreground">No variants</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className={displayStock <= 5 ? 'text-destructive font-medium' : ''}>
+                        {displayStock}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {!product.is_active && (
+                          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+                            Inactive
+                          </span>
+                        )}
+                        {product.is_on_sale && (
+                          <span className="text-xs bg-terracotta/20 text-terracotta px-2 py-0.5 rounded-full">
+                            Sale
+                          </span>
+                        )}
+                        {product.is_featured && (
+                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                            Featured
+                          </span>
+                        )}
+                        {product.is_new_arrival && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                            New
                           </span>
                         )}
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{product.category_name}</TableCell>
-                  <TableCell>
-                    {product.is_on_sale && product.discount_price ? (
-                      <div>
-                        <span className="text-terracotta font-medium">₹{product.discount_price.toLocaleString()}</span>
-                        <span className="text-muted-foreground line-through text-sm ml-2">
-                          ₹{product.price.toLocaleString()}
-                        </span>
-                      </div>
-                    ) : (
-                      <span>₹{product.price.toLocaleString()}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className={product.stock <= 5 ? 'text-destructive' : ''}>
-                      {product.stock}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {product.has_color_options && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Palette className="h-3 w-3" /> {product.color_options?.length || 0}
-                        </span>
-                      )}
-                      {product.has_flavor_options && (
-                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Droplets className="h-3 w-3" /> {product.flavor_options?.length || 0}
-                        </span>
-                      )}
-                      {!product.has_color_options && !product.has_flavor_options && (
-                        <span className="text-xs text-muted-foreground">None</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {product.is_on_sale && (
-                        <span className="text-xs bg-terracotta/20 text-terracotta px-2 py-0.5 rounded-full">
-                          Sale
-                        </span>
-                      )}
-                      {product.is_featured && (
-                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                          Featured
-                        </span>
-                      )}
-                      {product.is_new_arrival && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                          New
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditDialog(product)}
-                      data-testid={`edit-product-${product.id}`}
-                    >
-                      <Pencil className="h-4 w-4" strokeWidth={1.5} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(product.id)}
-                      className="text-destructive hover:text-destructive"
-                      data-testid={`delete-product-${product.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(product)}
+                        data-testid={`edit-product-${product.id}`}
+                      >
+                        <Pencil className="h-4 w-4" strokeWidth={1.5} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(product.id)}
+                        className="text-destructive hover:text-destructive"
+                        data-testid={`delete-product-${product.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
