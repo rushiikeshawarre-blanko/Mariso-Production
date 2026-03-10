@@ -99,7 +99,7 @@ test.describe('Admin Product Management', () => {
 
   test('admin can delete a product', async ({ page }) => {
     // First create a test product via API
-    const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'https://luxury-home-4.preview.emergentagent.com';
+    const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'https://candle-ecommerce-hub.preview.emergentagent.com';
     
     await page.goto('/admin/products', { waitUntil: 'domcontentloaded' });
     const deleteButtons = page.locator('[data-testid^="delete-product-"]');

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -7,7 +7,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
@@ -15,6 +15,7 @@ import bcrypt
 import random
 import string
 import base64
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -84,50 +85,125 @@ class CategoryResponse(BaseModel):
     image: str
     created_at: str
 
+# ==================== VARIANT MODELS ====================
+
+class ColorOption(BaseModel):
+    id: str = ""
+    name: str
+    hex_code: str
+    images: List[str] = []
+
+class FlavorOption(BaseModel):
+    id: str = ""
+    name: str
+    description: Optional[str] = ""
+    images: List[str] = []
+
+class ProductVariant(BaseModel):
+    id: str = ""
+    color_id: Optional[str] = None
+    flavor_id: Optional[str] = None
+    sku: Optional[str] = None
+    price_override: Optional[float] = None
+    stock_override: Optional[int] = None
+    images: List[str] = []
+    is_active: bool = True
+
 class ProductCreate(BaseModel):
     name: str
+    slug: Optional[str] = ""
     description: str
+    short_description: Optional[str] = ""
     price: float
-    sale_price: Optional[float] = None
+    discount_price: Optional[float] = None
     category_id: str
+    subcategory: Optional[str] = ""
+    sku: Optional[str] = ""
     stock: int = 0
     images: List[str] = []
+    # Variant options
+    has_color_options: bool = False
+    has_flavor_options: bool = False
+    color_options: List[ColorOption] = []
+    flavor_options: List[FlavorOption] = []
+    variants: List[ProductVariant] = []
+    # Status flags
+    is_active: bool = True
+    is_featured: bool = False
+    is_bestseller: bool = False
+    is_new_arrival: bool = False
     is_on_sale: bool = False
     sale_start: Optional[str] = None
     sale_end: Optional[str] = None
+    # Additional details
     care_instructions: Optional[str] = ""
     shipping_info: Optional[str] = ""
+    materials: Optional[str] = ""
+    dimensions: Optional[str] = ""
+    burn_time: Optional[str] = ""
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
     description: Optional[str] = None
+    short_description: Optional[str] = None
     price: Optional[float] = None
-    sale_price: Optional[float] = None
+    discount_price: Optional[float] = None
     category_id: Optional[str] = None
+    subcategory: Optional[str] = None
+    sku: Optional[str] = None
     stock: Optional[int] = None
     images: Optional[List[str]] = None
+    has_color_options: Optional[bool] = None
+    has_flavor_options: Optional[bool] = None
+    color_options: Optional[List[ColorOption]] = None
+    flavor_options: Optional[List[FlavorOption]] = None
+    variants: Optional[List[ProductVariant]] = None
+    is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    is_bestseller: Optional[bool] = None
+    is_new_arrival: Optional[bool] = None
     is_on_sale: Optional[bool] = None
     sale_start: Optional[str] = None
     sale_end: Optional[str] = None
     care_instructions: Optional[str] = None
     shipping_info: Optional[str] = None
+    materials: Optional[str] = None
+    dimensions: Optional[str] = None
+    burn_time: Optional[str] = None
 
 class ProductResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     name: str
+    slug: str
     description: str
+    short_description: str
     price: float
-    sale_price: Optional[float]
+    discount_price: Optional[float]
     category_id: str
     category_name: Optional[str] = ""
+    subcategory: str
+    sku: str
     stock: int
     images: List[str]
+    has_color_options: bool
+    has_flavor_options: bool
+    color_options: List[dict]
+    flavor_options: List[dict]
+    variants: List[dict]
+    is_active: bool
+    is_featured: bool
+    is_bestseller: bool
+    is_new_arrival: bool
     is_on_sale: bool
     sale_start: Optional[str]
     sale_end: Optional[str]
     care_instructions: str
     shipping_info: str
+    materials: str
+    dimensions: str
+    burn_time: str
     created_at: str
 
 class CartItem(BaseModel):
@@ -211,6 +287,41 @@ async def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(sec
 def generate_otp() -> str:
     return ''.join(random.choices(string.digits, k=6))
 
+def generate_slug(name: str) -> str:
+    return name.lower().replace(' ', '-').replace('&', 'and')
+
+def ensure_product_defaults(product: dict) -> dict:
+    """Ensure all product fields have default values"""
+    defaults = {
+        'slug': '',
+        'short_description': '',
+        'discount_price': None,
+        'subcategory': '',
+        'sku': '',
+        'has_color_options': False,
+        'has_flavor_options': False,
+        'color_options': [],
+        'flavor_options': [],
+        'variants': [],
+        'is_active': True,
+        'is_featured': False,
+        'is_bestseller': False,
+        'is_new_arrival': False,
+        'is_on_sale': False,
+        'sale_start': None,
+        'sale_end': None,
+        'care_instructions': '',
+        'shipping_info': '',
+        'materials': '',
+        'dimensions': '',
+        'burn_time': '',
+        'category_name': ''
+    }
+    for key, value in defaults.items():
+        if key not in product:
+            product[key] = value
+    return product
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register", response_model=dict)
@@ -271,10 +382,8 @@ async def request_otp(request: OTPRequest):
         upsert=True
     )
     
-    # Simulated OTP - in production, send via email
     logging.info(f"OTP for {request.email}: {otp}")
-    
-    return {"message": "OTP sent successfully", "otp": otp}  # Return OTP for demo
+    return {"message": "OTP sent successfully", "otp": otp}
 
 @api_router.post("/auth/verify-otp", response_model=dict)
 async def verify_otp(request: OTPVerify):
@@ -289,7 +398,6 @@ async def verify_otp(request: OTPVerify):
     if datetime.now(timezone.utc) > expires:
         raise HTTPException(status_code=400, detail="OTP expired")
     
-    # Check if user exists, create if not
     user = await db.users.find_one({"email": request.email}, {"_id": 0})
     if not user:
         user_id = str(uuid.uuid4())
@@ -417,8 +525,16 @@ async def delete_category(category_id: str, admin: dict = Depends(get_admin_user
 
 # ==================== PRODUCT ROUTES ====================
 
-@api_router.get("/products", response_model=List[ProductResponse])
-async def get_products(category_id: Optional[str] = None, search: Optional[str] = None, on_sale: Optional[bool] = None):
+@api_router.get("/products", response_model=List[dict])
+async def get_products(
+    category_id: Optional[str] = None, 
+    search: Optional[str] = None, 
+    on_sale: Optional[bool] = None,
+    featured: Optional[bool] = None,
+    bestseller: Optional[bool] = None,
+    new_arrival: Optional[bool] = None,
+    active_only: Optional[bool] = True
+):
     query = {}
     if category_id:
         query["category_id"] = category_id
@@ -426,27 +542,36 @@ async def get_products(category_id: Optional[str] = None, search: Optional[str] 
         query["name"] = {"$regex": search, "$options": "i"}
     if on_sale:
         query["is_on_sale"] = True
+    if featured:
+        query["is_featured"] = True
+    if bestseller:
+        query["is_bestseller"] = True
+    if new_arrival:
+        query["is_new_arrival"] = True
+    if active_only:
+        query["is_active"] = True
     
     products = await db.products.find(query, {"_id": 0}).to_list(1000)
     
-    # Add category names
+    # Add category names and ensure defaults
     for product in products:
         category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
         product['category_name'] = category['name'] if category else ""
+        ensure_product_defaults(product)
     
     return products
 
-@api_router.get("/products/featured", response_model=List[ProductResponse])
+@api_router.get("/products/featured", response_model=List[dict])
 async def get_featured_products():
-    products = await db.products.find({}, {"_id": 0}).to_list(8)
+    products = await db.products.find({"is_active": True}, {"_id": 0}).to_list(8)
     for product in products:
         category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
         product['category_name'] = category['name'] if category else ""
+        ensure_product_defaults(product)
     return products
 
-@api_router.get("/products/bestsellers", response_model=List[ProductResponse])
+@api_router.get("/products/bestsellers", response_model=List[dict])
 async def get_bestsellers():
-    # Get products that have been ordered most
     pipeline = [
         {"$unwind": "$items"},
         {"$group": {"_id": "$items.product_id", "count": {"$sum": "$items.quantity"}}},
@@ -456,18 +581,19 @@ async def get_bestsellers():
     bestseller_ids = await db.orders.aggregate(pipeline).to_list(8)
     
     if not bestseller_ids:
-        products = await db.products.find({}, {"_id": 0}).to_list(8)
+        products = await db.products.find({"is_active": True}, {"_id": 0}).to_list(8)
     else:
         ids = [item['_id'] for item in bestseller_ids]
-        products = await db.products.find({"id": {"$in": ids}}, {"_id": 0}).to_list(8)
+        products = await db.products.find({"id": {"$in": ids}, "is_active": True}, {"_id": 0}).to_list(8)
     
     for product in products:
         category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
         product['category_name'] = category['name'] if category else ""
+        ensure_product_defaults(product)
     
     return products
 
-@api_router.get("/products/{product_id}", response_model=ProductResponse)
+@api_router.get("/products/{product_id}", response_model=dict)
 async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
@@ -475,15 +601,68 @@ async def get_product(product_id: str):
     
     category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
     product['category_name'] = category['name'] if category else ""
+    ensure_product_defaults(product)
     
     return product
 
-@api_router.post("/admin/products", response_model=ProductResponse)
+@api_router.post("/admin/products", response_model=dict)
 async def create_product(product: ProductCreate, admin: dict = Depends(get_admin_user)):
     product_id = str(uuid.uuid4())
+    
+    # Generate IDs for color options
+    color_options = []
+    for color in product.color_options:
+        color_dict = color.model_dump()
+        if not color_dict.get('id'):
+            color_dict['id'] = str(uuid.uuid4())
+        color_options.append(color_dict)
+    
+    # Generate IDs for flavor options
+    flavor_options = []
+    for flavor in product.flavor_options:
+        flavor_dict = flavor.model_dump()
+        if not flavor_dict.get('id'):
+            flavor_dict['id'] = str(uuid.uuid4())
+        flavor_options.append(flavor_dict)
+    
+    # Generate IDs for variants
+    variants = []
+    for variant in product.variants:
+        variant_dict = variant.model_dump()
+        if not variant_dict.get('id'):
+            variant_dict['id'] = str(uuid.uuid4())
+        variants.append(variant_dict)
+    
     product_doc = {
         "id": product_id,
-        **product.model_dump(),
+        "name": product.name,
+        "slug": product.slug or generate_slug(product.name),
+        "description": product.description,
+        "short_description": product.short_description or "",
+        "price": product.price,
+        "discount_price": product.discount_price,
+        "category_id": product.category_id,
+        "subcategory": product.subcategory or "",
+        "sku": product.sku or f"SKU-{product_id[:8].upper()}",
+        "stock": product.stock,
+        "images": product.images,
+        "has_color_options": product.has_color_options,
+        "has_flavor_options": product.has_flavor_options,
+        "color_options": color_options,
+        "flavor_options": flavor_options,
+        "variants": variants,
+        "is_active": product.is_active,
+        "is_featured": product.is_featured,
+        "is_bestseller": product.is_bestseller,
+        "is_new_arrival": product.is_new_arrival,
+        "is_on_sale": product.is_on_sale,
+        "sale_start": product.sale_start,
+        "sale_end": product.sale_end,
+        "care_instructions": product.care_instructions or "",
+        "shipping_info": product.shipping_info or "",
+        "materials": product.materials or "",
+        "dimensions": product.dimensions or "",
+        "burn_time": product.burn_time or "",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.products.insert_one(product_doc)
@@ -493,10 +672,59 @@ async def create_product(product: ProductCreate, admin: dict = Depends(get_admin
     
     return product_doc
 
-@api_router.put("/admin/products/{product_id}", response_model=ProductResponse)
+@api_router.put("/admin/products/{product_id}", response_model=dict)
 async def update_product(product_id: str, product: ProductUpdate, admin: dict = Depends(get_admin_user)):
-    update_data = {k: v for k, v in product.model_dump().items() if v is not None}
-    await db.products.update_one({"id": product_id}, {"$set": update_data})
+    update_data = {}
+    
+    for key, value in product.model_dump().items():
+        if value is not None:
+            if key == 'color_options' and value:
+                # Generate IDs for new color options
+                colors = []
+                for color in value:
+                    if isinstance(color, dict):
+                        if not color.get('id'):
+                            color['id'] = str(uuid.uuid4())
+                        colors.append(color)
+                    else:
+                        color_dict = color.model_dump() if hasattr(color, 'model_dump') else color
+                        if not color_dict.get('id'):
+                            color_dict['id'] = str(uuid.uuid4())
+                        colors.append(color_dict)
+                update_data['color_options'] = colors
+            elif key == 'flavor_options' and value:
+                # Generate IDs for new flavor options
+                flavors = []
+                for flavor in value:
+                    if isinstance(flavor, dict):
+                        if not flavor.get('id'):
+                            flavor['id'] = str(uuid.uuid4())
+                        flavors.append(flavor)
+                    else:
+                        flavor_dict = flavor.model_dump() if hasattr(flavor, 'model_dump') else flavor
+                        if not flavor_dict.get('id'):
+                            flavor_dict['id'] = str(uuid.uuid4())
+                        flavors.append(flavor_dict)
+                update_data['flavor_options'] = flavors
+            elif key == 'variants' and value:
+                # Generate IDs for new variants
+                variants = []
+                for variant in value:
+                    if isinstance(variant, dict):
+                        if not variant.get('id'):
+                            variant['id'] = str(uuid.uuid4())
+                        variants.append(variant)
+                    else:
+                        variant_dict = variant.model_dump() if hasattr(variant, 'model_dump') else variant
+                        if not variant_dict.get('id'):
+                            variant_dict['id'] = str(uuid.uuid4())
+                        variants.append(variant_dict)
+                update_data['variants'] = variants
+            else:
+                update_data[key] = value
+    
+    if update_data:
+        await db.products.update_one({"id": product_id}, {"$set": update_data})
     
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not updated:
@@ -504,6 +732,7 @@ async def update_product(product_id: str, product: ProductUpdate, admin: dict = 
     
     category = await db.categories.find_one({"id": updated.get('category_id')}, {"_id": 0})
     updated['category_name'] = category['name'] if category else ""
+    ensure_product_defaults(updated)
     
     return updated
 
@@ -516,23 +745,24 @@ async def delete_product(product_id: str, admin: dict = Depends(get_admin_user))
 
 # ==================== ORDER ROUTES ====================
 
-@api_router.post("/orders", response_model=OrderResponse)
+@api_router.post("/orders", response_model=dict)
 async def create_order(order: OrderCreate, user: dict = Depends(get_current_user)):
     order_id = str(uuid.uuid4())
     
-    # Get product details for items
     items_with_details = []
     for item in order.items:
         product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
         if product:
+            price = product.get('discount_price') or product['price']
+            if product.get('is_on_sale') and product.get('discount_price'):
+                price = product['discount_price']
             items_with_details.append({
                 "product_id": item.product_id,
                 "product_name": product['name'],
-                "product_image": product['images'][0] if product['images'] else "",
-                "price": product['sale_price'] if product['is_on_sale'] and product['sale_price'] else product['price'],
+                "product_image": product['images'][0] if product.get('images') else "",
+                "price": price,
                 "quantity": item.quantity
             })
-            # Update stock
             await db.products.update_one(
                 {"id": item.product_id},
                 {"$inc": {"stock": -item.quantity}}
@@ -560,19 +790,19 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
     
     return order_doc
 
-@api_router.get("/orders", response_model=List[OrderResponse])
+@api_router.get("/orders", response_model=List[dict])
 async def get_user_orders(user: dict = Depends(get_current_user)):
     orders = await db.orders.find({"user_id": user['id']}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return orders
 
-@api_router.get("/orders/{order_id}", response_model=OrderResponse)
+@api_router.get("/orders/{order_id}", response_model=dict)
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     order = await db.orders.find_one({"id": order_id, "user_id": user['id']}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
-@api_router.get("/admin/orders", response_model=List[OrderResponse])
+@api_router.get("/admin/orders", response_model=List[dict])
 async def get_all_orders(status: Optional[str] = None, admin: dict = Depends(get_admin_user)):
     query = {}
     if status:
@@ -580,7 +810,6 @@ async def get_all_orders(status: Optional[str] = None, admin: dict = Depends(get
     
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    # Add user details
     for order in orders:
         user = await db.users.find_one({"id": order['user_id']}, {"_id": 0})
         if user:
@@ -589,7 +818,7 @@ async def get_all_orders(status: Optional[str] = None, admin: dict = Depends(get
     
     return orders
 
-@api_router.put("/admin/orders/{order_id}/status", response_model=OrderResponse)
+@api_router.put("/admin/orders/{order_id}/status", response_model=dict)
 async def update_order_status(order_id: str, status_update: OrderStatusUpdate, admin: dict = Depends(get_admin_user)):
     valid_statuses = ["pending", "confirmed", "packed", "shipped", "delivered"]
     if status_update.status not in valid_statuses:
@@ -626,7 +855,7 @@ async def remove_from_wishlist(product_id: str, user: dict = Depends(get_current
     )
     return {"message": "Removed from wishlist"}
 
-@api_router.get("/wishlist", response_model=List[ProductResponse])
+@api_router.get("/wishlist", response_model=List[dict])
 async def get_wishlist(user: dict = Depends(get_current_user)):
     user_doc = await db.users.find_one({"id": user['id']}, {"_id": 0})
     wishlist_ids = user_doc.get('wishlist', [])
@@ -636,6 +865,7 @@ async def get_wishlist(user: dict = Depends(get_current_user)):
     for product in products:
         category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
         product['category_name'] = category['name'] if category else ""
+        ensure_product_defaults(product)
     
     return products
 
@@ -643,26 +873,18 @@ async def get_wishlist(user: dict = Depends(get_current_user)):
 
 @api_router.get("/admin/dashboard", response_model=dict)
 async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
-    # Total revenue
     pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_price"}}}]
     revenue_result = await db.orders.aggregate(pipeline).to_list(1)
     total_revenue = revenue_result[0]['total'] if revenue_result else 0
     
-    # Total orders
     total_orders = await db.orders.count_documents({})
-    
-    # Total products
     total_products = await db.products.count_documents({})
-    
-    # Total customers
     total_customers = await db.users.count_documents({"role": "user"})
     
-    # Orders by status
     status_pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
     status_result = await db.orders.aggregate(status_pipeline).to_list(10)
     orders_by_status = {item['_id']: item['count'] for item in status_result}
     
-    # Recent orders
     recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
     for order in recent_orders:
         user = await db.users.find_one({"id": order['user_id']}, {"_id": 0})
@@ -670,7 +892,6 @@ async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
             order['user_name'] = user['name']
             order['user_email'] = user['email']
     
-    # Weekly orders (last 7 days)
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     weekly_pipeline = [
         {"$match": {"created_at": {"$gte": week_ago.isoformat()}}},
@@ -697,7 +918,6 @@ async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
 async def get_customers(admin: dict = Depends(get_admin_user)):
     users = await db.users.find({"role": "user"}, {"_id": 0, "password": 0}).to_list(1000)
     
-    # Add order stats for each customer
     for user in users:
         orders = await db.orders.find({"user_id": user['id']}, {"_id": 0}).to_list(1000)
         user['total_orders'] = len(orders)
@@ -712,7 +932,6 @@ async def upload_image(file: UploadFile = File(...), user: dict = Depends(get_cu
     contents = await file.read()
     encoded = base64.b64encode(contents).decode('utf-8')
     
-    # Store in MongoDB
     image_id = str(uuid.uuid4())
     image_doc = {
         "id": image_id,
@@ -740,7 +959,6 @@ async def get_image(image_id: str):
 
 @api_router.post("/seed", response_model=dict)
 async def seed_database():
-    # Check if already seeded
     existing_products = await db.products.count_documents({})
     if existing_products > 0:
         return {"message": "Database already seeded"}
@@ -791,30 +1009,337 @@ async def seed_database():
     ]
     await db.categories.insert_many(categories)
     
-    # Create products
+    # Create products with variant support
     products = [
-        # Jesmonite Coasters
-        {"id": str(uuid.uuid4()), "name": "Sandstone Ripple Coaster Set", "description": "Beautifully crafted jesmonite coasters with a unique ripple pattern. Set of 4 coasters.", "price": 899, "sale_price": None, "category_id": categories[0]['id'], "stock": 25, "images": ["https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800", "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Clean with a damp cloth. Avoid harsh chemicals.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Terrazzo Jesmonite Coasters", "description": "Modern terrazzo-style coasters with colorful chips embedded in jesmonite.", "price": 1099, "sale_price": 899, "category_id": categories[0]['id'], "stock": 18, "images": ["https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800"], "is_on_sale": True, "sale_start": "2024-01-01", "sale_end": "2024-12-31", "care_instructions": "Wipe clean with soft cloth.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Minimal Arch Coaster", "description": "Minimalist arch-shaped coaster perfect for modern homes.", "price": 799, "sale_price": None, "category_id": categories[0]['id'], "stock": 30, "images": ["https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Keep dry when not in use.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        
-        # Ceramic Coasters
-        {"id": str(uuid.uuid4()), "name": "Glazed Marble Ceramic Coasters", "description": "Elegant ceramic coasters with a beautiful marble glaze finish.", "price": 999, "sale_price": None, "category_id": categories[1]['id'], "stock": 20, "images": ["https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Dishwasher safe.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Nordic Minimal Ceramic Set", "description": "Scandinavian-inspired ceramic coaster set with clean lines.", "price": 1199, "sale_price": None, "category_id": categories[1]['id'], "stock": 15, "images": ["https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Hand wash recommended.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        
-        # Reusable Containers
-        {"id": str(uuid.uuid4()), "name": "Matte Jesmonite Trinket Container", "description": "A versatile matte-finish container perfect for jewelry or small items.", "price": 1299, "sale_price": None, "category_id": categories[2]['id'], "stock": 12, "images": ["https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Dust with soft cloth.", "shipping_info": "Ships within 5-7 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Rustic Ceramic Storage Bowl", "description": "Handcrafted ceramic bowl with rustic charm, perfect for storage.", "price": 1499, "sale_price": 1199, "category_id": categories[2]['id'], "stock": 10, "images": ["https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"], "is_on_sale": True, "sale_start": "2024-01-01", "sale_end": "2024-12-31", "care_instructions": "Hand wash only.", "shipping_info": "Ships within 5-7 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        
-        # Container Candles
-        {"id": str(uuid.uuid4()), "name": "Vanilla Sandstone Candle", "description": "Warm vanilla scent in a beautiful sandstone container. Burns for 45+ hours.", "price": 1299, "sale_price": None, "category_id": categories[3]['id'], "stock": 35, "images": ["https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800", "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Trim wick to 1/4 inch before each burn. Keep away from drafts.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Lavender Clay Candle", "description": "Calming lavender fragrance in a terracotta clay container.", "price": 1399, "sale_price": None, "category_id": categories[3]['id'], "stock": 28, "images": ["https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Allow wax to melt to edges on first burn.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Oud & Amber Candle", "description": "Luxurious oud and amber scent for a sophisticated ambiance.", "price": 1499, "sale_price": 1299, "category_id": categories[3]['id'], "stock": 22, "images": ["https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800"], "is_on_sale": True, "sale_start": "2024-01-01", "sale_end": "2024-12-31", "care_instructions": "Never leave burning candle unattended.", "shipping_info": "Ships within 3-5 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        
-        # Candle Bouquets
-        {"id": str(uuid.uuid4()), "name": "Rose Candle Bouquet", "description": "Elegant arrangement of rose-scented candles, perfect for gifting.", "price": 2499, "sale_price": None, "category_id": categories[4]['id'], "stock": 8, "images": ["https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Display away from direct sunlight.", "shipping_info": "Ships within 5-7 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Luxury Candle Bouquet", "description": "Premium curated bouquet of our finest scented candles.", "price": 3499, "sale_price": None, "category_id": categories[4]['id'], "stock": 5, "images": ["https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"], "is_on_sale": False, "sale_start": None, "sale_end": None, "care_instructions": "Handle with care.", "shipping_info": "Ships within 5-7 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Custom Wedding Candle Bouquet", "description": "Personalized candle bouquet for weddings and special occasions.", "price": 3999, "sale_price": 3499, "category_id": categories[4]['id'], "stock": 3, "images": ["https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"], "is_on_sale": True, "sale_start": "2024-01-01", "sale_end": "2024-12-31", "care_instructions": "Contact us for customization options.", "shipping_info": "Ships within 7-10 business days.", "created_at": datetime.now(timezone.utc).isoformat()},
+        # Product with COLOR variants
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Sandstone Ripple Coaster Set",
+            "slug": "sandstone-ripple-coaster-set",
+            "description": "Beautifully crafted jesmonite coasters with a unique ripple pattern. Set of 4 coasters.",
+            "short_description": "Handcrafted jesmonite coasters with ripple pattern",
+            "price": 899,
+            "discount_price": None,
+            "category_id": categories[0]['id'],
+            "subcategory": "",
+            "sku": "JC-001",
+            "stock": 25,
+            "images": [
+                "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800",
+                "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+            ],
+            "has_color_options": True,
+            "has_flavor_options": False,
+            "color_options": [
+                {"id": str(uuid.uuid4()), "name": "Natural White", "hex_code": "#F5F0E8", "images": ["https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800", "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Sandstone", "hex_code": "#D7C5B8", "images": ["https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800", "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Charcoal", "hex_code": "#36454F", "images": ["https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]}
+            ],
+            "flavor_options": [],
+            "variants": [],
+            "is_active": True,
+            "is_featured": True,
+            "is_bestseller": False,
+            "is_new_arrival": True,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Clean with a damp cloth. Avoid harsh chemicals.",
+            "shipping_info": "Ships within 3-5 business days.",
+            "materials": "Eco-friendly Jesmonite",
+            "dimensions": "10cm x 10cm x 0.8cm",
+            "burn_time": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        # Product with FLAVOR/FRAGRANCE variants
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Vanilla Sandstone Candle",
+            "slug": "vanilla-sandstone-candle",
+            "description": "Warm vanilla scent in a beautiful sandstone container. Burns for 45+ hours.",
+            "short_description": "Hand-poured soy wax candle with warm vanilla scent",
+            "price": 1299,
+            "discount_price": None,
+            "category_id": categories[3]['id'],
+            "subcategory": "",
+            "sku": "CC-001",
+            "stock": 35,
+            "images": [
+                "https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800",
+                "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800",
+                "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                "https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?w=800"
+            ],
+            "has_color_options": False,
+            "has_flavor_options": True,
+            "color_options": [],
+            "flavor_options": [
+                {"id": str(uuid.uuid4()), "name": "Vanilla", "description": "Warm and comforting vanilla", "images": ["https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800", "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Lavender", "description": "Calming lavender fields", "images": ["https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800", "https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Rose", "description": "Fresh rose petals", "images": ["https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Oud & Amber", "description": "Luxurious oud with warm amber", "images": ["https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"]}
+            ],
+            "variants": [],
+            "is_active": True,
+            "is_featured": True,
+            "is_bestseller": True,
+            "is_new_arrival": False,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Trim wick to 1/4 inch before each burn. Keep away from drafts.",
+            "shipping_info": "Ships within 3-5 business days.",
+            "materials": "100% Natural Soy Wax, Cotton Wick",
+            "dimensions": "8cm x 10cm",
+            "burn_time": "45+ hours",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        # Product with BOTH color and flavor variants
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Rose Candle Bouquet",
+            "slug": "rose-candle-bouquet",
+            "description": "Elegant arrangement of rose-scented candles, perfect for gifting.",
+            "short_description": "Beautiful candle bouquet with rose fragrance",
+            "price": 2499,
+            "discount_price": 2199,
+            "category_id": categories[4]['id'],
+            "subcategory": "",
+            "sku": "CB-001",
+            "stock": 8,
+            "images": [
+                "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800",
+                "https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800",
+                "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+            ],
+            "has_color_options": True,
+            "has_flavor_options": True,
+            "color_options": [
+                {"id": str(uuid.uuid4()), "name": "White", "hex_code": "#FFFFFF", "images": ["https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Blush Pink", "hex_code": "#FFB6C1", "images": ["https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800"]},
+                {"id": str(uuid.uuid4()), "name": "Lavender", "hex_code": "#E6E6FA", "images": ["https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800"]}
+            ],
+            "flavor_options": [
+                {"id": str(uuid.uuid4()), "name": "Rose", "description": "Classic rose fragrance", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Jasmine", "description": "Sweet jasmine blooms", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Peony", "description": "Delicate peony petals", "images": []}
+            ],
+            "variants": [],
+            "is_active": True,
+            "is_featured": True,
+            "is_bestseller": False,
+            "is_new_arrival": True,
+            "is_on_sale": True,
+            "sale_start": "2024-01-01",
+            "sale_end": "2024-12-31",
+            "care_instructions": "Display away from direct sunlight.",
+            "shipping_info": "Ships within 5-7 business days.",
+            "materials": "Soy Wax, Natural Dyes",
+            "dimensions": "25cm x 20cm",
+            "burn_time": "30+ hours total",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        # Product with NO variants
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Matte Jesmonite Trinket Container",
+            "slug": "matte-jesmonite-trinket-container",
+            "description": "A versatile matte-finish container perfect for jewelry or small items.",
+            "short_description": "Elegant storage container for small treasures",
+            "price": 1299,
+            "discount_price": None,
+            "category_id": categories[2]['id'],
+            "subcategory": "",
+            "sku": "RC-001",
+            "stock": 12,
+            "images": [
+                "https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800",
+                "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800",
+                "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800"
+            ],
+            "has_color_options": False,
+            "has_flavor_options": False,
+            "color_options": [],
+            "flavor_options": [],
+            "variants": [],
+            "is_active": True,
+            "is_featured": False,
+            "is_bestseller": True,
+            "is_new_arrival": False,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Dust with soft cloth.",
+            "shipping_info": "Ships within 5-7 business days.",
+            "materials": "Eco-friendly Jesmonite",
+            "dimensions": "12cm x 8cm",
+            "burn_time": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        # Additional products
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Terrazzo Jesmonite Coasters",
+            "slug": "terrazzo-jesmonite-coasters",
+            "description": "Modern terrazzo-style coasters with colorful chips embedded in jesmonite.",
+            "short_description": "Colorful terrazzo-style coasters",
+            "price": 1099,
+            "discount_price": 899,
+            "category_id": categories[0]['id'],
+            "subcategory": "",
+            "sku": "JC-002",
+            "stock": 18,
+            "images": [
+                "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+                "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800",
+                "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800"
+            ],
+            "has_color_options": True,
+            "has_flavor_options": False,
+            "color_options": [
+                {"id": str(uuid.uuid4()), "name": "Pastel Mix", "hex_code": "#FFE4E1", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Earth Tones", "hex_code": "#D2B48C", "images": []}
+            ],
+            "flavor_options": [],
+            "variants": [],
+            "is_active": True,
+            "is_featured": False,
+            "is_bestseller": False,
+            "is_new_arrival": False,
+            "is_on_sale": True,
+            "sale_start": "2024-01-01",
+            "sale_end": "2024-12-31",
+            "care_instructions": "Wipe clean with soft cloth.",
+            "shipping_info": "Ships within 3-5 business days.",
+            "materials": "Jesmonite, Natural Pigments",
+            "dimensions": "10cm x 10cm x 0.8cm",
+            "burn_time": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Lavender Clay Candle",
+            "slug": "lavender-clay-candle",
+            "description": "Calming lavender fragrance in a terracotta clay container.",
+            "short_description": "Relaxing lavender scent in clay container",
+            "price": 1399,
+            "discount_price": None,
+            "category_id": categories[3]['id'],
+            "subcategory": "",
+            "sku": "CC-002",
+            "stock": 28,
+            "images": [
+                "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800",
+                "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800",
+                "https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800"
+            ],
+            "has_color_options": False,
+            "has_flavor_options": False,
+            "color_options": [],
+            "flavor_options": [],
+            "variants": [],
+            "is_active": True,
+            "is_featured": False,
+            "is_bestseller": True,
+            "is_new_arrival": False,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Allow wax to melt to edges on first burn.",
+            "shipping_info": "Ships within 3-5 business days.",
+            "materials": "Soy Wax, Terracotta Container",
+            "dimensions": "8cm x 9cm",
+            "burn_time": "40+ hours",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Luxury Candle Bouquet",
+            "slug": "luxury-candle-bouquet",
+            "description": "Premium curated bouquet of our finest scented candles.",
+            "short_description": "Premium gift bouquet",
+            "price": 3499,
+            "discount_price": None,
+            "category_id": categories[4]['id'],
+            "subcategory": "",
+            "sku": "CB-002",
+            "stock": 5,
+            "images": [
+                "https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800",
+                "https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800"
+            ],
+            "has_color_options": True,
+            "has_flavor_options": True,
+            "color_options": [
+                {"id": str(uuid.uuid4()), "name": "Ivory", "hex_code": "#FFFFF0", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Gold", "hex_code": "#FFD700", "images": []}
+            ],
+            "flavor_options": [
+                {"id": str(uuid.uuid4()), "name": "Signature Blend", "description": "Our signature mix", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Fresh Florals", "description": "Mixed floral scents", "images": []}
+            ],
+            "variants": [],
+            "is_active": True,
+            "is_featured": True,
+            "is_bestseller": False,
+            "is_new_arrival": True,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Handle with care.",
+            "shipping_info": "Ships within 5-7 business days.",
+            "materials": "Premium Soy Wax",
+            "dimensions": "30cm x 25cm",
+            "burn_time": "50+ hours total",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "name": "Glazed Marble Ceramic Coasters",
+            "slug": "glazed-marble-ceramic-coasters",
+            "description": "Elegant ceramic coasters with a beautiful marble glaze finish.",
+            "short_description": "Marble-effect ceramic coasters",
+            "price": 999,
+            "discount_price": None,
+            "category_id": categories[1]['id'],
+            "subcategory": "",
+            "sku": "CRC-001",
+            "stock": 20,
+            "images": [
+                "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800",
+                "https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800"
+            ],
+            "has_color_options": True,
+            "has_flavor_options": False,
+            "color_options": [
+                {"id": str(uuid.uuid4()), "name": "White Marble", "hex_code": "#F5F5F5", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Grey Marble", "hex_code": "#808080", "images": []},
+                {"id": str(uuid.uuid4()), "name": "Black Marble", "hex_code": "#1C1C1C", "images": []}
+            ],
+            "flavor_options": [],
+            "variants": [],
+            "is_active": True,
+            "is_featured": False,
+            "is_bestseller": False,
+            "is_new_arrival": False,
+            "is_on_sale": False,
+            "sale_start": None,
+            "sale_end": None,
+            "care_instructions": "Dishwasher safe.",
+            "shipping_info": "Ships within 3-5 business days.",
+            "materials": "High-fire Ceramic",
+            "dimensions": "10cm diameter",
+            "burn_time": "",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
     ]
     await db.products.insert_many(products)
     
@@ -824,7 +1349,7 @@ async def seed_database():
             "id": str(uuid.uuid4()),
             "user_id": test_user_id,
             "items": [
-                {"product_id": products[7]['id'], "product_name": "Vanilla Sandstone Candle", "product_image": products[7]['images'][0], "price": 1299, "quantity": 2}
+                {"product_id": products[1]['id'], "product_name": "Vanilla Sandstone Candle", "product_image": products[1]['images'][0], "price": 1299, "quantity": 2}
             ],
             "billing_name": "Aisha Sharma",
             "billing_phone": "9876543210",
@@ -842,7 +1367,7 @@ async def seed_database():
             "user_id": test_user_id,
             "items": [
                 {"product_id": products[0]['id'], "product_name": "Sandstone Ripple Coaster Set", "product_image": products[0]['images'][0], "price": 899, "quantity": 1},
-                {"product_id": products[8]['id'], "product_name": "Lavender Clay Candle", "product_image": products[8]['images'][0], "price": 1399, "quantity": 1}
+                {"product_id": products[5]['id'], "product_name": "Lavender Clay Candle", "product_image": products[5]['images'][0], "price": 1399, "quantity": 1}
             ],
             "billing_name": "Aisha Sharma",
             "billing_phone": "9876543210",
@@ -854,23 +1379,6 @@ async def seed_database():
             "total_price": 2298,
             "status": "delivered",
             "created_at": (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        },
-        {
-            "id": str(uuid.uuid4()),
-            "user_id": test_user_id,
-            "items": [
-                {"product_id": products[10]['id'], "product_name": "Rose Candle Bouquet", "product_image": products[10]['images'][0], "price": 2499, "quantity": 1}
-            ],
-            "billing_name": "Aisha Sharma",
-            "billing_phone": "9876543210",
-            "billing_email": "aisha@test.com",
-            "billing_address": "123 Main Street",
-            "billing_city": "Mumbai",
-            "billing_postal_code": "400001",
-            "payment_method": "netbanking",
-            "total_price": 2499,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat()
         }
     ]
     await db.orders.insert_many(orders)
@@ -892,7 +1400,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'

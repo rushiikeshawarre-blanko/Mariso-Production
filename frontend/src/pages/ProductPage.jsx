@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
@@ -19,74 +19,50 @@ const ProductPage = () => {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedFlavor, setSelectedFlavor] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const { addItem, items } = useCart();
   const { isAuthenticated } = useAuth();
 
-  // Color variants (can be extended based on product data)
-  const colorVariants = [
-    { name: 'Natural', color: '#F5F0E8' },
-    { name: 'Ivory', color: '#FFFFF0' },
-    { name: 'Sandstone', color: '#D7C5B8' },
-    { name: 'Terracotta', color: '#C98E74' },
-  ];
-
-  // Enhanced product images - multiple angles for each product
-  const getEnhancedImages = (productImages, categoryName) => {
-    const baseImages = productImages || [];
+  // Get current images based on selected variant
+  const currentImages = useMemo(() => {
+    if (!product) return [];
     
-    // Supplementary lifestyle and detail images based on category
-    const supplementaryImages = {
-      'Container Candles': [
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
-        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800',
-        'https://images.pexels.com/photos/9518738/pexels-photo-9518738.jpeg?w=800',
-        'https://images.unsplash.com/photo-1595515106886-43b1443a2e8b?w=800'
-      ],
-      'Candle Bouquets': [
-        'https://images.unsplash.com/photo-1621341104239-d11fd41673ec?w=800',
-        'https://images.unsplash.com/photo-1612540139150-4d599ae85ca9?w=800',
-        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800',
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
-      ],
-      'Jesmonite Coasters': [
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
-        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
-        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800'
-      ],
-      'Ceramic Coasters': [
-        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
-        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
-      ],
-      'Reusable Containers': [
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-        'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800',
-        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800',
-        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'
-      ]
-    };
-
-    const categoryImages = supplementaryImages[categoryName] || supplementaryImages['Container Candles'];
+    // If color is selected and has images, use those
+    if (selectedColor?.images?.length > 0) {
+      return selectedColor.images;
+    }
     
-    // Combine base images with supplementary to ensure at least 5 images
+    // If flavor is selected and has images, use those
+    if (selectedFlavor?.images?.length > 0) {
+      return selectedFlavor.images;
+    }
+    
+    // Otherwise use default product images
+    return product.images || [];
+  }, [product, selectedColor, selectedFlavor]);
+
+  // Fallback images if product doesn't have enough
+  const getEnhancedImages = (images) => {
+    const baseImages = images || [];
+    if (baseImages.length >= 3) return baseImages;
+    
+    // Add some fallback images if needed
+    const fallbackImages = [
+      'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+      'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
+      'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
+    ];
+    
     const allImages = [...baseImages];
     let index = 0;
-    while (allImages.length < 5 && index < categoryImages.length) {
-      if (!allImages.includes(categoryImages[index])) {
-        allImages.push(categoryImages[index]);
+    while (allImages.length < 3 && index < fallbackImages.length) {
+      if (!allImages.includes(fallbackImages[index])) {
+        allImages.push(fallbackImages[index]);
       }
       index++;
     }
-    
-    return allImages.slice(0, 5);
+    return allImages;
   };
 
   useEffect(() => {
@@ -95,7 +71,20 @@ const ProductPage = () => {
       try {
         const prod = await getProduct(id);
         setProduct(prod);
-        setSelectedColor(colorVariants[0]);
+        
+        // Set default selected color if product has color options
+        if (prod.has_color_options && prod.color_options?.length > 0) {
+          setSelectedColor(prod.color_options[0]);
+        } else {
+          setSelectedColor(null);
+        }
+        
+        // Set default selected flavor if product has flavor options
+        if (prod.has_flavor_options && prod.flavor_options?.length > 0) {
+          setSelectedFlavor(prod.flavor_options[0]);
+        } else {
+          setSelectedFlavor(null);
+        }
         
         // Fetch related products from same category
         const related = await getProducts({ category_id: prod.category_id });
@@ -117,9 +106,18 @@ const ProductPage = () => {
       toast.error('This product is out of stock');
       return;
     }
-    addItem({ ...product, selectedColor: selectedColor?.name }, quantity);
+    const variantInfo = [];
+    if (selectedColor) variantInfo.push(selectedColor.name);
+    if (selectedFlavor) variantInfo.push(selectedFlavor.name);
+    
+    addItem({ 
+      ...product, 
+      selectedColor: selectedColor?.name,
+      selectedFlavor: selectedFlavor?.name,
+      variantId: `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`
+    }, quantity);
     toast.success('Added to cart', {
-      description: `${quantity}x ${product.name}${selectedColor ? ` (${selectedColor.name})` : ''}`
+      description: `${quantity}x ${product.name}${variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : ''}`
     });
   };
 
@@ -128,7 +126,12 @@ const ProductPage = () => {
       toast.error('This product is out of stock');
       return;
     }
-    addItem({ ...product, selectedColor: selectedColor?.name }, quantity);
+    addItem({ 
+      ...product, 
+      selectedColor: selectedColor?.name,
+      selectedFlavor: selectedFlavor?.name,
+      variantId: `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`
+    }, quantity);
     navigate('/checkout');
   };
 
@@ -146,9 +149,12 @@ const ProductPage = () => {
     }
   };
 
-  const price = product?.is_on_sale && product?.sale_price ? product.sale_price : product?.price;
-  const originalPrice = product?.is_on_sale && product?.sale_price ? product.price : null;
+  const price = product?.is_on_sale && product?.discount_price ? product.discount_price : product?.price;
+  const originalPrice = product?.is_on_sale && product?.discount_price ? product.price : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
+
+  // Get the display images for the gallery
+  const displayImages = getEnhancedImages(currentImages);
 
   if (loading) {
     return (
@@ -192,7 +198,7 @@ const ProductPage = () => {
     );
   }
 
-  const enhancedImages = getEnhancedImages(product.images, product.category_name);
+  const enhancedImages = displayImages;
 
   return (
     <Layout>
@@ -272,26 +278,55 @@ const ProductPage = () => {
                 {product.description}
               </p>
 
-              {/* Color Variants */}
-              <div>
-                <p className="text-sm font-medium mb-3">Color: <span className="text-muted-foreground">{selectedColor?.name}</span></p>
-                <div className="flex gap-3">
-                  {colorVariants.map((variant) => (
-                    <button
-                      key={variant.name}
-                      onClick={() => setSelectedColor(variant)}
-                      className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 ${
-                        selectedColor?.name === variant.name 
-                          ? 'border-foreground scale-110 shadow-lg' 
-                          : 'border-border hover:border-foreground/50'
-                      }`}
-                      style={{ backgroundColor: variant.color }}
-                      title={variant.name}
-                      data-testid={`color-${variant.name.toLowerCase()}`}
-                    />
-                  ))}
+              {/* Color Variants - Only show if product has color options */}
+              {product.has_color_options && product.color_options?.length > 0 && (
+                <div data-testid="color-variants">
+                  <p className="text-sm font-medium mb-3">Color: <span className="text-muted-foreground">{selectedColor?.name}</span></p>
+                  <div className="flex flex-wrap gap-3">
+                    {product.color_options.map((color) => (
+                      <button
+                        key={color.id}
+                        onClick={() => setSelectedColor(color)}
+                        className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 ${
+                          selectedColor?.id === color.id 
+                            ? 'border-foreground scale-110 shadow-lg' 
+                            : 'border-border hover:border-foreground/50'
+                        }`}
+                        style={{ backgroundColor: color.hex_code }}
+                        title={color.name}
+                        data-testid={`color-${color.name.toLowerCase().replace(/\s+/g, '-')}`}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Flavor/Fragrance Variants - Only show if product has flavor options */}
+              {product.has_flavor_options && product.flavor_options?.length > 0 && (
+                <div data-testid="flavor-variants">
+                  <p className="text-sm font-medium mb-3">Fragrance: <span className="text-muted-foreground">{selectedFlavor?.name}</span></p>
+                  <div className="flex flex-wrap gap-2">
+                    {product.flavor_options.map((flavor) => (
+                      <button
+                        key={flavor.id}
+                        onClick={() => setSelectedFlavor(flavor)}
+                        className={`px-4 py-2 rounded-full border transition-all text-sm ${
+                          selectedFlavor?.id === flavor.id 
+                            ? 'border-foreground bg-foreground text-primary-foreground' 
+                            : 'border-border hover:border-foreground/50'
+                        }`}
+                        title={flavor.description || flavor.name}
+                        data-testid={`flavor-${flavor.name.toLowerCase().replace(/\s+/g, '-')}`}
+                      >
+                        {flavor.name}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedFlavor?.description && (
+                    <p className="text-xs text-muted-foreground mt-2 italic">{selectedFlavor.description}</p>
+                  )}
+                </div>
+              )}
 
               {/* Stock Status */}
               <div>

@@ -1,8 +1,15 @@
 import pytest
 import requests
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+# Load frontend env to get the backend URL
+frontend_env = Path(__file__).parent.parent.parent / 'frontend' / '.env'
+if frontend_env.exists():
+    load_dotenv(frontend_env)
+
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://candle-ecommerce-hub.preview.emergentagent.com').rstrip('/')
 
 @pytest.fixture
 def api_client():

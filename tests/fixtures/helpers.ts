@@ -1,6 +1,6 @@
 import { Page, expect } from '@playwright/test';
 
-const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'https://luxury-home-4.preview.emergentagent.com';
+const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'https://candle-ecommerce-hub.preview.emergentagent.com';
 
 export async function waitForAppReady(page: Page) {
   await page.waitForLoadState('domcontentloaded');
@@ -22,9 +22,12 @@ export async function dismissToasts(page: Page) {
 
 export async function loginAsAdmin(page: Page) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="login-email"]', { timeout: 10000 });
   await page.getByTestId('login-email').fill('admin@mariso.com');
   await page.getByTestId('login-password').fill('admin123');
   await page.getByTestId('login-submit').click();
+  // Wait for redirect to complete
+  await page.waitForURL(url => !url.pathname.includes('/login'), { timeout: 15000 });
   await page.waitForLoadState('domcontentloaded');
 }
 

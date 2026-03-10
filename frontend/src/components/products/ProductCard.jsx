@@ -11,8 +11,8 @@ export const ProductCard = ({ product, testIdPrefix = 'product' }) => {
   const { addItem } = useCart();
   const { isAuthenticated } = useAuth();
 
-  const price = product.is_on_sale && product.sale_price ? product.sale_price : product.price;
-  const originalPrice = product.is_on_sale && product.sale_price ? product.price : null;
+  const price = product.is_on_sale && product.discount_price ? product.discount_price : product.price;
+  const originalPrice = product.is_on_sale && product.discount_price ? product.price : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
 
   const handleAddToCart = (e) => {
