@@ -742,10 +742,12 @@ async def create_product(product: ProductCreate, admin: dict = Depends(get_admin
     }
     await db.products.insert_one(product_doc)
     
+    # Re-fetch to avoid _id issue
+    created_product = await db.products.find_one({"id": product_id}, {"_id": 0})
     category = await db.categories.find_one({"id": product.category_id}, {"_id": 0})
-    product_doc['category_name'] = category['name'] if category else ""
+    created_product['category_name'] = category['name'] if category else ""
     
-    return product_doc
+    return created_product
 
 @api_router.put("/admin/products/{product_id}", response_model=dict)
 async def update_product(product_id: str, product: ProductUpdate, admin: dict = Depends(get_admin_user)):
