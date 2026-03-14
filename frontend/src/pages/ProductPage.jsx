@@ -347,25 +347,42 @@ const ProductPage = () => {
                 <div data-testid="color-variants">
                   <p className="text-sm font-medium mb-3">
                     Color: <span className="text-muted-foreground">{selectedColor?.name}</span>
-                    {selectedColor?.images?.length > 0 && (
-                      <span className="text-xs text-muted-foreground ml-2">({selectedColor.images.length} images)</span>
-                    )}
                   </p>
                   <div className="flex flex-wrap gap-3">
-                    {product.color_options.map((color) => (
-                      <button
-                        key={color.id}
-                        onClick={() => setSelectedColor(color)}
-                        className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 ${
-                          selectedColor?.id === color.id 
-                            ? 'border-foreground scale-110 shadow-lg' 
-                            : 'border-border hover:border-foreground/50'
-                        }`}
-                        style={{ backgroundColor: color.hex_code }}
-                        title={`${color.name}${color.images?.length ? ` (${color.images.length} images)` : ''}`}
-                        data-testid={`color-${color.name.toLowerCase().replace(/\s+/g, '-')}`}
-                      />
-                    ))}
+                    {product.color_options.map((color) => {
+                      const hasDualColor = color.hex_code_secondary && color.hex_code_secondary !== color.hex_code;
+                      return (
+                        <button
+                          key={color.id}
+                          onClick={() => setSelectedColor(color)}
+                          className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 overflow-hidden ${
+                            selectedColor?.id === color.id 
+                              ? 'border-foreground scale-110 shadow-lg' 
+                              : 'border-border hover:border-foreground/50'
+                          }`}
+                          title={color.name}
+                          data-testid={`color-${color.name.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          {hasDualColor ? (
+                            /* Dual color swatch - split diagonally */
+                            <div className="w-full h-full relative">
+                              <div 
+                                className="absolute inset-0"
+                                style={{ 
+                                  background: `linear-gradient(135deg, ${color.hex_code} 50%, ${color.hex_code_secondary} 50%)`
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            /* Single color swatch */
+                            <div 
+                              className="w-full h-full"
+                              style={{ backgroundColor: color.hex_code }}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -402,11 +419,11 @@ const ProductPage = () => {
                 {isAvailable ? (
                   currentStock <= 5 ? (
                     <p className="text-sm text-terracotta font-medium" data-testid="product-stock-low">
-                      🔥 Only {currentStock} left in stock - order soon!
+                      Last few left!
                     </p>
                   ) : (
                     <p className="text-sm text-[#8B9D83] font-medium" data-testid="product-stock-available">
-                      ✓ In Stock ({currentStock} available) - Ready to ship
+                      ✓ In Stock
                     </p>
                   )
                 ) : (

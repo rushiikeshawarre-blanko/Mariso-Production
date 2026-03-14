@@ -52,7 +52,7 @@ const AdminProducts = () => {
   });
 
   // Temporary state for adding new color/flavor
-  const [newColor, setNewColor] = useState({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
+  const [newColor, setNewColor] = useState({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
   const [newFlavor, setNewFlavor] = useState({ name: '', description: '' });
 
   useEffect(() => {
@@ -160,13 +160,14 @@ const AdminProducts = () => {
       id: `temp-${Date.now()}`,
       name: newColor.name,
       hex_code: newColor.hex_code,
+      hex_code_secondary: newColor.hex_code_secondary || null,
       images: colorImages
     };
     setFormData({
       ...formData,
       color_options: [...formData.color_options, newColorOption]
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
+    setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
     toast.success('Color option added');
   };
 
@@ -711,17 +712,36 @@ const AdminProducts = () => {
                   {formData.has_color_options && (
                     <div className="space-y-6">
                       {/* Existing Colors with Image Galleries */}
-                      {formData.color_options.map((color, colorIndex) => (
+                      {formData.color_options.map((color, colorIndex) => {
+                        const hasDualColor = color.hex_code_secondary && color.hex_code_secondary !== color.hex_code;
+                        return (
                         <div key={color.id} className="border rounded-lg p-4 space-y-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
+                              {/* Dual or Single color swatch preview */}
                               <div 
-                                className="w-10 h-10 rounded-full border-2 border-border shadow-sm"
-                                style={{ backgroundColor: color.hex_code }}
-                              />
+                                className="w-10 h-10 rounded-full border-2 border-border shadow-sm overflow-hidden"
+                              >
+                                {hasDualColor ? (
+                                  <div 
+                                    className="w-full h-full"
+                                    style={{ 
+                                      background: `linear-gradient(135deg, ${color.hex_code} 50%, ${color.hex_code_secondary} 50%)`
+                                    }}
+                                  />
+                                ) : (
+                                  <div 
+                                    className="w-full h-full"
+                                    style={{ backgroundColor: color.hex_code }}
+                                  />
+                                )}
+                              </div>
                               <div>
                                 <p className="font-medium">{color.name}</p>
-                                <p className="text-xs text-muted-foreground">{color.hex_code}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {color.hex_code}
+                                  {hasDualColor && ` + ${color.hex_code_secondary}`}
+                                </p>
                               </div>
                             </div>
                             <Button
@@ -794,40 +814,84 @@ const AdminProducts = () => {
                             </div>
                           </div>
                         </div>
-                      ))}
+                      );
+                      })}
                       
                       {/* Add New Color */}
                       <div className="border-2 border-dashed rounded-lg p-4 space-y-4">
                         <h4 className="font-medium text-sm">Add New Color</h4>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                             <Label className="text-xs">Name</Label>
                             <Input
                               value={newColor.name}
                               onChange={(e) => setNewColor({ ...newColor, name: e.target.value })}
-                              placeholder="e.g., Blush Pink"
+                              placeholder="e.g., Blush Pink & White"
                               className="mt-1"
                               data-testid="new-color-name"
                             />
                           </div>
-                          <div>
-                            <Label className="text-xs">Hex Code</Label>
-                            <div className="flex gap-2 mt-1">
-                              <Input
-                                type="color"
-                                value={newColor.hex_code}
-                                onChange={(e) => setNewColor({ ...newColor, hex_code: e.target.value })}
-                                className="w-12 h-9 p-1 cursor-pointer"
-                              />
-                              <Input
-                                value={newColor.hex_code}
-                                onChange={(e) => setNewColor({ ...newColor, hex_code: e.target.value })}
-                                className="flex-1"
-                                data-testid="new-color-hex"
-                              />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Primary Color</Label>
+                              <div className="flex gap-1 mt-1">
+                                <Input
+                                  type="color"
+                                  value={newColor.hex_code}
+                                  onChange={(e) => setNewColor({ ...newColor, hex_code: e.target.value })}
+                                  className="w-10 h-9 p-1 cursor-pointer"
+                                />
+                                <Input
+                                  value={newColor.hex_code}
+                                  onChange={(e) => setNewColor({ ...newColor, hex_code: e.target.value })}
+                                  className="flex-1 text-xs"
+                                  data-testid="new-color-hex"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs">Secondary Color (optional)</Label>
+                              <div className="flex gap-1 mt-1">
+                                <Input
+                                  type="color"
+                                  value={newColor.hex_code_secondary || '#FFFFFF'}
+                                  onChange={(e) => setNewColor({ ...newColor, hex_code_secondary: e.target.value })}
+                                  className="w-10 h-9 p-1 cursor-pointer"
+                                />
+                                <Input
+                                  value={newColor.hex_code_secondary || ''}
+                                  onChange={(e) => setNewColor({ ...newColor, hex_code_secondary: e.target.value })}
+                                  placeholder="Leave empty for single"
+                                  className="flex-1 text-xs"
+                                  data-testid="new-color-hex-secondary"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
+                        
+                        {/* Preview dual color */}
+                        {newColor.name && (
+                          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+                            <span className="text-xs text-muted-foreground">Preview:</span>
+                            <div className="w-8 h-8 rounded-full border overflow-hidden">
+                              {newColor.hex_code_secondary ? (
+                                <div 
+                                  className="w-full h-full"
+                                  style={{ 
+                                    background: `linear-gradient(135deg, ${newColor.hex_code} 50%, ${newColor.hex_code_secondary} 50%)`
+                                  }}
+                                />
+                              ) : (
+                                <div 
+                                  className="w-full h-full"
+                                  style={{ backgroundColor: newColor.hex_code }}
+                                />
+                              )}
+                            </div>
+                            <span className="text-xs">{newColor.name}</span>
+                          </div>
+                        )}
                         
                         {/* Images for new color */}
                         <div>
@@ -997,15 +1061,29 @@ const AdminProducts = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {formData.variants.map((variant, index) => (
+                          {formData.variants.map((variant, index) => {
+                            const colorOption = formData.color_options.find(c => c.id === variant.color_id);
+                            const hasDualColor = colorOption?.hex_code_secondary && colorOption?.hex_code_secondary !== colorOption?.hex_code;
+                            return (
                             <TableRow key={variant.id} data-testid={`variant-row-${index}`}>
                               <TableCell>
                                 {variant.color_name ? (
                                   <div className="flex items-center gap-2">
-                                    <div 
-                                      className="w-6 h-6 rounded-full border"
-                                      style={{ backgroundColor: formData.color_options.find(c => c.id === variant.color_id)?.hex_code || '#ccc' }}
-                                    />
+                                    <div className="w-6 h-6 rounded-full border overflow-hidden">
+                                      {hasDualColor ? (
+                                        <div 
+                                          className="w-full h-full"
+                                          style={{ 
+                                            background: `linear-gradient(135deg, ${colorOption.hex_code} 50%, ${colorOption.hex_code_secondary} 50%)`
+                                          }}
+                                        />
+                                      ) : (
+                                        <div 
+                                          className="w-full h-full"
+                                          style={{ backgroundColor: colorOption?.hex_code || '#ccc' }}
+                                        />
+                                      )}
+                                    </div>
                                     <span>{variant.color_name}</span>
                                   </div>
                                 ) : (
@@ -1059,7 +1137,8 @@ const AdminProducts = () => {
                                 </Button>
                               </TableCell>
                             </TableRow>
-                          ))}
+                          );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
