@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getAllOrders, updateOrderStatus } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
@@ -16,9 +16,10 @@ const AdminOrders = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, [statusFilter]);
+  }, [fetchOrders]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback (async () => {
+    setLoading(true);
     try {
       const data = await getAllOrders(statusFilter === 'all' ? null : statusFilter);
       setOrders(data);
@@ -27,7 +28,7 @@ const AdminOrders = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
