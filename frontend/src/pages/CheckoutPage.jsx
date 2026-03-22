@@ -14,13 +14,31 @@ import { CreditCard, Smartphone, Building2, Banknote, Lock, ChevronLeft, Gift, S
 const CheckoutPage = () => {
   const location = useLocation();
   const { giftPackaging = false, giftNote = '' } = location.state || {};
-  const { items, getCartTotal, clearCart } = useCart();
+  const { items, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
   
   const GIFT_PACKAGING_PRICE = 149;
+
+  const getCheckoutOriginalSubtotal = () => {
+    return items.reduce((total, item) => total + (item.price * item.quantity), 0 );
+  };
+  
+  const getCheckoutEffectivePrice =(item) => {
+    return item.is_on_sale && (item.sale_price || item.discount_price)
+      ? (item.sale_price || item.discount_price)
+      : item.price;
+  };
+
+  const getCheckoutDiscountSubtotal = () => {
+    return items.reduce((total, item) => total + (getCheckoutEffectivePrice(item) * item.quantity), 0 );
+  };
+
+  const getCheckoutSaving = () => {
+    return getCheckoutOriginalSubtotal() - getCheckoutDiscountSubtotal();
+  };
 
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -36,7 +54,7 @@ const CheckoutPage = () => {
   };
 
   const getFinalTotal = () => {
-    return getCartTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+    return getCheckoutDiscountSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
 
   const handleSubmit = async (e) => {
@@ -338,7 +356,7 @@ const CheckoutPage = () => {
                   {/* Items */}
                   <div className="space-y-4 mb-6 max-h-64 overflow-y-auto">
                     {items.map((item) => {
-                      const price = item.is_on_sale && item.sale_price ? item.sale_price : item.price;
+                      const price = getCheckoutEffectivePrice(item);
                       return (
                         <div key={item.id} className="flex gap-4" data-testid={`checkout-item-${item.id}`}>
                           <img
@@ -374,8 +392,16 @@ const CheckoutPage = () => {
                   <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <span>₹{getCartTotal().toLocaleString()}</span>
+                      <span>₹{getCheckoutDiscountSubtotal().toLocaleString()}</span>
                     </div>
+                    {getCheckoutSaving() > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Savings</span>
+                        <span className="text-terracotta font-medium">
+                          ₹{getCheckoutSaving().toLocaleString()} saved
+                        </span>
+                      </div>
+                    )}
                     {giftPackaging && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Gift Packaging</span>

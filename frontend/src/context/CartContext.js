@@ -2,18 +2,30 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 
 const CartContext = createContext();
 
+const normalizeCartItem = (product, quantity =1) => ({
+  ...product,
+  price: product.original_price ?? product.price,
+  sale_price: product.sale_price ?? null,
+  is_on_sale: Boolean(product.is_on_sale && product.sale_price),
+  quantity,
+});
+
 const cartReducer = (state, action) => {
   switch (action.type) {
     case 'ADD_ITEM': {
       const existingIndex = state.items.findIndex(item => item.id === action.payload.id);
       if (existingIndex >= 0) {
         const newItems = [...state.items];
-        newItems[existingIndex].quantity += action.payload.quantity || 1;
+        newItems[existingIndex] = {
+          ...newItems[existingIndex],
+          ...action.payload,
+          quantity: newItems[existingIndex].quantity + (action.payload.quantity || 1),
+        };
         return { ...state, items: newItems };
       }
       return { 
         ...state, 
-        items: [...state.items, { ...action.payload, quantity: action.payload.quantity || 1 }] 
+        items: [...state.items, action.payload]
       };
     }
     case 'REMOVE_ITEM':
@@ -45,7 +57,8 @@ export const CartProvider = ({ children }) => {
   useEffect(() => {
     const savedCart = localStorage.getItem('mariso_cart');
     if (savedCart) {
-      dispatch({ type: 'LOAD_CART', payload: JSON.parse(savedCart) });
+      const parsedCart = JSON.parse(savedCart).map(item => normalizeCartItem(item, item.quantity || 1));
+      dispatch({ type: 'LOAD_CART', payload: parsedCart });
     }
   }, []);
 
@@ -55,7 +68,8 @@ export const CartProvider = ({ children }) => {
   }, [state.items]);
 
   const addItem = (product, quantity = 1) => {
-    dispatch({ type: 'ADD_ITEM', payload: { ...product, quantity } });
+    const normalizedItem = normalizeCartItem(product, quantity);
+    dispatch({ type: 'ADD_ITEM', payload: normalizedItem });
   };
 
   const removeItem = (productId) => {

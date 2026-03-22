@@ -14,11 +14,7 @@ const AdminOrders = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  const fetchOrders = useCallback (async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getAllOrders(statusFilter === 'all' ? null : statusFilter);
@@ -29,6 +25,10 @@ const AdminOrders = () => {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {

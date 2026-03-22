@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -7,7 +7,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
@@ -15,7 +15,17 @@ import bcrypt
 import random
 import string
 import base64
-import json
+
+from bson import ObjectId
+
+def serialize_mongo_value(order_doc):
+    if isinstance(order_doc, ObjectId):
+        return str(order_doc)
+    if isinstance(order_doc, list):
+        return [serialize_mongo_value(item) for item in order_doc]
+    if isinstance(order_doc, dict):
+        return {key: serialize_mongo_value(val) for key, val in order_doc.items()}
+    return order_doc
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -26,7 +36,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'mariso-candles-secret-key-2024')
+JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24
 
@@ -85,6 +95,9 @@ class CategoryResponse(BaseModel):
     image: str
     created_at: str
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+
 # ==================== VARIANT MODELS ====================
 
 class ColorOption(BaseModel):
@@ -105,7 +118,7 @@ class ProductVariant(BaseModel):
     flavor_id: Optional[str] = None
     sku: Optional[str] = None
     price_override: Optional[float] = None
-    stock_override: Optional[int] = None
+    stock: Optional[int] = None
     images: List[str] = []
     is_active: bool = True
 
@@ -114,12 +127,12 @@ class ProductCreate(BaseModel):
     slug: Optional[str] = ""
     description: str
     short_description: Optional[str] = ""
-    price: float
+    price: float = Field(..., gt=0)
     discount_price: Optional[float] = None
     category_id: str
     subcategory: Optional[str] = ""
     sku: Optional[str] = ""
-    stock: int = 0
+    stock: int = Field(0, ge=0)
     images: List[str] = []
     # Variant options
     has_color_options: bool = False
@@ -147,12 +160,12 @@ class ProductUpdate(BaseModel):
     slug: Optional[str] = None
     description: Optional[str] = None
     short_description: Optional[str] = None
-    price: Optional[float] = None
-    discount_price: Optional[float] = None
+    price: Optional[float] = Field(None, gt=0)
+    discount_price: Optional[float] = Field(None, gt=0)
     category_id: Optional[str] = None
     subcategory: Optional[str] = None
     sku: Optional[str] = None
-    stock: Optional[int] = None
+    stock: Optional[int] = Field(None, ge=0)
     images: Optional[List[str]] = None
     has_color_options: Optional[bool] = None
     has_flavor_options: Optional[bool] = None
@@ -208,7 +221,10 @@ class ProductResponse(BaseModel):
 
 class CartItem(BaseModel):
     product_id: str
-    quantity: int
+    quantity: int = Field(..., gt=0)
+    variant_id: Optional[str] = None
+    color_id: Optional[str] = None
+    flavor_id: Optional[str] = None
 
 class OrderCreate(BaseModel):
     items: List[CartItem]
@@ -219,7 +235,7 @@ class OrderCreate(BaseModel):
     billing_city: str
     billing_postal_code: str
     payment_method: str
-    total_price: float
+    gift_packaging: bool = False
 
 class OrderStatusUpdate(BaseModel):
     status: str
@@ -265,6 +281,8 @@ def create_token(user_id: str, email: str, role: str) -> str:
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid token")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
@@ -381,21 +399,43 @@ def generate_variant_combinations(color_options: list, flavor_options: list, exi
     
     return existing_variants + new_variants
 
-def get_variant_stock(product: dict, color_id: str = None, flavor_id: str = None) -> int:
+def get_variant_stock(product: dict, variant_id: str = None, color_id: str = None, flavor_id: str = None) -> Optional[dict]:
     """Get stock for a specific variant combination"""
     variants = product.get('variants', [])
     
     # If no variants exist, use base product stock
     if not variants:
-        return product.get('stock', 0)
+        return None
+    
+    if variant_id:
+        for variant in variants:
+            if variant.get('id') == variant_id:
+                return variant  
     
     # Find matching variant
     for variant in variants:
         if variant.get('color_id') == color_id and variant.get('flavor_id') == flavor_id:
-            return variant.get('stock', 0)
+            return variant
     
     # Fallback to base stock if no match
-    return product.get('stock', 0)
+    return None
+
+def get_selected_variant(product: dict, variant_id: str = None, color_id: str = None, flavor_id: str = None) -> Optional[dict]:
+    variants = product.get("variants", [])
+
+    if not variants:
+        return None
+
+    if variant_id:
+        for variant in variants:
+            if variant.get("id") == variant_id:
+                return variant
+
+    for variant in variants:
+        if variant.get("color_id") == color_id and variant.get("flavor_id") == flavor_id:
+            return variant
+
+    return None
 
 # ==================== AUTH ROUTES ====================
 
@@ -457,8 +497,8 @@ async def request_otp(request: OTPRequest):
         upsert=True
     )
     
-    logging.info(f"OTP for {request.email}: {otp}")
-    return {"message": "OTP sent successfully", "otp": otp}
+    logging.info(f"OTP requested for {request.email}")
+    return {"message": "OTP sent successfully"}
 
 @api_router.post("/auth/verify-otp", response_model=dict)
 async def verify_otp(request: OTPVerify):
@@ -513,10 +553,10 @@ async def get_me(user: dict = Depends(get_current_user)):
     }
 
 @api_router.put("/auth/profile", response_model=dict)
-async def update_profile(data: dict, user: dict = Depends(get_current_user)):
+async def update_profile(data: ProfileUpdate, user: dict = Depends(get_current_user)):
     update_fields = {}
-    if 'name' in data:
-        update_fields['name'] = data['name']
+    if data.name is not None:
+        update_fields['name'] = data.name
     
     if update_fields:
         await db.users.update_one({"id": user['id']}, {"$set": update_fields})
@@ -638,7 +678,7 @@ async def get_products(
 
 @api_router.get("/products/featured", response_model=List[dict])
 async def get_featured_products():
-    products = await db.products.find({"is_active": True}, {"_id": 0}).to_list(8)
+    products = await db.products.find({"is_active": True, "is_featured": True}, {"_id": 0}).to_list(8)
     for product in products:
         category = await db.categories.find_one({"id": product.get('category_id')}, {"_id": 0})
         product['category_name'] = category['name'] if category else ""
@@ -874,29 +914,124 @@ async def get_product_variant_stock(product_id: str, color_id: Optional[str] = N
 
 # ==================== ORDER ROUTES ====================
 
+GIFT_PACKAGING_PRICE = 149
+
 @api_router.post("/orders", response_model=dict)
 async def create_order(order: OrderCreate, user: dict = Depends(get_current_user)):
     order_id = str(uuid.uuid4())
+
+    if not order.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
     
     items_with_details = []
+
     for item in order.items:
         product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
-        if product:
-            price = product.get('discount_price') or product['price']
-            if product.get('is_on_sale') and product.get('discount_price'):
-                price = product['discount_price']
-            items_with_details.append({
-                "product_id": item.product_id,
-                "product_name": product['name'],
-                "product_image": product['images'][0] if product.get('images') else "",
-                "price": price,
-                "quantity": item.quantity
-            })
-            await db.products.update_one(
-                {"id": item.product_id},
-                {"$inc": {"stock": -item.quantity}}
-            )
+
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product with ID {item.product_id} not found")
+        
+        variant_image = None
+        variant_sku = None
+
+        selected_variant = get_selected_variant(
+            product,
+            item.variant_id, 
+            item.color_id, 
+            item.flavor_id
+        )
+
+        #Base/Default price
+        price = product.get('price')
+        if product.get('is_on_sale') and product.get('discount_price'):
+            price = product['discount_price']
+
+            variant_stock = None
+            variant_image = None
+            variant_sku = None
+
+        if selected_variant:
+            variant_stock = selected_variant.get('stock', 0)
+            if variant_stock < item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for product {product['name']} variant"
+                )
+            
+            if selected_variant.get('price_override') is not None:  
+                price = selected_variant['price_override']
+
+            variant_images = selected_variant.get('images', [])
+            if variant_images:
+                variant_image = variant_images[0]
+
+            variant_sku = selected_variant.get('sku')
+        else:
+            available_stock = product.get('stock', 0)
+            if available_stock < item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for product {product['name']}"
+                    )
+        
+        items_with_details.append({
+            "original_price": product['price'],
+            "price": price,
+            "quantity": item.quantity,
+            "line.total": price * item.quantity,
+            "product_id": item.product_id,
+            "variant_id": item.variant_id,
+            "color_id": item.color_id,
+            "flavor_id": item.flavor_id,
+            "product_name": product['name'],
+            "product_image": variant_image or (product['images'][0] if product.get('images') else ""),
+            "price": price,
+            "quantity": item.quantity,
+            "sku": variant_sku or product.get('sku', '')
+        })
+
+    calculated_total = sum(
+        item['price'] * item['quantity'] for item in items_with_details
+        )
+    if not items_with_details:
+        raise HTTPException(status_code=400, detail="No valid items in order")
     
+    for item in items_with_details:
+        product = await db.products.find_one({"id": item['product_id']}, {"_id": 0})
+
+        #Handle variant stock 
+        if item.get('variant_id') or item.get('color_id') or item.get('flavor_id'):
+            updated_variants = []
+
+            for variant in product.get('variants', []):
+                is_match = False
+
+                if item.get('variant_id') and variant.get('id') == item['variant_id']:
+                    is_match = True
+                elif (
+                    variant.get('color_id') == item.get('color_id')
+                    and variant.get('flavor_id') == item.get('flavor_id')
+                ):
+                    is_match = True
+
+                if is_match:
+                    current_stock = variant.get('stock', 0)
+                    variant['stock'] = max(current_stock - item['quantity'], 0)
+
+                updated_variants.append(variant)
+            await db.products.update_one(
+                {"id": item['product_id']},
+                {
+                    "$set": {"variants": updated_variants},
+                    "$inc": {"stock": -item['quantity']}
+                }                       
+            )
+        else:
+            await db.products.update_one(
+            {"id": item['product_id']},
+            {"$inc": {"stock": -item['quantity']}}
+        )
+        
     order_doc = {
         "id": order_id,
         "user_id": user['id'],
@@ -908,28 +1043,35 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
         "billing_city": order.billing_city,
         "billing_postal_code": order.billing_postal_code,
         "payment_method": order.payment_method,
-        "total_price": order.total_price,
+        "final_total": calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0),
         "status": "pending",
+        "gift_packaging": order.gift_packaging,
+        "total_price": calculated_total,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.orders.insert_one(order_doc)
     
-    order_doc['user_name'] = user['name']
-    order_doc['user_email'] = user['email']
+    created_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    created_order['user_name'] = user['name']
+    created_order['user_email'] = user['email']
+
+    validate_payment_methods = ["upi", "card", "cod", "netbanking"]
+    if order.payment_method not in validate_payment_methods:
+        raise HTTPException(status_code=400, detail="Invalid payment method")
     
-    return order_doc
+    return serialize_mongo_value(created_order)
 
 @api_router.get("/orders", response_model=List[dict])
 async def get_user_orders(user: dict = Depends(get_current_user)):
     orders = await db.orders.find({"user_id": user['id']}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return orders
+    return serialize_mongo_value(orders)
 
 @api_router.get("/orders/{order_id}", response_model=dict)
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     order = await db.orders.find_one({"id": order_id, "user_id": user['id']}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return serialize_mongo_value(order)
 
 @api_router.get("/admin/orders", response_model=List[dict])
 async def get_all_orders(order_status: Optional[str] = None, admin: dict = Depends(get_admin_user)):
@@ -945,7 +1087,7 @@ async def get_all_orders(order_status: Optional[str] = None, admin: dict = Depen
             order['user_name'] = user['name']
             order['user_email'] = user['email']
     
-    return orders
+    return serialize_mongo_value(orders)
 
 @api_router.put("/admin/orders/{order_id}/status", response_model=dict)
 async def update_order_status(order_id: str, status_update: OrderStatusUpdate, admin: dict = Depends(get_admin_user)):
@@ -964,7 +1106,7 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         order['user_name'] = user['name']
         order['user_email'] = user['email']
     
-    return order
+    return serialize_mongo_value(order)
 
 # ==================== WISHLIST ROUTES ====================
 
@@ -1059,6 +1201,14 @@ async def get_customers(admin: dict = Depends(get_admin_user)):
 @api_router.post("/upload", response_model=dict)
 async def upload_image(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     contents = await file.read()
+    allowed_types = ["image/jpeg", "image/png", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    
+    max_size = 5 * 1024 * 1024  # 5MB
+    if len(contents) > max_size:
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
+    
     encoded = base64.b64encode(contents).decode('utf-8')
     
     image_id = str(uuid.uuid4())
@@ -1088,6 +1238,9 @@ async def get_image(image_id: str):
 
 @api_router.post("/seed", response_model=dict)
 async def seed_database():
+    if os.environ.get("ENVIRONMENT", "development") != "development":
+        raise HTTPException(status_code=403, detail="Seeding is only allowed in development environment")
+    
     existing_products = await db.products.count_documents({})
     if existing_products > 0:
         return {"message": "Database already seeded"}
@@ -1611,13 +1764,17 @@ async def seed_database():
 async def root():
     return {"message": "Mariso Candles API"}
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 # Include the router
 app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )

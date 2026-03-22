@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
-const API_BASE = process.env.REACT_APP_BACKEND_URL;
+const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -105,7 +105,7 @@ const AdminProducts = () => {
       flavor_options: [],
       variants: []
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', images: ['', '', '', '', ''] });
+    setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
     setNewFlavor({ name: '', description: '' });
     setActiveTab('basic');
   };
@@ -434,8 +434,8 @@ const AdminProducts = () => {
   );
 
   // Get variant count summary
-  const getVariantSummary = (product) => {
-    const variants = product.variants || [];
+  const getAvailableVariantSummary = (product) => {
+    const variants = (product.variants || []).filter(v => v.is_active !== false);
     const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
     return { count: variants.length, totalStock };
   };
@@ -1104,7 +1104,7 @@ const AdminProducts = () => {
                               <TableCell>
                                 <Input
                                   type="number"
-                                  value={variant.price_override || ''}
+                                  value={variant.price_override ?? ''}
                                   onChange={(e) => updateVariant(index, 'price_override', e.target.value)}
                                   placeholder="Base"
                                   className="h-8 text-xs"
@@ -1208,7 +1208,7 @@ const AdminProducts = () => {
               <TableHead>Category</TableHead>
               <TableHead>Price</TableHead>
               <TableHead>Variants</TableHead>
-              <TableHead>Total Stock</TableHead>
+              <TableHead>Available Stock</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -1226,7 +1226,7 @@ const AdminProducts = () => {
               </TableRow>
             ) : (
               filteredProducts.map((product) => {
-                const variantSummary = getVariantSummary(product);
+                const variantSummary = getAvailableVariantSummary(product);
                 const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
                 
                 return (
@@ -1282,9 +1282,20 @@ const AdminProducts = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className={displayStock <= 5 ? 'text-destructive font-medium' : ''}>
-                        {displayStock}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={displayStock <= 5 ? 'text-destructive font-medium' : ''}>
+                          {displayStock}
+                        </span>
+                        {displayStock === 0 ? (
+                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full w-fit">
+                            Out of Stock
+                          </span>
+                        ) : displayStock > 0 && displayStock <= 5 ? (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full w-fit">
+                            Low Stock
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

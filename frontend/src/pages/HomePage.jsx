@@ -4,7 +4,7 @@ import { ArrowRight, Star, Sparkles } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
-import { getCategories, getFeaturedProducts, getBestsellers, seedDatabase } from '../lib/api';
+import { getCategories, getFeaturedProducts, getBestsellers } from '../lib/api';
 
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
@@ -14,13 +14,6 @@ const HomePage = () => {
 
   useEffect(() => {
     const initializeData = async () => {
-      try {
-        // Seed database first
-        await seedDatabase();
-      } catch (e) {
-        // Already seeded
-      }
-      
       try {
         const [cats, featured, best] = await Promise.all([
           getCategories(),

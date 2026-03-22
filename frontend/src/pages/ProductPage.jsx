@@ -137,6 +137,18 @@ const ProductPage = () => {
     setQuantity(1);
   }, [selectedColor, selectedFlavor]);
 
+  // Clamp quantity if current stock changes
+  useEffect(() => {
+    if (!isAvailable) {
+      setQuantity(1);
+      return;
+    }
+
+    if (quantity > currentStock) {
+      setQuantity(currentStock);
+    }
+  }, [currentStock, isAvailable, quantity]);
+
   const handleAddToCart = () => {
     if (!isAvailable) {
       toast.error('This combination is out of stock');
@@ -148,16 +160,18 @@ const ProductPage = () => {
     if (selectedFlavor) variantInfo.push(selectedFlavor.name);
     
     // Get variant-specific price if exists
-    const variantPrice = currentVariant?.price_override || (product.is_on_sale && product.discount_price ? product.discount_price : product.price);
-    
+   
     addItem({ 
       ...product,
-      price: variantPrice,
+      price: product.price,
+      discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
+      sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
+      is_on_sale: Boolean(currentVariant?.price_override ?? (product.is_on_sale && product.discount_price)),
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
       selectedFlavorId: selectedFlavor?.id,
-      variantId: currentVariant?.id || `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`,
+      variantId: currentVariant?.id ?? null,
       variantStock: currentStock
     }, quantity);
     
@@ -172,11 +186,12 @@ const ProductPage = () => {
       return;
     }
     
-    const variantPrice = currentVariant?.price_override || (product.is_on_sale && product.discount_price ? product.discount_price : product.price);
-    
     addItem({ 
       ...product,
-      price: variantPrice,
+      price: product.price,
+      discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
+      sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
+      is_on_sale: Boolean(currentVariant?.price_override ?? (product.is_on_sale && product.discount_price)),
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
@@ -219,8 +234,23 @@ const ProductPage = () => {
     return product.price;
   }, [product, currentVariant]);
 
-  const originalPrice = product?.is_on_sale && product?.discount_price ? product.price : null;
-  const discountPercent = originalPrice ? Math.round((1 - displayPrice / originalPrice) * 100) : 0;
+  const originalPrice = useMemo(() => {
+    if (!product) return null;
+
+    if (currentVariant?.price_override != null) {
+      return product.price;
+    }
+
+    if (product.is_on_sale && product.discount_price) {
+      return product.price;
+    }
+
+    return null;
+  }, [product, currentVariant]);
+
+  const discountPercent = originalPrice
+    ? Math.round((1 - displayPrice / originalPrice) * 100)
+    : 0;
 
   if (loading) {
     return (
@@ -282,7 +312,7 @@ const ProductPage = () => {
             {/* Left Side - Image Gallery */}
             <div className="relative">
               {/* Sale Badge */}
-              {product.is_on_sale && (
+              {originalPrice && displayPrice < originalPrice && (
                 <span className="absolute top-4 left-4 z-20 bg-terracotta text-white text-sm font-medium px-4 py-1.5 rounded-full">
                   {discountPercent}% OFF
                 </span>
@@ -418,9 +448,17 @@ const ProductPage = () => {
               <div data-testid="stock-status">
                 {isAvailable ? (
                   currentStock <= 5 ? (
-                    <p className="text-sm text-terracotta font-medium" data-testid="product-stock-low">
-                      Last few left!
-                    </p>
+                    <div className="flex items-center gap-2 text-terracotta" data-testid="product-stock-low">
+                      <AlertCircle className="h-4 w-4" />
+                      <p className="text-sm font-medium">
+                        Only {currentStock} left
+                        {(selectedColor || selectedFlavor) && (
+                          <span className="text-muted-foreground font-normal">
+                            {' '}for {[selectedColor?.name, selectedFlavor?.name].filter(Boolean).join(' + ')}
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   ) : (
                     <p className="text-sm text-[#8B9D83] font-medium" data-testid="product-stock-available">
                       ✓ In Stock
@@ -459,7 +497,7 @@ const ProductPage = () => {
                   <button
                     onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
                     className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
-                    disabled={quantity >= currentStock || !isAvailable}
+                    disabled={!isAvailable || currentStock <= 0 || quantity >= currentStock}
                     data-testid="quantity-increase"
                   >
                     <Plus className="h-4 w-4" strokeWidth={1.5} />
@@ -494,7 +532,7 @@ const ProductPage = () => {
                   data-testid="buy-now-button"
                 >
                   <Zap className="h-5 w-5 mr-2" strokeWidth={1.5} />
-                  Buy Now
+                  {isAvailable ? 'Buy Now' : 'Out of Stock'}
                 </Button>
               </div>
 

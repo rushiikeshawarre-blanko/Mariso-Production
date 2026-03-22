@@ -10,11 +10,12 @@ import { useCart } from '../context/CartContext';
 import { getProducts } from '../lib/api';
 
 const CartPage = () => {
-  const { items, removeItem, updateQuantity, getCartTotal, getCartCount } = useCart();
+  const { items, removeItem, updateQuantity, getCartCount } = useCart();
   const navigate = useNavigate();
   const [giftPackaging, setGiftPackaging] = useState(false);
   const [giftNote, setGiftNote] = useState('');
   const [recommendedProducts, setRecommendedProducts] = useState([]);
+  const [stockMap, setStockMap] = useState({});
 
   const GIFT_PACKAGING_PRICE = 149;
 
@@ -38,8 +39,90 @@ const CartPage = () => {
     }
   }, [items]);
 
+  useEffect(() => {
+    const fetchStock = async () => {
+      try {
+        const products = await getProducts();
+        const latestStockMap = {};
+
+        items.forEach((item) => {
+          const product = products.find((p) => p.id === item.id);
+
+          if (!product) {
+            latestStockMap[getCartStockKey(item)] = 0;
+            return;
+          }
+
+          if (item.selectedColorId || item.selectedFlavorId) {
+            const variants = product.variants || [];
+            const variant = variants.find(
+              (v) =>
+                v.is_active !== false &&
+                v.color_id === item.selectedColorId &&
+                v.flavor_id === item.selectedFlavorId
+            );
+
+            latestStockMap[getCartStockKey(item)] = variant ? (variant.stock || 0) : 0;
+          } else {
+            latestStockMap[getCartStockKey(item)] = product.stock || 0;
+          }
+        });
+
+        setStockMap(latestStockMap);
+      } catch (error) {
+        console.error('Error fetching stock:', error);
+      }
+    };
+
+    if (items.length > 0) {
+      fetchStock();
+    } else {
+      setStockMap({});
+    }
+  }, [items]);
+
+  const getItemEffectivePrice = (item) => {
+    return item.is_on_sale && (item.sale_price || item.discount_price)
+      ? (item.sale_price || item.discount_price)
+      : item.price;
+  };
+
+  const getOriginalSubtotal = () => {
+    return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getDiscountedSubtotal = () => {
+    return items.reduce((total, item) => total + (getItemEffectivePrice(item) * item.quantity), 0);
+  };
+
+  const getDiscountAmount = () => {
+    return getOriginalSubtotal() - getDiscountedSubtotal();
+  };
+
   const getFinalTotal = () => {
-    return getCartTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+    return getDiscountedSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+  };
+
+  const getCartItemKey = (item) => {
+    return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+  };
+
+  const getCartStockKey = (item) => getCartItemKey(item);
+
+  const getItemAvailableStock = (item) => {
+    return stockMap[getCartStockKey(item)] ?? item.stock ?? item.variantStock ?? 0;
+  };
+
+  const isItemAvailable = (item) => {
+    return getItemAvailableStock(item) > 0;
+  };
+
+  const isItemQuantityValid = (item) => {
+    return item.quantity <= getItemAvailableStock(item);
+  };
+
+  const hasInvalidCartItems = () => {
+    return items.some((item) => !isItemAvailable(item) || !isItemQuantityValid(item));
   };
 
   if (items.length === 0) {
@@ -71,15 +154,18 @@ const CartPage = () => {
             {/* Cart Items */}
             <div className="lg:col-span-2 space-y-6">
               {items.map((item) => {
-                const price = item.is_on_sale && item.sale_price ? item.sale_price : item.price;
-                const originalPrice = item.is_on_sale && item.sale_price ? item.price : null;
+                const price = getItemEffectivePrice(item);
+                const originalPrice = 
+                  item.is_on_sale && (item.sale_price || item.discount_price) 
+                  ? item.price 
+                  : null;
                 const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
                 
                 return (
                   <div 
-                    key={item.id}
+                    key={getCartItemKey(item)}
                     className="flex gap-6 p-6 bg-white rounded-xl card-shadow"
-                    data-testid={`cart-item-${item.id}`}
+                    data-testid={`cart-item-${getCartItemKey(item)}`}
                   >
                     {/* Image */}
                     <Link to={`/product/${item.id}`} className="flex-shrink-0">
@@ -103,11 +189,25 @@ const CartPage = () => {
                           {item.selectedColor && (
                             <p className="text-sm text-muted-foreground">Color: {item.selectedColor}</p>
                           )}
+                          {!isItemAvailable(item) ? (
+                            <p className="text-sm text-destructive font-medium">
+                              Out of Stock
+                            </p>
+                          ) : getItemAvailableStock(item) <= 5 ? (
+                            <p className="text-sm text-terracotta font-medium">
+                              Only {getItemAvailableStock(item)} left
+                            </p>
+                          ) : null}
+                          {isItemAvailable(item) && !isItemQuantityValid(item) && (
+                            <p className="text-sm text-destructive font-medium">
+                              Quantity exceeds available stock
+                            </p>
+                          )}
                         </div>
                         <button
-                          onClick={() => removeItem(item.id)}
+                          onClick={() => removeItem(getCartItemKey(item))}
                           className="text-muted-foreground hover:text-foreground transition-colors"
-                          data-testid={`cart-remove-${item.id}`}
+                          data-testid={`cart-remove-${getCartItemKey(item)}`}
                         >
                           <X className="h-5 w-5" strokeWidth={1.5} />
                         </button>
@@ -115,21 +215,29 @@ const CartPage = () => {
 
                       <div className="mt-auto flex items-end justify-between">
                         {/* Quantity */}
-                        <div className="flex items-center border border-border rounded-full">
+                        <div className="flex items-center border-border rounded-full">
                           <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            onClick={() => updateQuantity(getCartItemKey(item), item.quantity - 1)}
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
-                            data-testid={`cart-decrease-${item.id}`}
+                            data-testid={`cart-decrease-${getCartItemKey(item)}`}
                           >
                             <Minus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
-                          <span className="w-8 text-center text-sm" data-testid={`cart-quantity-${item.id}`}>
+
+                          <span className="w-8 text-center text-sm" data-testid={`cart-quantity-${getCartItemKey(item)}`}>
                             {item.quantity}
                           </span>
+
                           <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
-                            data-testid={`cart-increase-${item.id}`}
+                            onClick={() =>
+                              updateQuantity(
+                                getCartItemKey(item),
+                                Math.min(getItemAvailableStock(item), item.quantity + 1)
+                              )
+                            }
+                            className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
+                            disabled={!isItemAvailable(item) || item.quantity >= getItemAvailableStock(item)}
+                            data-testid={`cart-increase-${getCartItemKey(item)}`}
                           >
                             <Plus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
@@ -137,7 +245,7 @@ const CartPage = () => {
 
                         {/* Price */}
                         <div className="text-right">
-                          <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${item.id}`}>
+                          <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${getCartItemKey(item)}`}>
                             ₹{(price * item.quantity).toLocaleString()}
                           </p>
                           {originalPrice && (
@@ -202,14 +310,37 @@ const CartPage = () => {
                 <h2 className="font-heading text-xl mb-6">Order Summary</h2>
                 
                 <div className="space-y-4 mb-6">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal ({getCartCount()} items)</span>
-                    <span data-testid="cart-subtotal">₹{getCartTotal().toLocaleString()}</span>
-                  </div>
+                  {getDiscountAmount() > 0 ? (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Original Subtotal ({getCartCount()} items)</span>
+                      <span className="line-through text-muted-foreground">
+                        ₹{getOriginalSubtotal().toLocaleString()}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal ({getCartCount()} items)</span>
+                      <span>₹{getOriginalSubtotal().toLocaleString()}</span>
+                    </div>
+                  )}
+                  {getDiscountAmount() > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Discount</span>
+                      <span className="text-terracotta font-medium">
+                        ₹{getDiscountAmount().toLocaleString()} saved
+                      </span>
+                    </div>
+                  )}
                   {giftPackaging && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Gift Packaging</span>
                       <span>₹{GIFT_PACKAGING_PRICE}</span>
+                    </div>
+                  )}
+                  {getDiscountAmount() > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>₹{getDiscountedSubtotal().toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm">
@@ -229,9 +360,10 @@ const CartPage = () => {
                 <Button 
                   onClick={() => navigate('/checkout', { state: { giftPackaging, giftNote } })}
                   className="btn-primary w-full"
+                  disabled={hasInvalidCartItems()}
                   data-testid="proceed-to-checkout"
                 >
-                  Proceed to Checkout
+                  {hasInvalidCartItems() ? 'Cart Has Stock Issues' : 'Proceed to Checkout'}
                   <ArrowRight className="ml-2 h-4 w-4" strokeWidth={1.5} />
                 </Button>
 
