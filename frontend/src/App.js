@@ -13,7 +13,8 @@ import CheckoutPage from "./pages/CheckoutPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import AccountPage from "./pages/AccountPage";
+import AccountPage from "./pages/AccountPage";  
+import OrderDetailsPage from "./pages/account/OrderDetailsPage";
 import OrdersPage from "./pages/account/OrdersPage";
 import WishlistPage from "./pages/account/WishlistPage";
 import AddressesPage from "./pages/account/AddressesPage";
@@ -92,6 +93,7 @@ function AppRoutes() {
         <Route path="orders" element={<OrdersPage />} />
         <Route path="wishlist" element={<WishlistPage />} />
         <Route path="addresses" element={<AddressesPage />} />
+        <Route path="orders/:id" element={<OrderDetailsPage />} />
       </Route>
 
       {/* Admin Routes */}

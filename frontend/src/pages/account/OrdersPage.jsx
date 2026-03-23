@@ -81,18 +81,18 @@ const OrdersPage = () => {
               <span className={`text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(order.status)}`}>
                 {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
               </span>
-              <Link to={`/order-success/${order.id}`}>
-                <Button variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm">
+                <Link to={`/account/orders/${order.id}`} data-testid={`view-order-${order.id}`}>
                   <Eye className="h-4 w-4 mr-2" strokeWidth={1.5} />
                   View Details
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-4 mb-4">
             {order.items?.map((item, index) => (
-              <div key={index} className="flex items-center gap-3">
+              <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="flex items-center gap-3">
                 <img
                   src={item.product_image || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100'}
                   alt={item.product_name}

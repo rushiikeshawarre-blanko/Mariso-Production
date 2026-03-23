@@ -2,18 +2,25 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 
 const CartContext = createContext();
 
-const normalizeCartItem = (product, quantity =1) => ({
+const normalizeCartItem = (product, quantity = 1) => ({
   ...product,
   price: product.original_price ?? product.price,
+  discount_price: product.discount_price ?? null,
   sale_price: product.sale_price ?? null,
-  is_on_sale: Boolean(product.is_on_sale && product.sale_price),
+  is_on_sale: Boolean(product.is_on_sale && (product.sale_price != null || product.discount_price != null)),
   quantity,
 });
+
+const getCartItemKey = (item) => {
+  return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+};
 
 const cartReducer = (state, action) => {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const existingIndex = state.items.findIndex(item => item.id === action.payload.id);
+      const existingIndex = state.items.findIndex(
+        item => getCartItemKey(item) === getCartItemKey(action.payload)
+      );
       if (existingIndex >= 0) {
         const newItems = [...state.items];
         newItems[existingIndex] = {
@@ -29,17 +36,17 @@ const cartReducer = (state, action) => {
       };
     }
     case 'REMOVE_ITEM':
-      return { 
-        ...state, 
-        items: state.items.filter(item => item.id !== action.payload) 
+      return {
+        ...state,
+        items: state.items.filter(item => getCartItemKey(item) !== action.payload)
       };
     case 'UPDATE_QUANTITY': {
-      const newItems = state.items.map(item => 
-        item.id === action.payload.id 
+      const newItems = state.items.map(item =>
+        getCartItemKey(item) === action.payload.id
           ? { ...item, quantity: action.payload.quantity }
           : item
       );
-      return { ...state, items: newItems };
+      return { ...state, items: newItems.filter(item => item.quantity > 0) };
     }
     case 'CLEAR_CART':
       return { ...state, items: [] };
@@ -72,15 +79,15 @@ export const CartProvider = ({ children }) => {
     dispatch({ type: 'ADD_ITEM', payload: normalizedItem });
   };
 
-  const removeItem = (productId) => {
-    dispatch({ type: 'REMOVE_ITEM', payload: productId });
+  const removeItem = (cartItemKey) => {
+    dispatch({ type: 'REMOVE_ITEM', payload: cartItemKey });
   };
 
-  const updateQuantity = (productId, quantity) => {
+  const updateQuantity = (cartItemKey, quantity) => {
     if (quantity <= 0) {
-      removeItem(productId);
+      removeItem(cartItemKey);
     } else {
-      dispatch({ type: 'UPDATE_QUANTITY', payload: { id: productId, quantity } });
+      dispatch({ type: 'UPDATE_QUANTITY', payload: { id: cartItemKey, quantity } });
     }
   };
 
@@ -90,8 +97,11 @@ export const CartProvider = ({ children }) => {
 
   const getCartTotal = () => {
     return state.items.reduce((total, item) => {
-      const price = item.is_on_sale && item.sale_price ? item.sale_price : item.price;
-      return total + (price * item.quantity);
+      const discountedPrice =
+        item.is_on_sale && (item.sale_price || item.discount_price)
+          ? (item.sale_price || item.discount_price)
+          : item.price;
+      return total + (discountedPrice * item.quantity);
     }, 0);
   };
 

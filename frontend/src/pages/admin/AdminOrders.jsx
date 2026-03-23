@@ -3,7 +3,7 @@ import { getAllOrders, updateOrderStatus } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../components/ui/dialog';
 import { Eye, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,10 +33,10 @@ const AdminOrders = () => {
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       await updateOrderStatus(orderId, newStatus);
-      toast.success('Order status updated');
+      toast.success(`Order marked as ${newStatus}`);
       fetchOrders();
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder({ ...selectedOrder, status: newStatus });
+        setSelectedOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
       }
     } catch (error) {
       toast.error('Failed to update status');
@@ -52,6 +52,14 @@ const AdminOrders = () => {
       case 'delivered': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const allowedTransitions = {
+    pending: ['confirmed'],
+    confirmed: ['packed'],
+    packed: ['shipped'],
+    shipped: ['delivered'],
+    delivered: [],
   };
 
   const viewOrder = (order) => {
@@ -129,11 +137,14 @@ const AdminOrders = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="packed">Packed</SelectItem>
-                        <SelectItem value="shipped">Shipped</SelectItem>
-                        <SelectItem value="delivered">Delivered</SelectItem>
+                        <SelectItem value={order.status}>
+                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                        </SelectItem>
+                        {allowedTransitions[order.status]?.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -164,6 +175,9 @@ const AdminOrders = () => {
             <DialogTitle className="font-heading text-xl">
               Order #{selectedOrder?.id.slice(0, 8).toUpperCase()}
             </DialogTitle>
+            <DialogDescription>
+              View complete order details including customer information, items, and payment summary.
+            </DialogDescription>
           </DialogHeader>
           
           {selectedOrder && (
@@ -198,7 +212,7 @@ const AdminOrders = () => {
                 <h4 className="font-medium mb-3">Order Items</h4>
                 <div className="space-y-3">
                   {selectedOrder.items?.map((item, index) => (
-                    <div key={index} className="flex gap-4 items-center">
+                    <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="flex gap-4 items-center">
                       <img
                         src={item.product_image || 'https://via.placeholder.com/60'}
                         alt={item.product_name}
@@ -210,7 +224,7 @@ const AdminOrders = () => {
                           ₹{item.price?.toLocaleString()} × {item.quantity}
                         </p>
                       </div>
-                      <p className="font-medium">₹{(item.price * item.quantity).toLocaleString()}</p>
+                      <p className="font-medium">₹{(item.line_total ?? item.price * item.quantity).toLocaleString()}</p>
                     </div>
                   ))}
                 </div>
@@ -225,7 +239,7 @@ const AdminOrders = () => {
               {/* Payment Method */}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Payment Method</span>
-                <span className="uppercase">{selectedOrder.payment_method}</span>
+                <span className="capitalize">{selectedOrder.payment_method}</span>
               </div>
             </div>
           )}
