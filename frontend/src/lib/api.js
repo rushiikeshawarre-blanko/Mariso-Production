@@ -250,6 +250,16 @@ export const deleteProduct = async (productId) => {
   return response.data;
 };
 
+export const generateProductVariants = async (productId) => {
+  try {
+    const response = await axiosInstance.post(`/admin/products/${productId}/generate-variants`);
+    return response.data;
+  } catch (error) {
+    console.error('Error generating product variants:', error);
+    throw error;
+  }
+};
+
 // Admin Category Management
 export const createCategory = async (categoryData) => {
   const response = await axiosInstance.post(`/admin/categories`, categoryData);

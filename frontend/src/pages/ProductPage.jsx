@@ -196,7 +196,7 @@ const ProductPage = () => {
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
       selectedFlavorId: selectedFlavor?.id,
-      variantId: currentVariant?.id || `${selectedColor?.id || ''}-${selectedFlavor?.id || ''}`,
+      variantId: currentVariant?.id ?? null,
       variantStock: currentStock
     }, quantity);
     

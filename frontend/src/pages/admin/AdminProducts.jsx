@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getProducts, getCategories, createProduct, updateProduct, deleteProduct } from '../../lib/api';
+import { getProducts, getCategories, createProduct, updateProduct, deleteProduct, generateProductVariants } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
-const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -253,22 +253,13 @@ const AdminProducts = () => {
       // If editing, call the API to generate variants
       setGenerating(true);
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_BASE}/api/admin/products/${editingProduct.id}/generate-variants`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        if (response.ok) {
-          const updatedProduct = await response.json();
-          setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
-          toast.success('Variant combinations generated');
-        }
+        const updatedProduct = await generateProductVariants(editingProduct.id);
+        setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
+        toast.success('Variant combinations generated successfully');
       } catch (error) {
         console.error('Error generating variants:', error);
-        toast.error('Failed to generate variants');
+        const message = error.response?.data?.detail || 'Failed to generate variants';
+        toast.error(message);
       } finally {
         setGenerating(false);
       }
@@ -342,10 +333,15 @@ const AdminProducts = () => {
 
   const updateVariant = (index, field, value) => {
     const updatedVariants = [...formData.variants];
-    if (field === 'stock' || field === 'price_override') {
+    if (field === 'stock') {
       updatedVariants[index] = { 
         ...updatedVariants[index], 
-        [field]: value === '' ? (field === 'stock' ? 0 : null) : parseFloat(value) 
+        stock: value === '' ? 0 : parseInt(value, 10) || 0,
+      };
+    } else if (field === 'price_override') {
+      updatedVariants[index] = {
+        ...updatedVariants[index],
+        price_override: value === '' ? null : parseFloat(value)
       };
     } else if (field === 'is_active') {
       updatedVariants[index] = { ...updatedVariants[index], [field]: value };
@@ -367,6 +363,11 @@ const AdminProducts = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (formData.discount_price && parseFloat(formData.discount_price) > parseFloat(formData.price)) {
+      toast.error('Sale price cannot be greater than base price');
+      return;
+    }
     
     // Clean up color images (remove empty strings)
     const cleanedColorOptions = formData.color_options.map(color => ({
@@ -382,7 +383,7 @@ const AdminProducts = () => {
       discount_price: formData.discount_price ? parseFloat(formData.discount_price) : null,
       category_id: formData.category_id,
       sku: formData.sku,
-      stock: parseInt(formData.stock) || 0,
+      stock: parseInt(formData.stock, 10) || 0,
       images: formData.images.split(',').map(url => url.trim()).filter(Boolean),
       is_on_sale: formData.is_on_sale,
       is_featured: formData.is_featured,
@@ -410,10 +411,11 @@ const AdminProducts = () => {
         toast.success('Product created successfully');
       }
       setDialogOpen(false);
-      fetchData();
+      await fetchData();
     } catch (error) {
       console.error('Error saving product:', error);
-      toast.error('Failed to save product');
+      const message = error.response?.data?.detail || 'Failed to save product';
+      toast.error(message);
     }
   };
 
@@ -423,9 +425,10 @@ const AdminProducts = () => {
     try {
       await deleteProduct(productId);
       toast.success('Product deleted');
-      fetchData();
+      await fetchData();
     } catch (error) {
-      toast.error('Failed to delete product');
+      const meassage = error.response?.data?.detail || 'Failed to delete product';
+      toast.error(meassage);
     }
   };
 
@@ -456,6 +459,9 @@ const AdminProducts = () => {
               <DialogTitle className="font-heading text-xl">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
               </DialogTitle>
+              <DialogDescription>
+                Manage product details, variant options, pricing, and stock combinations.
+              </DialogDescription>
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -530,6 +536,8 @@ const AdminProducts = () => {
                         id="price"
                         name="price"
                         type="number"
+                        min="0"
+                        step="0.01"
                         value={formData.price}
                         onChange={handleChange}
                         required
@@ -543,6 +551,8 @@ const AdminProducts = () => {
                         id="discount_price"
                         name="discount_price"
                         type="number"
+                        min="0"
+                        step="0.01"
                         value={formData.discount_price}
                         onChange={handleChange}
                         className="mt-1"
@@ -555,10 +565,13 @@ const AdminProducts = () => {
                         id="stock"
                         name="stock"
                         type="number"
+                        min="0"
+                        step="1"
                         value={formData.stock}
                         onChange={handleChange}
                         className="mt-1"
                         placeholder="Used if no variants"
+                        disabled={formData.variants.length > 0}
                         data-testid="product-stock-input"
                       />
                     </div>
@@ -1104,6 +1117,8 @@ const AdminProducts = () => {
                               <TableCell>
                                 <Input
                                   type="number"
+                                  min="0"
+                                  step="0.01"
                                   value={variant.price_override ?? ''}
                                   onChange={(e) => updateVariant(index, 'price_override', e.target.value)}
                                   placeholder="Base"
@@ -1113,6 +1128,8 @@ const AdminProducts = () => {
                               <TableCell>
                                 <Input
                                   type="number"
+                                  min="0"
+                                  step="1"
                                   value={variant.stock ?? 0}
                                   onChange={(e) => updateVariant(index, 'stock', e.target.value)}
                                   className={`h-8 text-xs ${variant.stock === 0 ? 'border-destructive' : ''}`}
@@ -1154,13 +1171,15 @@ const AdminProducts = () => {
                       <div>
                         <span className="text-muted-foreground">Total Stock:</span>
                         <span className="font-medium ml-2">
-                          {formData.variants.reduce((sum, v) => sum + (v.stock || 0), 0)}
+                          {formData.variants
+                          .filter(v => v.is_active !== false)
+                          .reduce((sum, v) => sum + (v.stock || 0), 0)}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Out of Stock:</span>
                         <span className="font-medium ml-2 text-destructive">
-                          {formData.variants.filter(v => (v.stock || 0) === 0).length}
+                          {formData.variants.filter(v => v.is_active !== false && (v.stock || 0) === 0).length}
                         </span>
                       </div>
                     </div>

@@ -15,6 +15,7 @@ import bcrypt
 import random
 import string
 import base64
+from email_service import send_order_placed_email, send_order_status_email
 
 from bson import ObjectId
 
@@ -254,6 +255,7 @@ class OrderResponse(BaseModel):
     billing_city: str
     billing_postal_code: str
     payment_method: str
+    gift_packaging: bool = False
     total_price: float
     status: str
     created_at: str
@@ -281,8 +283,6 @@ def create_token(user_id: str, email: str, role: str) -> str:
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid token")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
@@ -399,8 +399,8 @@ def generate_variant_combinations(color_options: list, flavor_options: list, exi
     
     return existing_variants + new_variants
 
-def get_variant_stock(product: dict, variant_id: str = None, color_id: str = None, flavor_id: str = None) -> Optional[dict]:
-    """Get stock for a specific variant combination"""
+def get_variant(product: dict, variant_id: str = None, color_id: str = None, flavor_id: str = None) -> Optional[dict]:
+    """Return matching variant based on id or color/flavor combination."""
     variants = product.get('variants', [])
     
     # If no variants exist, use base product stock
@@ -889,27 +889,25 @@ async def generate_product_variants(product_id: str, admin: dict = Depends(get_a
 
 @api_router.get("/products/{product_id}/stock", response_model=dict)
 async def get_product_variant_stock(product_id: str, color_id: Optional[str] = None, flavor_id: Optional[str] = None):
-    """Get stock for a specific variant combination"""
+    """Return stock, availability, and variant details for a given product selection."""
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    stock = get_variant_stock(product, color_id, flavor_id)
-    
-    # Find variant details if exists
-    variant_info = None
-    for variant in product.get('variants', []):
-        if variant.get('color_id') == color_id and variant.get('flavor_id') == flavor_id:
-            variant_info = variant
-            break
-    
+
+    variant = get_variant(product, color_id=color_id, flavor_id=flavor_id)
+
+    if variant:
+        stock = variant.get("stock", 0)
+    else:
+        stock = product.get("stock", 0)
+
     return {
         "product_id": product_id,
         "color_id": color_id,
         "flavor_id": flavor_id,
         "stock": stock,
         "is_available": stock > 0,
-        "variant": variant_info
+        "variant": variant
     }
 
 # ==================== ORDER ROUTES ====================
@@ -922,14 +920,20 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
 
     if not order.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
-    
+
+    valid_payment_methods = ["upi", "card", "cod", "netbanking"]
+    if order.payment_method not in valid_payment_methods:
+        raise HTTPException(status_code=400, detail="Invalid payment method")
+
     items_with_details = []
+    product_map = {}
 
     for item in order.items:
         product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
 
         if not product:
             raise HTTPException(status_code=404, detail=f"Product with ID {item.product_id} not found")
+        product_map[item.product_id] = product
         
         variant_image = None
         variant_sku = None
@@ -942,13 +946,9 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
         )
 
         #Base/Default price
-        price = product.get('price')
+        price = product['price']
         if product.get('is_on_sale') and product.get('discount_price'):
             price = product['discount_price']
-
-            variant_stock = None
-            variant_image = None
-            variant_sku = None
 
         if selected_variant:
             variant_stock = selected_variant.get('stock', 0)
@@ -975,29 +975,25 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
                     )
         
         items_with_details.append({
-            "original_price": product['price'],
-            "price": price,
-            "quantity": item.quantity,
-            "line.total": price * item.quantity,
             "product_id": item.product_id,
             "variant_id": item.variant_id,
             "color_id": item.color_id,
             "flavor_id": item.flavor_id,
             "product_name": product['name'],
             "product_image": variant_image or (product['images'][0] if product.get('images') else ""),
+            "original_price": product['price'],
             "price": price,
             "quantity": item.quantity,
+            "line_total": price * item.quantity,
             "sku": variant_sku or product.get('sku', '')
         })
 
-    calculated_total = sum(
-        item['price'] * item['quantity'] for item in items_with_details
-        )
+    calculated_total = sum(item['line_total'] for item in items_with_details)
     if not items_with_details:
         raise HTTPException(status_code=400, detail="No valid items in order")
     
     for item in items_with_details:
-        product = await db.products.find_one({"id": item['product_id']}, {"_id": 0})
+        product = product_map[item['product_id']]
 
         #Handle variant stock 
         if item.get('variant_id') or item.get('color_id') or item.get('flavor_id'):
@@ -1031,7 +1027,10 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
             {"id": item['product_id']},
             {"$inc": {"stock": -item['quantity']}}
         )
-        
+
+
+    final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
+
     order_doc = {
         "id": order_id,
         "user_id": user['id'],
@@ -1043,10 +1042,9 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
         "billing_city": order.billing_city,
         "billing_postal_code": order.billing_postal_code,
         "payment_method": order.payment_method,
-        "final_total": calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0),
-        "status": "pending",
         "gift_packaging": order.gift_packaging,
-        "total_price": calculated_total,
+        "total_price": final_total,
+        "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.orders.insert_one(order_doc)
@@ -1055,9 +1053,10 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
     created_order['user_name'] = user['name']
     created_order['user_email'] = user['email']
 
-    validate_payment_methods = ["upi", "card", "cod", "netbanking"]
-    if order.payment_method not in validate_payment_methods:
-        raise HTTPException(status_code=400, detail="Invalid payment method")
+    try:
+        send_order_placed_email(created_order)
+    except Exception as e:
+        print(f"Failed to send order placed email: {e}")
     
     return serialize_mongo_value(created_order)
 
@@ -1094,6 +1093,23 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     valid_statuses = ["pending", "confirmed", "packed", "shipped", "delivered"]
     if status_update.status not in valid_statuses:
         raise HTTPException(status_code=400, detail="Invalid status")
+
+    existing_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    old_status = existing_order.get("status")
+    logger.info(f"DEBUG old_status={old_status}, requested_status={status_update.status}")
+    allowed_transitions = {
+        "pending": ["confirmed"],
+        "confirmed": ["packed"],
+        "packed": ["shipped"],
+        "shipped": ["delivered"],
+        "delivered": [],
+    }
+
+    if status_update.status != old_status and status_update.status not in allowed_transitions.get(old_status, []):
+        raise HTTPException(status_code=400, detail="Invalid status transition")
     
     await db.orders.update_one({"id": order_id}, {"$set": {"status": status_update.status}})
     
@@ -1105,6 +1121,15 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     if user:
         order['user_name'] = user['name']
         order['user_email'] = user['email']
+
+    if old_status != status_update.status:
+        logger.info("DEBUG status changed, attempting status email")
+        try:
+            send_order_status_email(order)
+        except Exception as e:
+            print(f"Failed to send status email: {e}")
+    else:
+        logger.info("DEBUG status did not change, skipping email")
     
     return serialize_mongo_value(order)
 
