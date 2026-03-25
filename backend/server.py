@@ -16,6 +16,8 @@ import random
 import string
 import base64
 from email_service import send_order_placed_email, send_order_status_email
+from whatsapp_service import send_order_placed_whatsapp, send_order_status_whatsapp
+from sms_service import send_order_placed_sms, send_order_status_sms
 
 from bson import ObjectId
 
@@ -27,6 +29,18 @@ def serialize_mongo_value(order_doc):
     if isinstance(order_doc, dict):
         return {key: serialize_mongo_value(val) for key, val in order_doc.items()}
     return order_doc
+
+def format_phone(phone: str) -> str:
+    phone = phone.strip()
+    phone = phone.replace(" ", "").replace("-", "")
+
+    if phone.startswith("+"):
+        return phone
+    
+    if phone.startswith("0"):
+        return "+91" + phone[1:]
+    
+    return f"+91{phone}"
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1031,12 +1045,14 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
 
     final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
 
+    formatted_phone = format_phone(order.billing_phone)
+
     order_doc = {
         "id": order_id,
         "user_id": user['id'],
         "items": items_with_details,
         "billing_name": order.billing_name,
-        "billing_phone": order.billing_phone,
+        "billing_phone": formatted_phone,
         "billing_email": order.billing_email,
         "billing_address": order.billing_address,
         "billing_city": order.billing_city,
@@ -1052,11 +1068,22 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
     created_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     created_order['user_name'] = user['name']
     created_order['user_email'] = user['email']
+    created_order["billing_phone"] = format_phone(created_order["billing_phone"])
 
     try:
         send_order_placed_email(created_order)
     except Exception as e:
         print(f"Failed to send order placed email: {e}")
+
+    try:
+        send_order_placed_whatsapp(created_order)
+    except Exception as e:
+        print(f"Failed to send order placed WhatsApp: {e}")
+
+    try:
+        send_order_placed_sms(created_order)
+    except Exception as e:
+        print(f"Failed to send order placed SMS: {e}")
     
     return serialize_mongo_value(created_order)
 
@@ -1121,15 +1148,27 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     if user:
         order['user_name'] = user['name']
         order['user_email'] = user['email']
+        
+    order["billing_phone"] = format_phone(order["billing_phone"])
 
     if old_status != status_update.status:
-        logger.info("DEBUG status changed, attempting status email")
+        logger.info("DEBUG status changed, attempting status notifications")
         try:
             send_order_status_email(order)
         except Exception as e:
             print(f"Failed to send status email: {e}")
+
+        try:
+            send_order_status_whatsapp(order)
+        except Exception as e:
+            print(f"Failed to send status WhatsApp: {e}")
+
+        try:
+            send_order_status_sms(order)
+        except Exception as e:
+            print(f"Failed to send status SMS: {e}")
     else:
-        logger.info("DEBUG status did not change, skipping email")
+        logger.info("DEBUG status did not change, skipping notifications")
     
     return serialize_mongo_value(order)
 
