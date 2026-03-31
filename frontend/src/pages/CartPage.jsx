@@ -1,10 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import { Textarea } from '../components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../components/ui/dialog';
 import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getProducts } from '../lib/api';
@@ -14,10 +21,17 @@ const CartPage = () => {
   const navigate = useNavigate();
   const [giftPackaging, setGiftPackaging] = useState(false);
   const [giftNote, setGiftNote] = useState('');
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [stockMap, setStockMap] = useState({});
 
   const GIFT_PACKAGING_PRICE = 149;
+
+  const getCartItemKey = useCallback((item) => {
+    return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+  }, []);
+
+  const getCartStockKey = useCallback((item) => getCartItemKey(item), [getCartItemKey]);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
@@ -79,7 +93,7 @@ const CartPage = () => {
     } else {
       setStockMap({});
     }
-  }, [items]);
+  }, [items, getCartStockKey]);
 
   const getItemEffectivePrice = (item) => {
     return item.is_on_sale && (item.sale_price || item.discount_price)
@@ -103,11 +117,16 @@ const CartPage = () => {
     return getDiscountedSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
 
-  const getCartItemKey = (item) => {
-    return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+  const confirmCheckout = () => {
+    setCheckoutDialogOpen(false);
+    navigate('/checkout', { state: { giftPackaging, giftNote } });
   };
 
-  const getCartStockKey = (item) => getCartItemKey(item);
+  const continueShoppingFromDialog = () => {
+    setCheckoutDialogOpen(false);
+    navigate('/shop');
+  };
+
 
   const getItemAvailableStock = (item) => {
     return stockMap[getCartStockKey(item)] ?? item.stock ?? item.variantStock ?? 0;
@@ -358,7 +377,7 @@ const CartPage = () => {
                 </div>
 
                 <Button 
-                  onClick={() => navigate('/checkout', { state: { giftPackaging, giftNote } })}
+                  onClick={() => setCheckoutDialogOpen(true)}
                   className="btn-primary w-full"
                   disabled={hasInvalidCartItems()}
                   data-testid="proceed-to-checkout"
@@ -407,6 +426,35 @@ const CartPage = () => {
           )}
         </div>
       </div>
+      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ready to checkout?</DialogTitle>
+            <DialogDescription>
+              You can proceed to checkout or continue shopping if you want to add more items.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button
+              className="flex-1"
+              onClick={confirmCheckout}
+              data-testid="confirm-checkout-button"
+            >
+              Proceed to Checkout
+            </Button>
+
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={continueShoppingFromDialog}
+              data-testid="continue-shopping-button"
+            >
+              Continue Shopping
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };

@@ -56,9 +56,13 @@ uvicorn server:app -–reload
 
 - Order creation and management
 
-- Email notifications:
-  - Order placed confirmation
-  - Order status updates
+- Multi-channel notification system:
+  - Email (Resend)
+  - SMS (Twilio)
+  - WhatsApp (Twilio)
+  - Triggered on:
+    - Order placement
+    - Order status updates (confirmed, packed, shipped, delivered)
 
 ## Inventory Handling
 

@@ -14,6 +14,8 @@ const ShopPage = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState(searchParams.get('search') || '');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [sortBy, setSortBy] = useState('newest');
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
@@ -30,8 +32,7 @@ const ShopPage = () => {
           }),
           getCategories()
         ]);
-        
-        // Sort products
+
         let sorted = [...prods];
         switch (sortBy) {
           case 'price-low':
@@ -46,7 +47,17 @@ const ShopPage = () => {
           default:
             sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         }
-        
+
+        if (searchQuery.trim()) {
+          const query = searchQuery.trim().toLowerCase();
+          sorted = sorted.filter((product) =>
+            product.name?.toLowerCase().includes(query) ||
+            product.description?.toLowerCase().includes(query) ||
+            product.short_description?.toLowerCase().includes(query) ||
+            product.sku?.toLowerCase().includes(query)
+          );
+        }
+
         setProducts(sorted);
         setCategories(cats);
       } catch (error) {
@@ -55,42 +66,53 @@ const ShopPage = () => {
         setLoading(false);
       }
     };
-    
+
     fetchData();
-  }, [selectedCategory, showOnSale, sortBy]);
+  }, [selectedCategory, showOnSale, sortBy, searchQuery]);
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
+    const params = new URLSearchParams(searchParams);
     if (categoryId) {
-      searchParams.set('category', categoryId);
+      params.set('category', categoryId);
     } else {
-      searchParams.delete('category');
+      params.delete('category');
     }
-    setSearchParams(searchParams);
+    setSearchParams(params);
   };
 
   const handleSaleToggle = (checked) => {
     setShowOnSale(checked);
+    const params = new URLSearchParams(searchParams);
     if (checked) {
-      searchParams.set('sale', 'true');
+      params.set('sale', 'true');
     } else {
-      searchParams.delete('sale');
+      params.delete('sale');
     }
-    setSearchParams(searchParams);
+    setSearchParams(params);
+  };
+
+  const clearSearch = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('search');
+    setSearchInput('');
+    setSearchQuery('');
+    setSearchParams(params);
   };
 
   const clearFilters = () => {
     setSelectedCategory('');
     setShowOnSale(false);
     setSortBy('newest');
+    setSearchInput('');
+    setSearchQuery('');
     setSearchParams({});
   };
 
-  const activeFiltersCount = (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0);
+  const activeFiltersCount = (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (searchQuery ? 1 : 0);
 
   const FilterContent = () => (
     <div className="space-y-8">
-      {/* Categories */}
       <div>
         <h3 className="font-heading text-lg mb-4">Categories</h3>
         <div className="space-y-3">
@@ -118,7 +140,6 @@ const ShopPage = () => {
         </div>
       </div>
 
-      {/* Sale */}
       <div>
         <h3 className="font-heading text-lg mb-4">Special Offers</h3>
         <label className="flex items-center gap-3 cursor-pointer">
@@ -131,7 +152,6 @@ const ShopPage = () => {
         </label>
       </div>
 
-      {/* Clear Filters */}
       {activeFiltersCount > 0 && (
         <Button
           variant="outline"
@@ -151,27 +171,24 @@ const ShopPage = () => {
     <Layout>
       <div className="pt-32 pb-24 min-h-screen" data-testid="shop-page">
         <div className="max-w-[1440px] mx-auto container-padding">
-          {/* Header */}
-          <div className="mb-12">
-            <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-4">
-              {selectedCategoryName || 'All Products'}
-            </h1>
-            <p className="text-muted-foreground">
-              {loading ? 'Loading...' : `${products.length} products`}
-            </p>
+          <div className="mb-12 space-y-6">
+            <div>
+              <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-4">
+                {selectedCategoryName || 'All Products'}
+              </h1>
+              <p className="text-muted-foreground">
+                {loading ? 'Loading...' : `${products.length} products`}
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-12">
-            {/* Desktop Filters */}
             <aside className="hidden lg:block w-64 flex-shrink-0">
               <FilterContent />
             </aside>
 
-            {/* Products */}
             <div className="flex-1">
-              {/* Toolbar */}
               <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-                {/* Mobile Filter Button */}
                 <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
                   <SheetTrigger asChild>
                     <Button variant="outline" className="lg:hidden" data-testid="mobile-filters-button">
@@ -194,8 +211,15 @@ const ShopPage = () => {
                   </SheetContent>
                 </Sheet>
 
-                {/* Active Filters */}
-                <div className="hidden lg:flex items-center gap-2">
+                <div className="hidden lg:flex items-center gap-2 flex-wrap">
+                  {searchQuery && (
+                    <span className="inline-flex items-center gap-1 bg-sage/30 text-sm px-3 py-1 rounded-full">
+                      Search: {searchQuery}
+                      <button onClick={clearSearch} data-testid="remove-search-filter">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
                   {selectedCategory && (
                     <span className="inline-flex items-center gap-1 bg-clay/30 text-sm px-3 py-1 rounded-full">
                       {selectedCategoryName}
@@ -214,7 +238,6 @@ const ShopPage = () => {
                   )}
                 </div>
 
-                {/* Sort */}
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-[180px]" data-testid="sort-select">
                     <SelectValue placeholder="Sort by" />
@@ -228,7 +251,6 @@ const ShopPage = () => {
                 </Select>
               </div>
 
-              {/* Product Grid */}
               {loading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -241,7 +263,9 @@ const ShopPage = () => {
                 </div>
               ) : products.length === 0 ? (
                 <div className="text-center py-16">
-                  <p className="text-muted-foreground mb-4">No products found</p>
+                  <p className="text-muted-foreground mb-4">
+                    {searchQuery ? `No products found for "${searchQuery}"` : 'No products found'}
+                  </p>
                   <Button onClick={clearFilters} variant="outline" data-testid="clear-filters-empty">
                     Clear Filters
                   </Button>

@@ -4,6 +4,7 @@ import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,10 +13,23 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../ui/dialog';
+import { searchProducts } from '../../lib/api';
 
 export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const { getCartCount } = useCart();
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -29,6 +43,31 @@ export const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    const query = searchInput.trim();
+
+    if ((!searchOpen && !mobileSearchOpen) || !query) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const results = await searchProducts(query);
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Failed to search products:', error);
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchInput, searchOpen, mobileSearchOpen]);
+
   const navLinks = [
     { name: 'Shop', href: '/shop' },
     { name: 'Candles', href: '/shop?category=container-candles' },
@@ -39,6 +78,46 @@ export const Navbar = () => {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleSearchSubmit = () => {
+    const query = searchInput.trim();
+    if (!query) return;
+
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+    setSearchInput('');
+    setSearchResults([]);
+    navigate(`/shop?search=${encodeURIComponent(query)}`);
+  };
+
+  const handleSuggestionClick = (productId) => {
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+    setSearchInput('');
+    setSearchResults([]);
+    navigate(`/product/${productId}`);
+  };
+
+  const handleMobileSearchOpenChange = (open) => {
+    setMobileSearchOpen(open);
+    if (!open) {
+      setSearchInput('');
+      setSearchResults([]);
+      setSearchLoading(false);
+    }
+  };
+
+  const toggleDesktopSearch = () => {
+    setSearchOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSearchInput('');
+        setSearchResults([]);
+        setSearchLoading(false);
+      }
+      return next;
+    });
   };
 
   const isHomePage = location.pathname === '/';
@@ -63,7 +142,7 @@ export const Navbar = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-8 flex-1 justify-center">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
@@ -77,13 +156,79 @@ export const Navbar = () => {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 relative">
+            {searchOpen && (
+              <div
+                className="hidden md:block absolute right-full mr-2 top-1/2 -translate-y-1/2 w-[360px] z-40"
+                data-testid="desktop-search-panel"
+              >
+                <div className="flex items-center gap-2 rounded-lg bg-background/95 backdrop-blur-sm">
+                  <Input
+                    autoFocus
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSearchSubmit();
+                      }
+                    }}
+                    placeholder="Search candles, homewares, or gifts"
+                    data-testid="navbar-inline-search-input"
+                  />
+                  <Button onClick={handleSearchSubmit} data-testid="navbar-inline-search-submit">
+                    Search
+                  </Button>
+                </div>
+
+                {searchLoading && (
+                  <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground shadow-lg z-50">
+                    Searching...
+                  </div>
+                )}
+
+                {!searchLoading && searchInput.trim() && searchResults.length === 0 && (
+                  <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground shadow-lg z-50">
+                    No matching products found.
+                  </div>
+                )}
+
+                {!searchLoading && searchResults.length > 0 && (
+                  <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background divide-y divide-border overflow-hidden shadow-lg z-50">
+                    {searchResults.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
+                        onClick={() => handleSuggestionClick(product.id)}
+                        data-testid={`navbar-inline-search-result-${product.id}`}
+                      >
+                        <div className="font-medium text-foreground">{product.name}</div>
+                        <div className="text-sm text-muted-foreground line-clamp-1">
+                          {product.short_description || product.description || product.sku || 'View product'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {/* Search - Hidden on mobile */}
             <Button 
               variant="ghost" 
               size="icon" 
               className="hidden md:flex"
               data-testid="search-button"
+              onClick={toggleDesktopSearch}
+            >
+              {searchOpen ? <X className="h-5 w-5" strokeWidth={1.5} /> : <Search className="h-5 w-5" strokeWidth={1.5} />}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              data-testid="mobile-search-button"
+              onClick={() => setMobileSearchOpen(true)}
             >
               <Search className="h-5 w-5" strokeWidth={1.5} />
             </Button>
@@ -212,6 +357,78 @@ export const Navbar = () => {
           </div>
         </div>
       </div>
+      <Dialog open={mobileSearchOpen} onOpenChange={handleMobileSearchOpenChange}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Search products</DialogTitle>
+            <DialogDescription>
+              Search by product name, description, or SKU.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                autoFocus
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearchSubmit();
+                  }
+                }}
+                placeholder="Search candles, homewares, or gifts"
+                data-testid="navbar-search-input"
+              />
+              <Button onClick={handleSearchSubmit} data-testid="navbar-search-submit">
+                Search
+              </Button>
+            </div>
+
+            {searchLoading && (
+              <p className="text-sm text-muted-foreground">Searching...</p>
+            )}
+
+            {!searchLoading && searchInput.trim() && searchResults.length === 0 && (
+              <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                No matching products found.
+              </div>
+            )}
+
+            {!searchLoading && searchResults.length > 0 && (
+              <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                {searchResults.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSuggestionClick(product.id)}
+                    data-testid={`navbar-search-result-${product.id}`}
+                  >
+                    <div className="font-medium text-foreground">{product.name}</div>
+                    <div className="text-sm text-muted-foreground line-clamp-1">
+                      {product.short_description || product.description || product.sku || 'View product'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {searchInput.trim() && (
+              <div className="pt-2 border-t border-border">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start"
+                  onClick={handleSearchSubmit}
+                  data-testid="navbar-search-view-all"
+                >
+                  View all results for “{searchInput.trim()}”
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </nav>
   );
 };

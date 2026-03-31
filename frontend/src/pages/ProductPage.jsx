@@ -40,13 +40,17 @@ const ProductPage = () => {
     const flavorId = selectedFlavor?.id || null;
     
     for (const variant of variants) {
-      if (variant.color_id === colorId && variant.flavor_id === flavorId) {
+      if (
+        variant.is_active !== false &&
+        variant.color_id === colorId && 
+        variant.flavor_id === flavorId
+      ) {
         return variant.stock ?? 0;
       }
     }
     
-    // Fallback to base stock if no match found
-    return product.stock || 0;
+    // If variants exist but no active matching combination is found, treat as unavailable
+    return 0;
   }, [product, selectedColor, selectedFlavor]);
 
   // Get current variant info
@@ -57,7 +61,9 @@ const ProductPage = () => {
     const flavorId = selectedFlavor?.id || null;
     
     return product.variants.find(v => 
-      v.color_id === colorId && v.flavor_id === flavorId
+      v.is_active !== false &&
+      v.color_id === colorId && 
+      v.flavor_id === flavorId
     ) || null;
   }, [product, selectedColor, selectedFlavor]);
 
@@ -166,7 +172,7 @@ const ProductPage = () => {
       price: product.price,
       discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
       sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
-      is_on_sale: Boolean(currentVariant?.price_override ?? (product.is_on_sale && product.discount_price)),
+      is_on_sale: Boolean((currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? product.price) < product.price),
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
@@ -191,7 +197,7 @@ const ProductPage = () => {
       price: product.price,
       discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
       sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
-      is_on_sale: Boolean(currentVariant?.price_override ?? (product.is_on_sale && product.discount_price)),
+      is_on_sale: Boolean((currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? product.price) < product.price),
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
@@ -213,7 +219,8 @@ const ProductPage = () => {
       setIsWishlisted(true);
       toast.success('Added to wishlist');
     } catch (error) {
-      toast.error('Failed to add to wishlist');
+      const message = error.response?.data?.message || 'Failed to add to wishlist';
+      toast.error(message);
     }
   };
 
@@ -222,7 +229,7 @@ const ProductPage = () => {
     if (!product) return 0;
     
     // Check for variant-specific price
-    if (currentVariant?.price_override) {
+    if (currentVariant?.price_override != null) {
       return currentVariant.price_override;
     }
     

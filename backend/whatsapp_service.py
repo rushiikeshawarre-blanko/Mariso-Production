@@ -31,9 +31,16 @@ def send_order_placed_whatsapp(order: dict):
     order_short_id = str(order.get("id", ""))[:8].upper()
     total_price = float(order.get("total_price", 0) or 0)
 
+    order_link = f"http://localhost:3000/account/orders/{order.get('id')}"
+
     message = (
-        f"Hi {customer_name}, your Mariso order {order_short_id} has been placed successfully. "
-        f"Total: ₹{total_price:,.2f}. We’ll keep you updated on the status."
+        f"Hello {customer_name} 💐\n\n"
+        f"Your Mariso order {order_short_id} has been placed successfully ✨\n\n"
+        f"Total: ₹{total_price:,.2f}\n\n"
+        f"We’re excited to prepare something beautiful for you 🌸\n\n"
+        f"Track your order anytime here:\n"
+        f"👉 {order_link}\n\n"
+        f"We’ll keep you updated on every step."
     )
 
     send_whatsapp(phone, message)
@@ -49,8 +56,35 @@ def send_order_status_whatsapp(order: dict):
     order_short_id = str(order.get("id", ""))[:8].upper()
     status = str(order.get("status", "")).capitalize()
 
-    message = (
-        f"Hi {customer_name}, your Mariso order {order_short_id} is now {status}."
+    order_link = f"http://localhost:3000/account/orders/{order.get('id')}"
+
+    status_messages = {
+        "Confirmed": (
+            f"Hello {customer_name} 💐\n\n"
+            f"Your Mariso order {order_short_id} has been confirmed ✨\n\n"
+            f"We’re carefully preparing your order to make it perfect 🌸\n\n"
+            f"Track your order anytime here:\n"
+            f"👉 {order_link}\n\n"
+            f"We’ll keep you updated on every step."
+        ),
+        "Shipped": (
+            f"Hello {customer_name} 🚚\n\n"
+            f"Great news! Your Mariso order {order_short_id} has been shipped ✨\n\n"
+            f"It’s on the way and will reach you soon 🌸\n\n"
+            f"Track your order here:\n"
+            f"👉 {order_link}"
+        ),
+        "Delivered": (
+            f"Hello {customer_name} ✨\n\n"
+            f"Your Mariso order {order_short_id} has been delivered 💐\n\n"
+            f"We hope it brings a smile to your day 🌸\n\n"
+            f"Thank you for choosing Mariso ❤️"
+        ),
+    }
+
+    message = status_messages.get(
+        status,
+        f"Hello {customer_name}, your Mariso order {order_short_id} is now {status}."
     )
 
     send_whatsapp(phone, message)

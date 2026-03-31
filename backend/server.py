@@ -1079,11 +1079,6 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
         send_order_placed_whatsapp(created_order)
     except Exception as e:
         print(f"Failed to send order placed WhatsApp: {e}")
-
-    try:
-        send_order_placed_sms(created_order)
-    except Exception as e:
-        print(f"Failed to send order placed SMS: {e}")
     
     return serialize_mongo_value(created_order)
 
@@ -1148,25 +1143,30 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     if user:
         order['user_name'] = user['name']
         order['user_email'] = user['email']
-        
+
     order["billing_phone"] = format_phone(order["billing_phone"])
 
     if old_status != status_update.status:
-        logger.info("DEBUG status changed, attempting status notifications")
-        try:
-            send_order_status_email(order)
-        except Exception as e:
-            print(f"Failed to send status email: {e}")
+        logger.info("DEBUG status changed, applying notification strategy")
 
-        try:
-            send_order_status_whatsapp(order)
-        except Exception as e:
-            print(f"Failed to send status WhatsApp: {e}")
+        status = status_update.status
 
-        try:
-            send_order_status_sms(order)
-        except Exception as e:
-            print(f"Failed to send status SMS: {e}")
+        # EMAIL → send for major lifecycle events
+        if status in ["confirmed", "shipped", "delivered"]:
+            try:
+                send_order_status_email(order)
+            except Exception as e:
+                print(f"Failed to send status email: {e}")
+
+        # WHATSAPP → only high-engagement events
+        if status in ["shipped", "delivered"]:
+            try:
+                send_order_status_whatsapp(order)
+            except Exception as e:
+                print(f"Failed to send status WhatsApp: {e}")
+
+        # SMS → disable for now (keep only for OTP/fallback later)
+
     else:
         logger.info("DEBUG status did not change, skipping notifications")
     

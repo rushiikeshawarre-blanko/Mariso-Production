@@ -26,6 +26,25 @@ export const getProducts = async (params = {}) => {
   }
 };
 
+export const searchProducts = async (query) => {
+  const trimmedQuery = query?.trim().toLowerCase();
+
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const products = await getProducts();
+
+  return (products || [])
+    .filter((product) =>
+      product.name?.toLowerCase().includes(trimmedQuery) ||
+      product.description?.toLowerCase().includes(trimmedQuery) ||
+      product.short_description?.toLowerCase().includes(trimmedQuery) ||
+      product.sku?.toLowerCase().includes(trimmedQuery)
+    )
+    .slice(0, 6);
+};
+
 export const getProductsByCategory = async (categoryId, params = {}) => {
   try {
     const response = await axiosInstance.get(`/products`, { 
