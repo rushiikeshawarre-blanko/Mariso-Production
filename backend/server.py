@@ -15,9 +15,8 @@ import bcrypt
 import random
 import string
 import base64
-from email_service import send_order_placed_email, send_order_status_email
-from whatsapp_service import send_order_placed_whatsapp, send_order_status_whatsapp
-from sms_service import send_order_placed_sms, send_order_status_sms
+from email_service import send_order_status_email
+from whatsapp_service import send_order_status_whatsapp
 
 from bson import ObjectId
 
@@ -1060,7 +1059,7 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
         "payment_method": order.payment_method,
         "gift_packaging": order.gift_packaging,
         "total_price": final_total,
-        "status": "pending",
+        "status": "confirmed",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.orders.insert_one(order_doc)
@@ -1071,14 +1070,14 @@ async def create_order(order: OrderCreate, user: dict = Depends(get_current_user
     created_order["billing_phone"] = format_phone(created_order["billing_phone"])
 
     try:
-        send_order_placed_email(created_order)
+        send_order_status_email(created_order)
     except Exception as e:
-        print(f"Failed to send order placed email: {e}")
+        print(f"Failed to send confirmed email: {e}")
 
     try:
-        send_order_placed_whatsapp(created_order)
+        send_order_status_whatsapp(created_order)
     except Exception as e:
-        print(f"Failed to send order placed WhatsApp: {e}")
+        print(f"Failed to send confirmed WhatsApp: {e}")
     
     return serialize_mongo_value(created_order)
 
@@ -1121,7 +1120,7 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         raise HTTPException(status_code=404, detail="Order not found")
 
     old_status = existing_order.get("status")
-    logger.info(f"DEBUG old_status={old_status}, requested_status={status_update.status}")
+    logger.info(f"STATUS CHANGE: {old_status} → {status_update.status}")
     allowed_transitions = {
         "pending": ["confirmed"],
         "confirmed": ["packed"],
@@ -1151,21 +1150,20 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
 
         status = status_update.status
 
-        # EMAIL → send for major lifecycle events
-        if status in ["confirmed", "shipped", "delivered"]:
+        # EMAIL → send only for shipped and delivered from admin status updates.
+        # Confirmed is already sent at checkout.
+        if status in ["shipped", "delivered"]:
             try:
                 send_order_status_email(order)
             except Exception as e:
                 print(f"Failed to send status email: {e}")
 
-        # WHATSAPP → only high-engagement events
-        if status in ["shipped", "delivered"]:
+        # WHATSAPP → send for packed, shipped, and delivered.
+        if status in ["packed", "shipped", "delivered"]:
             try:
                 send_order_status_whatsapp(order)
             except Exception as e:
                 print(f"Failed to send status WhatsApp: {e}")
-
-        # SMS → disable for now (keep only for OTP/fallback later)
 
     else:
         logger.info("DEBUG status did not change, skipping notifications")

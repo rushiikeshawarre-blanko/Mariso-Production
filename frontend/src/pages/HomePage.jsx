@@ -11,6 +11,7 @@ const HomePage = () => {
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [bestsellers, setBestsellers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hoveredButton, setHoveredButton] = useState(null);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -63,9 +64,9 @@ const HomePage = () => {
           <img
             src="https://images.unsplash.com/photo-1759157273068-42e6d441f772?crop=entropy&cs=srgb&fm=jpg&q=85"
             alt="Luxury candles"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover object-[center_62%] scale-105 -translate-x-14"
           />
-          <div className="absolute inset-0 bg-[#F8F5F1]/40" />
+          <div className="absolute inset-0 bg-[#F8F5F1]/50" />
         </div>
 
         {/* Content */}
@@ -80,15 +81,33 @@ const HomePage = () => {
             <p className="text-lg md:text-xl text-foreground/80 mb-10 font-serif-accent italic">
               Designed to Glow with Your Space
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
               <Link to="/shop?category=container-candles">
-                <Button className="btn-primary min-w-[200px]" data-testid="hero-shop-candles">
-                  Shop Candles
+                <Button
+                  className={`min-w-[200px] rounded-full transition-all duration-200 ${
+                    hoveredButton === 'homewares'
+                      ? 'border border-black text-black bg-transparent'
+                      : 'bg-black text-white'
+                  }`}
+                  onMouseEnter={() => setHoveredButton('candles')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  data-testid="hero-shop-candles"
+                >
+                  SHOP CANDLES
                 </Button>
               </Link>
               <Link to="/shop">
-                <Button className="btn-secondary min-w-[200px]" data-testid="hero-shop-homewares">
-                  Shop Homewares
+                <Button
+                  className={`min-w-[200px] rounded-full transition-all duration-200 ${
+                    hoveredButton === 'homewares'
+                      ? 'bg-black text-white'
+                      : 'border border-black text-black bg-transparent'
+                  }`}
+                  onMouseEnter={() => setHoveredButton('homewares')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  data-testid="hero-shop-homewares"
+                >
+                  SHOP HOMEWARES
                 </Button>
               </Link>
             </div>
