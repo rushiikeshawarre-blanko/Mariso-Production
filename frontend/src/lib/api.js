@@ -6,14 +6,31 @@ const axiosInstance = axios.create({
   baseURL: API,
 });
 
-axiosInstance.interceptors.request.use(config => {
-  const token = localStorage.getItem('mariso_token');
-  config.headers = config.headers || {};
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+let accessTokenGetter = null;
+
+export const setAccessTokenGetter = (getter) => {
+  accessTokenGetter = getter;
+};
+
+axiosInstance.interceptors.request.use(
+  async (config) => {
+    config.headers = config.headers || {};
+
+    if (accessTokenGetter) {
+      try {
+        const token = await accessTokenGetter();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (error) {
+        console.warn('Failed to get Auth0 access token:', error);
+      }
+    }
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 // Products
 export const getProducts = async (params = {}) => {
@@ -202,9 +219,11 @@ export const getAddresses = async () => {
 };
 
 // Admin APIs
-export const getDashboardStats = async () => {
+export const getDashboardStats = async (params = {}) => {
   try {
-    const response = await axiosInstance.get(`/admin/dashboard`);
+    const response = await axiosInstance.get(`/admin/dashboard`, {
+      params,
+    });
     return response.data;
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);

@@ -3,19 +3,25 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { User, Package, Heart, MapPin, LogOut } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 import { getUserOrders, getWishlist } from '../lib/api';
 
 const AccountPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loginWithRedirect, logout: auth0Logout, isLoading } = useAuth0();
   const [orders, setOrders] = useState([]);
   const [wishlist, setWishlist] = useState([]);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      navigate('/login?redirect=/account');
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
+      loginWithRedirect({
+        appState: {
+          returnTo: '/account',
+        },
+      });
       return;
     }
 
@@ -33,11 +39,14 @@ const AccountPage = () => {
     };
 
     fetchData();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, isLoading, loginWithRedirect]);
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    auth0Logout({
+      logoutParams: {
+        returnTo: window.location.origin,
+      },
+    });
   };
 
   const navItems = [
@@ -125,6 +134,10 @@ const AccountPage = () => {
       </div>
     </div>
   );
+
+  if (isLoading || !isAuthenticated) {
+    return null;
+  }
 
   return (
     <Layout>

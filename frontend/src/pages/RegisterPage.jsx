@@ -1,27 +1,28 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useAuth0 } from '@auth0/auth0-react';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 const RegisterPage = () => {
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
-  const navigate = useNavigate();
-  const { register } = useAuth();
-  
-  const [loading, setLoading] = useState(false);
+  const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
+
   const [showPassword, setShowPassword] = useState(false);
-  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: ''
   });
+
+  if (isAuthenticated) {
+    return <Navigate to={redirect} replace />;
+  }
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -29,6 +30,7 @@ const RegisterPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!formData.name || !formData.email || !formData.password) {
       toast.error('Please fill in all fields');
       return;
@@ -39,15 +41,18 @@ const RegisterPage = () => {
       return;
     }
 
-    setLoading(true);
     try {
-      await register(formData.name, formData.email, formData.password);
-      toast.success('Account created successfully!');
-      navigate(redirect);
+      await loginWithRedirect({
+        appState: {
+          returnTo: redirect,
+        },
+        authorizationParams: {
+          screen_hint: 'signup',
+          login_hint: formData.email,
+        },
+      });
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create account');
-    } finally {
-      setLoading(false);
+      toast.error('Unable to continue to secure sign up');
     }
   };
 
@@ -133,10 +138,10 @@ const RegisterPage = () => {
               <Button
                 type="submit"
                 className="btn-primary w-full"
-                disabled={loading}
+                disabled={isLoading}
                 data-testid="register-submit"
               >
-                {loading ? 'Creating account...' : 'Create Account'}
+                {isLoading ? 'Redirecting...' : 'Create Account'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </form>

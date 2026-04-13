@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 import { createOrder } from '../lib/api';
 import { toast } from 'sonner';
 import { CreditCard, Smartphone, Building2, Banknote, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star } from 'lucide-react';
@@ -15,7 +15,7 @@ const CheckoutPage = () => {
   const location = useLocation();
   const { giftPackaging = false, giftNote = '' } = location.state || {};
   const { items, clearCart } = useCart();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
@@ -60,9 +60,9 @@ const CheckoutPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!isAuthenticated()) {
-      toast.error('Please login to place an order');
-      navigate('/login?redirect=/checkout');
+    if (!isAuthenticated) {
+      toast.error('Please sign in to place an order');
+      loginWithRedirect();
       return;
     }
 

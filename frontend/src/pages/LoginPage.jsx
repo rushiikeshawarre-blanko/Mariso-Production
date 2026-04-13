@@ -1,31 +1,33 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useAuth0 } from '@auth0/auth0-react';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '../components/ui/input-otp';
-import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import googleIcon from '../assets/google-icon.svg';
 
 const LoginPage = () => {
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
-  const navigate = useNavigate();
-  const { login, requestOTP, verifyOTP } = useAuth();
-  
+  const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
+
   const [activeTab, setActiveTab] = useState('password');
-  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);  
   const [otp, setOtp] = useState('');
-  
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
+
+  if (isAuthenticated) {
+    return <Navigate to={redirect} replace />;
+  }
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -33,61 +35,47 @@ const LoginPage = () => {
 
   const handlePasswordLogin = async (e) => {
     e.preventDefault();
+
     if (!formData.email || !formData.password) {
       toast.error('Please fill in all fields');
       return;
     }
 
-    setLoading(true);
     try {
-      await login(formData.email, formData.password);
-      toast.success('Welcome back!');
-      navigate(redirect);
+      await loginWithRedirect({
+        appState: {
+          returnTo: redirect,
+        },
+        authorizationParams: {
+          login_hint: formData.email,
+        },
+      });
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Invalid email or password');
-    } finally {
-      setLoading(false);
+      toast.error('Unable to continue to secure sign in');
     }
   };
 
   const handleRequestOTP = async (e) => {
     e.preventDefault();
+
     if (!formData.email) {
       toast.error('Please enter your email');
       return;
     }
 
-    setLoading(true);
-    try {
-      const response = await requestOTP(formData.email);
-      setOtpSent(true);
-      toast.success('OTP sent to your email');
-      // For demo, show the OTP
-      toast.info(`Demo OTP: ${response.otp}`, { duration: 10000 });
-    } catch (error) {
-      toast.error('Failed to send OTP');
-    } finally {
-      setLoading(false);
-    }
+    setOtpSent(true);
+    toast.info('OTP login is not enabled yet. Please continue with Password sign in for now.');
   };
 
   const handleVerifyOTP = async (e) => {
     e.preventDefault();
+
     if (!otp || otp.length !== 6) {
       toast.error('Please enter a valid 6-digit OTP');
       return;
     }
 
-    setLoading(true);
-    try {
-      await verifyOTP(formData.email, otp);
-      toast.success('Welcome!');
-      navigate(redirect);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Invalid OTP');
-    } finally {
-      setLoading(false);
-    }
+    toast.info('OTP login is not enabled yet. Please use Password sign in for now.');
   };
 
   return (
@@ -167,11 +155,38 @@ const LoginPage = () => {
                   <Button
                     type="submit"
                     className="btn-primary w-full"
-                    disabled={loading}
+                    disabled={isLoading}
                     data-testid="login-submit"
                   >
-                    {loading ? 'Signing in...' : 'Sign In'}
+                    {isLoading ? 'Redirecting...' : 'Sign In'}
                     <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+
+                  <div className="flex items-center my-4">
+                    <div className="flex-grow border-t" />
+                    <span className="mx-3 text-sm text-muted-foreground">OR</span>
+                    <div className="flex-grow border-t" />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() =>
+                      loginWithRedirect({
+                        appState: { returnTo: redirect },
+                        authorizationParams: {
+                          connection: 'google-oauth2'
+                        }
+                      })
+                    }
+                  >
+                    <img
+                      src={googleIcon}
+                      alt="Google"
+                      className="h-5 w-5 mr-2"
+                    />
+                    Continue with Google
                   </Button>
                 </form>
               </TabsContent>
@@ -196,10 +211,10 @@ const LoginPage = () => {
                     <Button
                       type="submit"
                       className="btn-primary w-full"
-                      disabled={loading}
+                      disabled={isLoading}
                       data-testid="request-otp"
                     >
-                      {loading ? 'Sending...' : 'Send OTP'}
+                      {isLoading ? 'Redirecting...' : 'Continue'}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </form>
@@ -229,10 +244,10 @@ const LoginPage = () => {
                     <Button
                       type="submit"
                       className="btn-primary w-full"
-                      disabled={loading}
+                      disabled={isLoading}
                       data-testid="verify-otp"
                     >
-                      {loading ? 'Verifying...' : 'Verify OTP'}
+                      Verify OTP
                     </Button>
                     <button
                       type="button"

@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "moduleResolution": "bundler",
+    "ignoreDeprecations": "6.0",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

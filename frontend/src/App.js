@@ -1,8 +1,8 @@
-import React from "react";
-import "@/App.css";
+import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth0 } from "@auth0/auth0-react";
+import { setAccessTokenGetter } from './lib/api';
 import { CartProvider } from "./context/CartContext";
-import { AuthProvider, useAuth } from "./context/AuthContext";
 
 // Pages
 import HomePage from "./pages/HomePage";
@@ -28,9 +28,18 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+  const { isAuthenticated, isLoading, loginWithRedirect, user } = useAuth0();
 
-  if (loading) {
+  const adminEmails = ["mariso.store@gmail.com"];
+  const isAdmin = () => adminEmails.includes((user?.email || "").toLowerCase());
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      loginWithRedirect();
+    }
+  }, [isLoading, isAuthenticated, loginWithRedirect]);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F5F1]">
         <div className="animate-pulse text-center">
@@ -41,8 +50,8 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
     );
   }
 
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return null;
   }
 
   if (requireAdmin && !isAdmin()) {
@@ -50,6 +59,32 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
   }
 
   return children;
+};
+
+
+const Auth0TokenBridge = () => {
+  const { getAccessTokenSilently, isAuthenticated } = useAuth0();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setAccessTokenGetter(null);
+      return;
+    }
+
+    setAccessTokenGetter(async () => {
+      try {
+        const token = await getAccessTokenSilently({
+          audience: "https://mariso-api"
+        });
+        return token;
+      } catch (error) {
+        console.error('Error fetching token:', error);
+        return null;
+      }
+    });
+  }, [getAccessTokenSilently, isAuthenticated]);
+
+  return null;
 };
 
 function AppRoutes() {
@@ -121,11 +156,10 @@ function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <AuthProvider>
-          <CartProvider>
-            <AppRoutes />
-          </CartProvider>
-        </AuthProvider>
+        <CartProvider>
+          <Auth0TokenBridge/>
+          <AppRoutes />
+        </CartProvider>
       </BrowserRouter>
     </div>
   );

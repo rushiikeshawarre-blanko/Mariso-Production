@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
 import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 import { getProduct, getProducts, addToWishlist } from '../lib/api';
 import { toast } from 'sonner';
 
@@ -22,7 +22,7 @@ const ProductPage = () => {
   const [selectedFlavor, setSelectedFlavor] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const { addItem } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loginWithRedirect } = useAuth0();
 
   // Get variant combination stock
   const getVariantStock = useCallback(() => {
@@ -210,8 +210,9 @@ const ProductPage = () => {
   };
 
   const handleAddToWishlist = async () => {
-    if (!isAuthenticated()) {
-      toast.error('Please login to add items to wishlist');
+    if (!isAuthenticated) {
+      toast.error('Please sign in to add items to wishlist');
+      loginWithRedirect();
       return;
     }
     try {
@@ -315,7 +316,7 @@ const ProductPage = () => {
             Back to Shop
           </Link>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-20 xl:gap-24">
             {/* Left Side - Image Gallery */}
             <div className="relative">
               {/* Sale Badge */}
@@ -348,26 +349,34 @@ const ProductPage = () => {
             {/* Right Side - Product Details */}
             <div className="lg:sticky lg:top-32 lg:self-start space-y-6">
               {/* Category */}
-              <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground">
+              <p className="text-[11px] tracking-[0.24em] uppercase text-foreground/45">
                 {product.category_name}
               </p>
               
               {/* Product Name */}
-              <h1 className="font-heading text-4xl md:text-5xl tracking-tight" data-testid="product-title">
+              <h1 className="font-heading text-4xl md:text-5xl lg:text-[3.4rem] tracking-[-0.03em] leading-[1.02]" data-testid="product-title">
                 {product.name}
               </h1>
               
               {/* Price */}
-              <div className="flex items-center gap-3">
-                <span className={`text-3xl font-medium ${product.is_on_sale ? 'text-terracotta' : ''}`} data-testid="product-price">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span
+                  className={`text-[2rem] md:text-[2.2rem] font-medium tracking-[-0.02em] ${originalPrice ? 'text-terracotta' : 'text-foreground'}`}
+                  data-testid="product-price"
+                >
                   ₹{displayPrice?.toLocaleString()}
                 </span>
+
                 {originalPrice && (
                   <>
-                    <span className="text-xl text-muted-foreground line-through" data-testid="product-original-price">
+                    <span
+                      className="text-lg text-foreground/40 line-through"
+                      data-testid="product-original-price"
+                    >
                       ₹{originalPrice.toLocaleString()}
                     </span>
-                    <span className="bg-terracotta/10 text-terracotta text-sm font-medium px-3 py-1 rounded-full">
+
+                    <span className="inline-flex items-center rounded-full bg-[#EEE6DC] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/70">
                       Save ₹{(originalPrice - displayPrice).toLocaleString()}
                     </span>
                   </>
@@ -375,14 +384,14 @@ const ProductPage = () => {
               </div>
 
               {/* Description */}
-              <p className="text-muted-foreground leading-relaxed" data-testid="product-description">
+              <p className="text-foreground/70 leading-8 max-w-xl" data-testid="product-description">
                 {product.description}
               </p>
 
               {/* Color Variants - Only show if product has color options */}
               {product.has_color_options && product.color_options?.length > 0 && (
                 <div data-testid="color-variants">
-                  <p className="text-sm font-medium mb-3">
+                  <p className="text-sm font-medium mb-3 tracking-[0.01em]">
                     Color: <span className="text-muted-foreground">{selectedColor?.name}</span>
                   </p>
                   <div className="flex flex-wrap gap-3">
@@ -392,7 +401,7 @@ const ProductPage = () => {
                         <button
                           key={color.id}
                           onClick={() => setSelectedColor(color)}
-                          className={`w-12 h-12 rounded-full border-2 transition-all hover:scale-110 overflow-hidden ${
+                          className={`w-12 h-12 rounded-full border-2 transition-all duration-300 hover:scale-105 overflow-hidden shadow-sm ${
                             selectedColor?.id === color.id 
                               ? 'border-foreground scale-110 shadow-lg' 
                               : 'border-border hover:border-foreground/50'
@@ -427,13 +436,13 @@ const ProductPage = () => {
               {/* Flavor/Fragrance Variants - Only show if product has flavor options */}
               {product.has_flavor_options && product.flavor_options?.length > 0 && (
                 <div data-testid="flavor-variants">
-                  <p className="text-sm font-medium mb-3">Fragrance: <span className="text-muted-foreground">{selectedFlavor?.name}</span></p>
+                  <p className="text-sm font-medium mb-3 tracking-[0.01em]">Fragrance: <span className="text-foreground/55">{selectedFlavor?.name}</span></p>
                   <div className="flex flex-wrap gap-2">
                     {product.flavor_options.map((flavor) => (
                       <button
                         key={flavor.id}
                         onClick={() => setSelectedFlavor(flavor)}
-                        className={`px-4 py-2 rounded-full border transition-all text-sm ${
+                        className={`px-4 py-2 rounded-full border transition-all duration-300 text-sm ${
                           selectedFlavor?.id === flavor.id 
                             ? 'border-foreground bg-foreground text-primary-foreground' 
                             : 'border-border hover:border-foreground/50'
@@ -455,7 +464,7 @@ const ProductPage = () => {
               <div data-testid="stock-status">
                 {isAvailable ? (
                   currentStock <= 5 ? (
-                    <div className="flex items-center gap-2 text-terracotta" data-testid="product-stock-low">
+                    <div className="flex items-center gap-2 text-terracotta/90" data-testid="product-stock-low">
                       <AlertCircle className="h-4 w-4" />
                       <p className="text-sm font-medium">
                         Only {currentStock} left
@@ -467,12 +476,12 @@ const ProductPage = () => {
                       </p>
                     </div>
                   ) : (
-                    <p className="text-sm text-[#8B9D83] font-medium" data-testid="product-stock-available">
+                    <p className="text-sm text-[#7C8F73] font-medium tracking-[0.01em]" data-testid="product-stock-available">
                       ✓ In Stock
                     </p>
                   )
                 ) : (
-                  <div className="flex items-center gap-2 text-destructive" data-testid="product-out-of-stock">
+                  <div className="flex items-center gap-2 text-[#9C6B5B]" data-testid="product-out-of-stock">
                     <AlertCircle className="h-4 w-4" />
                     <p className="text-sm font-medium">
                       Out of Stock
@@ -489,7 +498,7 @@ const ProductPage = () => {
               {/* Quantity Selector */}
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium">Quantity:</span>
-                <div className="flex items-center border border-border rounded-full">
+                <div className="flex items-center border border-border/80 rounded-full bg-[#FBF8F4] shadow-sm">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
                     className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
@@ -517,7 +526,7 @@ const ProductPage = () => {
                 <Button 
                   onClick={handleAddToCart}
                   variant="outline"
-                  className={`flex-1 h-14 rounded-full text-base font-medium border-2 transition-all ${
+                  className={`flex-1 h-14 rounded-full text-[15px] font-medium border-2 transition-all duration-300 shadow-sm ${
                     isAvailable 
                       ? 'border-foreground hover:bg-foreground hover:text-primary-foreground' 
                       : 'border-muted-foreground/30 text-muted-foreground cursor-not-allowed'
@@ -530,7 +539,7 @@ const ProductPage = () => {
                 </Button>
                 <Button 
                   onClick={handleBuyNow}
-                  className={`flex-1 h-14 rounded-full text-base font-medium ${
+                  className={`flex-1 h-14 rounded-full text-[15px] font-medium shadow-sm transition-all duration-300 ${
                     isAvailable 
                       ? 'bg-foreground hover:bg-foreground/90' 
                       : 'bg-muted-foreground/30 cursor-not-allowed'
@@ -544,29 +553,29 @@ const ProductPage = () => {
               </div>
 
               {/* Benefits */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-y border-border">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-y border-border/70">
                 <div className="text-center">
                   <Truck className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-xs text-muted-foreground">Free Shipping<br />Over ₹1500</p>
+                  <p className="text-[11px] text-foreground/55 leading-5">Free Shipping<br />Over ₹1500</p>
                 </div>
                 <div className="text-center">
                   <RotateCcw className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-xs text-muted-foreground">7-Day<br />Returns</p>
+                  <p className="text-[11px] text-foreground/55 leading-5">7-Day<br />Returns</p>
                 </div>
                 <div className="text-center">
                   <Recycle className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-xs text-muted-foreground">Reusable<br />Container</p>
+                  <p className="text-[11px] text-foreground/55 leading-5">Reusable<br />Container</p>
                 </div>
                 <div className="text-center">
                   <Gift className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-xs text-muted-foreground">Gift<br />Packaging</p>
+                  <p className="text-[11px] text-foreground/55 leading-5">Gift<br />Packaging</p>
                 </div>
               </div>
 
               {/* Product Details Accordion */}
-              <Accordion type="single" collapsible defaultValue="details" className="w-full">
+              <Accordion type="single" collapsible defaultValue="details" className="w-full pt-2">
                 <AccordionItem value="details">
-                  <AccordionTrigger className="text-base font-medium" data-testid="accordion-details">
+                  <AccordionTrigger className="text-[15px] font-medium tracking-[0.01em]" data-testid="accordion-details">
                     Product Details
                   </AccordionTrigger>
                   <AccordionContent>
@@ -606,7 +615,7 @@ const ProductPage = () => {
                 </AccordionItem>
 
                 <AccordionItem value="care">
-                  <AccordionTrigger className="text-base font-medium" data-testid="accordion-care">
+                  <AccordionTrigger className="text-[15px] font-medium tracking-[0.01em]" data-testid="accordion-care">
                     Care Instructions
                   </AccordionTrigger>
                   <AccordionContent>
@@ -628,7 +637,7 @@ const ProductPage = () => {
                 </AccordionItem>
 
                 <AccordionItem value="shipping">
-                  <AccordionTrigger className="text-base font-medium" data-testid="accordion-shipping">
+                  <AccordionTrigger className="text-[15px] font-medium tracking-[0.01em]" data-testid="accordion-shipping">
                     Shipping & Returns
                   </AccordionTrigger>
                   <AccordionContent>
@@ -660,7 +669,7 @@ const ProductPage = () => {
           {/* Related Products */}
           {relatedProducts.length > 0 && (
             <section className="mt-24" data-testid="related-products">
-              <h2 className="font-heading text-3xl mb-8">You May Also Like</h2>
+              <h2 className="font-heading text-3xl md:text-[2.5rem] tracking-[-0.02em] mb-8">You May Also Like</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
                 {relatedProducts.map((prod) => (
                   <ProductCard key={prod.id} product={prod} testIdPrefix="related" />

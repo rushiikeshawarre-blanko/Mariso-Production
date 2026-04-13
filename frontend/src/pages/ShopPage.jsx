@@ -14,12 +14,15 @@ const ShopPage = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchInput, setSearchInput] = useState(searchParams.get('search') || '');
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [sortBy, setSortBy] = useState('newest');
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,7 +98,6 @@ const ShopPage = () => {
   const clearSearch = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('search');
-    setSearchInput('');
     setSearchQuery('');
     setSearchParams(params);
   };
@@ -104,7 +106,6 @@ const ShopPage = () => {
     setSelectedCategory('');
     setShowOnSale(false);
     setSortBy('newest');
-    setSearchInput('');
     setSearchQuery('');
     setSearchParams({});
   };
@@ -112,10 +113,10 @@ const ShopPage = () => {
   const activeFiltersCount = (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (searchQuery ? 1 : 0);
 
   const FilterContent = () => (
-    <div className="space-y-8">
+    <div className="space-y-7">
       <div>
-        <h3 className="font-heading text-lg mb-4">Categories</h3>
-        <div className="space-y-3">
+        <h3 className="font-heading text-[1.55rem] mb-4">Categories</h3>
+        <div className="space-y-2.5">
           <button
             onClick={() => handleCategoryChange('')}
             className={`block text-sm transition-colors ${
@@ -141,7 +142,7 @@ const ShopPage = () => {
       </div>
 
       <div>
-        <h3 className="font-heading text-lg mb-4">Special Offers</h3>
+        <h3 className="font-heading text-[1.55rem] mb-4">Special Offers</h3>
         <label className="flex items-center gap-3 cursor-pointer">
           <Checkbox
             checked={showOnSale}
@@ -169,29 +170,45 @@ const ShopPage = () => {
 
   return (
     <Layout>
-      <div className="pt-32 pb-24 min-h-screen" data-testid="shop-page">
-        <div className="max-w-[1440px] mx-auto container-padding">
-          <div className="mb-12 space-y-6">
-            <div>
-              <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-4">
-                {selectedCategoryName || 'All Products'}
-              </h1>
-              <p className="text-muted-foreground">
-                {loading ? 'Loading...' : `${products.length} products`}
-              </p>
+      <div className="pt-24 pb-20 min-h-screen" data-testid="shop-page">
+        <div className="max-w-[1360px] mx-auto px-5 lg:px-6">
+          <div className="mb-8 border-b border-border/70 pb-4">
+            <div className="flex items-end justify-between gap-6">
+              <div>
+                <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-2">
+                  {selectedCategoryName || 'All Products'}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {loading ? 'Loading...' : `${products.length} products`}
+                </p>
+              </div>
+
+              <div className="hidden lg:block">
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-[180px]" data-testid="sort-select">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="name">Name: A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
-          <div className="flex gap-12">
-            <aside className="hidden lg:block w-64 flex-shrink-0">
+          <div className="flex gap-6 lg:gap-7 xl:gap-8">
+            <aside className="hidden lg:block w-44 xl:w-48 flex-shrink-0">
               <FilterContent />
             </aside>
 
             <div className="flex-1">
-              <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
+              <div className="flex items-center justify-between mb-4 lg:hidden">
                 <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="outline" className="lg:hidden" data-testid="mobile-filters-button">
+                    <Button variant="outline" data-testid="mobile-filters-button">
                       <SlidersHorizontal className="h-4 w-4 mr-2" strokeWidth={1.5} />
                       Filters
                       {activeFiltersCount > 0 && (
@@ -211,35 +228,8 @@ const ShopPage = () => {
                   </SheetContent>
                 </Sheet>
 
-                <div className="hidden lg:flex items-center gap-2 flex-wrap">
-                  {searchQuery && (
-                    <span className="inline-flex items-center gap-1 bg-sage/30 text-sm px-3 py-1 rounded-full">
-                      Search: {searchQuery}
-                      <button onClick={clearSearch} data-testid="remove-search-filter">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  )}
-                  {selectedCategory && (
-                    <span className="inline-flex items-center gap-1 bg-clay/30 text-sm px-3 py-1 rounded-full">
-                      {selectedCategoryName}
-                      <button onClick={() => handleCategoryChange('')} data-testid="remove-category-filter">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  )}
-                  {showOnSale && (
-                    <span className="inline-flex items-center gap-1 bg-terracotta/20 text-terracotta text-sm px-3 py-1 rounded-full">
-                      On Sale
-                      <button onClick={() => handleSaleToggle(false)} data-testid="remove-sale-filter">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  )}
-                </div>
-
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-[180px]" data-testid="sort-select">
+                  <SelectTrigger className="w-[180px]" data-testid="sort-select-mobile">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
@@ -251,8 +241,35 @@ const ShopPage = () => {
                 </Select>
               </div>
 
+              <div className="hidden lg:flex items-center gap-2 flex-wrap mb-4">
+                {searchQuery && (
+                  <span className="inline-flex items-center gap-1 bg-sage/30 text-sm px-3 py-1 rounded-full">
+                    Search: {searchQuery}
+                    <button onClick={clearSearch} data-testid="remove-search-filter">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {selectedCategory && (
+                  <span className="inline-flex items-center gap-1 bg-clay/30 text-sm px-3 py-1 rounded-full">
+                    {selectedCategoryName}
+                    <button onClick={() => handleCategoryChange('')} data-testid="remove-category-filter">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {showOnSale && (
+                  <span className="inline-flex items-center gap-1 bg-terracotta/20 text-terracotta text-sm px-3 py-1 rounded-full">
+                    On Sale
+                    <button onClick={() => handleSaleToggle(false)} data-testid="remove-sale-filter">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+
               {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 xl:gap-6">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div key={i} className="space-y-4">
                       <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
@@ -271,7 +288,7 @@ const ShopPage = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 xl:gap-6">
                   {products.map((product) => (
                     <ProductCard key={product.id} product={product} testIdPrefix="shop" />
                   ))}

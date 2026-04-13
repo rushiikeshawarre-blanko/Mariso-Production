@@ -1,29 +1,54 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
 import { getOrder } from "../../lib/api";
 
 const OrderDetailsPage = () => {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        const data = await getOrder(id);
-        setOrder(data);
-      } catch (error) {
-        console.error("Error fetching order details:", error);
-      } finally {
+  const statusSteps = ["pending", "confirmed", "packed", "shipped", "delivered"];
+
+  const getStatusStepIndex = (status) => {
+    const index = statusSteps.indexOf(status);
+    return index >= 0 ? index : 0;
+  };
+
+  const fetchOrder = useCallback(async (showLoader = false) => {
+    if (!id) return;
+
+    if (showLoader) {
+      setLoading(true);
+    }
+
+    try {
+      const data = await getOrder(id);
+      setOrder(data);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("Error fetching order details:", error);
+    } finally {
+      if (showLoader) {
         setLoading(false);
       }
-    };
-
-    if (id) {
-      fetchOrder();
     }
   }, [id]);
+
+  useEffect(() => {
+    fetchOrder(true);
+  }, [fetchOrder]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const interval = setInterval(() => {
+      fetchOrder(false);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [id, fetchOrder]);
 
   if (loading) {
     return (
@@ -66,11 +91,59 @@ const OrderDetailsPage = () => {
                 year: "numeric",
               })}
             </p>
+            {lastUpdated && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Auto-refreshing every 15 seconds • Last synced at {lastUpdated.toLocaleTimeString("en-IN", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </p>
+            )}
           </div>
 
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-secondary text-foreground capitalize w-fit">
             {order.status}
           </span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-border p-6 mb-6">
+        <h2 className="font-heading text-xl mb-4">Order Status</h2>
+
+        <div className="space-y-4">
+          {statusSteps.map((step, index) => {
+            const currentStepIndex = getStatusStepIndex(order.status);
+            const isCompleted = index <= currentStepIndex;
+            const isCurrent = index === currentStepIndex;
+
+            return (
+              <div key={step} className="flex items-start gap-4">
+                <div className="flex flex-col items-center">
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-5 w-5 text-[#8B9D83]" />
+                  ) : (
+                    <Circle className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  {index < statusSteps.length - 1 && (
+                    <div className={`w-px h-8 mt-1 ${isCompleted ? 'bg-[#8B9D83]' : 'bg-border'}`} />
+                  )}
+                </div>
+
+                <div className="pb-2">
+                  <p className={`font-medium capitalize ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {step}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {index < currentStepIndex
+                      ? 'Completed'
+                      : isCurrent
+                      ? 'Current status'
+                      : 'Pending'}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

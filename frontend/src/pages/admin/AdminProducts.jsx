@@ -379,7 +379,7 @@ const AdminProducts = () => {
       name: formData.name,
       description: formData.description,
       short_description: formData.short_description,
-      price: parseFloat(formData.price),
+      price: parseFloat(formData.price) || 0,
       discount_price: formData.discount_price ? parseFloat(formData.discount_price) : null,
       category_id: formData.category_id,
       sku: formData.sku,
@@ -427,8 +427,9 @@ const AdminProducts = () => {
       toast.success('Product deleted');
       await fetchData();
     } catch (error) {
-      const meassage = error.response?.data?.detail || 'Failed to delete product';
-      toast.error(meassage);
+      console.error('Error deleting product:', error);
+      const message = error.response?.data?.detail || 'Failed to delete product';
+      toast.error(message);
     }
   };
 
@@ -1166,7 +1167,9 @@ const AdminProducts = () => {
                     <div className="flex gap-4 p-4 bg-muted/50 rounded-lg text-sm">
                       <div>
                         <span className="text-muted-foreground">Total Combinations:</span>
-                        <span className="font-medium ml-2">{formData.variants.length}</span>
+                        <span className="font-medium ml-2">
+                          {formData.variants.filter(v => v.is_active !== false).length}
+                        </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Total Stock:</span>

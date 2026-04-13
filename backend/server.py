@@ -11,6 +11,7 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
+from jwt import PyJWKClient
 import bcrypt
 import random
 import string
@@ -53,6 +54,22 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24
+
+# Auth0 Configuration
+AUTH0_DOMAIN = os.environ.get('AUTH0_DOMAIN', '').strip()
+AUTH0_AUDIENCE = os.environ.get('AUTH0_AUDIENCE', '').strip()
+AUTH0_ISSUER = f"https://{AUTH0_DOMAIN}/" if AUTH0_DOMAIN else ''
+AUTH0_ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get('AUTH0_ADMIN_EMAILS', '').split(',')
+    if email.strip()
+}
+AUTH0_ADMIN_IDS = {
+    auth0_id.strip()
+    for auth0_id in os.environ.get('AUTH0_ADMIN_IDS', '').split(',')
+    if auth0_id.strip()
+}
+AUTH0_JWKS_CLIENT = PyJWKClient(f"https://{AUTH0_DOMAIN}/.well-known/jwks.json") if AUTH0_DOMAIN else None
 
 # Create the main app
 app = FastAPI(title="Mariso Candles API")
@@ -301,17 +318,123 @@ def decode_token(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
+def decode_auth0_token(token: str) -> dict:
+    if not AUTH0_DOMAIN or not AUTH0_AUDIENCE or not AUTH0_JWKS_CLIENT:
+        raise HTTPException(status_code=401, detail="Auth0 is not configured")
+
+    try:
+        signing_key = AUTH0_JWKS_CLIENT.get_signing_key_from_jwt(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=AUTH0_AUDIENCE,
+            issuer=AUTH0_ISSUER,
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Auth0 token")
+
+ 
+def get_role_from_auth0_payload(payload: dict) -> str:
+    auth0_id = str(payload.get('sub', '')).strip()
+    email = str(payload.get('email', '')).lower().strip()
+
+    if auth0_id and auth0_id in AUTH0_ADMIN_IDS:
+        return 'admin'
+
+    if email and email in AUTH0_ADMIN_EMAILS:
+        return 'admin'
+
+    return 'user'
+
+
+async def sync_auth0_user_from_payload(payload: dict) -> dict:
+    auth0_id = str(payload.get('sub', '')).strip()
+    if not auth0_id:
+        raise HTTPException(status_code=401, detail="Invalid Auth0 token payload")
+
+    email = str(payload.get('email', '')).strip().lower()
+    name = (
+        payload.get('name')
+        or payload.get('nickname')
+        or (email.split('@')[0] if email else 'User')
+    )
+    role = get_role_from_auth0_payload(payload)
+
+    user = await db.users.find_one({"auth0_id": auth0_id}, {"_id": 0})
+    if user:
+        update_fields = {}
+        if email and user.get('email') != email:
+            update_fields['email'] = email
+        if user.get('name') != name:
+            update_fields['name'] = name
+        if user.get('role') != role:
+            update_fields['role'] = role
+
+        if update_fields:
+            await db.users.update_one(
+                {"id": user['id']},
+                {"$set": update_fields}
+            )
+            user = await db.users.find_one({"id": user['id']}, {"_id": 0})
+
+        return user
+
+    if email:
+        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+        if existing_user:
+            await db.users.update_one(
+                {"id": existing_user['id']},
+                {"$set": {"auth0_id": auth0_id, "name": name, "role": role}}
+            )
+            updated_user = await db.users.find_one({"id": existing_user['id']}, {"_id": 0})
+            return updated_user
+
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "auth0_id": auth0_id,
+        "name": name,
+        "email": email,
+        "password": "",
+        "role": role,
+        "addresses": [],
+        "wishlist": [],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    return user_doc
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    payload = decode_token(token)
-    user = await db.users.find_one({"id": payload['user_id']}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
+
+    try:
+        header = jwt.get_unverified_header(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token header")
+
+    alg = header.get('alg')
+
+    # Legacy backend-issued JWT tokens
+    if alg == JWT_ALGORITHM:
+        payload = decode_token(token)
+        user = await db.users.find_one({"id": payload['user_id']}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+
+    # Auth0-issued tokens
+    if alg == 'RS256':
+        payload = decode_auth0_token(token)
+        return await sync_auth0_user_from_payload(payload)
+
+    raise HTTPException(status_code=401, detail="Unsupported token algorithm")
 
 async def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     user = await get_current_user(credentials)
-    if user['role'] != 'admin':
+    if str(user.get('role', '')).lower() != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
@@ -1205,46 +1328,113 @@ async def get_wishlist(user: dict = Depends(get_current_user)):
 # ==================== ADMIN DASHBOARD ROUTES ====================
 
 @api_router.get("/admin/dashboard", response_model=dict)
-async def get_dashboard_stats(admin: dict = Depends(get_admin_user)):
-    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_price"}}}]
-    revenue_result = await db.orders.aggregate(pipeline).to_list(1)
-    total_revenue = revenue_result[0]['total'] if revenue_result else 0
-    
-    total_orders = await db.orders.count_documents({})
+async def get_dashboard_stats(
+    period: str = "weekly",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    now = datetime.now(timezone.utc)
+
+    period = (period or "weekly").lower().strip()
+    valid_periods = {"weekly", "monthly", "quarterly", "yearly", "custom"}
+    if period not in valid_periods:
+        raise HTTPException(status_code=400, detail="Invalid period")
+
+    match_filter = {}
+    group_id = {"$substr": ["$created_at", 0, 10]}
+
+    if period == "weekly":
+        start_dt = now - timedelta(days=7)
+        match_filter = {"created_at": {"$gte": start_dt.isoformat()}}
+        group_id = {"$substr": ["$created_at", 0, 10]}
+    elif period == "monthly":
+        start_dt = now - timedelta(days=30)
+        match_filter = {"created_at": {"$gte": start_dt.isoformat()}}
+        group_id = {"$substr": ["$created_at", 0, 10]}
+    elif period == "quarterly":
+        start_dt = now - timedelta(days=90)
+        match_filter = {"created_at": {"$gte": start_dt.isoformat()}}
+        group_id = {"$substr": ["$created_at", 0, 10]}
+    elif period == "yearly":
+        start_dt = now - timedelta(days=365)
+        match_filter = {"created_at": {"$gte": start_dt.isoformat()}}
+        group_id = {"$substr": ["$created_at", 0, 7]}
+    elif period == "custom":
+        if not start_date or not end_date:
+            raise HTTPException(status_code=400, detail="start_date and end_date are required for custom period")
+
+        try:
+            start_dt = datetime.fromisoformat(start_date)
+            end_dt = datetime.fromisoformat(end_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+        end_dt = end_dt + timedelta(days=1)
+        match_filter = {
+            "created_at": {
+                "$gte": start_dt.isoformat(),
+                "$lt": end_dt.isoformat(),
+            }
+        }
+        group_id = {"$substr": ["$created_at", 0, 10]}
+
+    revenue_pipeline = []
+    if match_filter:
+        revenue_pipeline.append({"$match": match_filter})
+    revenue_pipeline.append({"$group": {"_id": None, "total": {"$sum": "$total_price"}}})
+    revenue_result = await db.orders.aggregate(revenue_pipeline).to_list(1)
+    total_revenue = revenue_result[0]["total"] if revenue_result else 0
+
+    total_orders = await db.orders.count_documents(match_filter or {})
     total_products = await db.products.count_documents({})
     total_customers = await db.users.count_documents({"role": "user"})
-    
-    status_pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
-    status_result = await db.orders.aggregate(status_pipeline).to_list(10)
-    orders_by_status = {item['_id']: item['count'] for item in status_result}
-    
-    recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+
+    status_pipeline = []
+    if match_filter:
+        status_pipeline.append({"$match": match_filter})
+    status_pipeline.append({"$group": {"_id": "$status", "count": {"$sum": 1}}})
+    status_result = await db.orders.aggregate(status_pipeline).to_list(20)
+    orders_by_status = {item["_id"]: item["count"] for item in status_result}
+
+    recent_orders_query = match_filter or {}
+    recent_orders = await db.orders.find(recent_orders_query, {"_id": 0}).sort("created_at", -1).to_list(5)
     for order in recent_orders:
-        user = await db.users.find_one({"id": order['user_id']}, {"_id": 0})
+        user = await db.users.find_one({"id": order["user_id"]}, {"_id": 0})
         if user:
-            order['user_name'] = user['name']
-            order['user_email'] = user['email']
-    
-    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    weekly_pipeline = [
-        {"$match": {"created_at": {"$gte": week_ago.isoformat()}}},
-        {"$group": {
-            "_id": {"$substr": ["$created_at", 0, 10]},
-            "orders": {"$sum": 1},
-            "revenue": {"$sum": "$total_price"}
-        }},
+            order["user_name"] = user.get("name", "")
+            order["user_email"] = user.get("email", "")
+
+    period_pipeline = []
+    if match_filter:
+        period_pipeline.append({"$match": match_filter})
+    period_pipeline.extend([
+        {
+            "$group": {
+                "_id": group_id,
+                "orders": {"$sum": 1},
+                "revenue": {"$sum": "$total_price"}
+            }
+        },
         {"$sort": {"_id": 1}}
-    ]
-    weekly_stats = await db.orders.aggregate(weekly_pipeline).to_list(7)
-    
+    ])
+    period_stats = await db.orders.aggregate(period_pipeline).to_list(366)
+
     return {
+        "period": period,
         "total_revenue": total_revenue,
         "total_orders": total_orders,
         "total_products": total_products,
         "total_customers": total_customers,
         "orders_by_status": orders_by_status,
         "recent_orders": recent_orders,
-        "weekly_stats": weekly_stats
+        "period_stats": period_stats,
+        "weekly_stats": period_stats,
     }
 
 @api_router.get("/admin/customers", response_model=List[dict])
@@ -1312,8 +1502,8 @@ async def seed_database():
     admin_doc = {
         "id": admin_id,
         "name": "Admin",
-        "email": "admin@mariso.com",
-        "password": hash_password("admin123"),
+        "email": "mariso.store@gmail.com",
+        "password": hash_password("Admin@1234"),
         "role": "admin",
         "addresses": [],
         "wishlist": [],
@@ -1820,7 +2010,7 @@ async def seed_database():
     ]
     await db.orders.insert_many(orders)
     
-    return {"message": "Database seeded successfully", "admin_email": "admin@mariso.com", "admin_password": "admin123"}
+    return {"message": "Database seeded successfully", "admin_email": "mariso.store@gmail.com", "admin_password": "Admin@1234"}
 
 @api_router.get("/")
 async def root():

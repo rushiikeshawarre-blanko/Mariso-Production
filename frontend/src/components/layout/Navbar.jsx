@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -31,9 +31,15 @@ export const Navbar = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const { getCartCount } = useCart();
-  const { user, logout, isAuthenticated, isAdmin } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    logout: auth0Logout,
+  } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
+  const adminEmails = ["mariso.store@gmail.com"];
+  const isAdmin = () => adminEmails.includes((user?.email || "").toLowerCase());
 
   useEffect(() => {
     const handleScroll = () => {
@@ -76,8 +82,11 @@ export const Navbar = () => {
   ];
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    auth0Logout({
+      logoutParams: {
+        returnTo: window.location.origin,
+      },
+    });
   };
 
   const handleSearchSubmit = () => {
@@ -234,7 +243,7 @@ export const Navbar = () => {
             </Button>
 
             {/* Wishlist */}
-            {isAuthenticated() && (
+            {isAuthenticated && (
               <Link to="/account/wishlist">
                 <Button 
                   variant="ghost" 
@@ -263,7 +272,7 @@ export const Navbar = () => {
             </Link>
 
             {/* User Menu */}
-            {isAuthenticated() ? (
+            {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
@@ -343,9 +352,12 @@ export const Navbar = () => {
                     ))}
                   </div>
                   <div className="mt-auto pb-8">
-                    {!isAuthenticated() && (
+                    {!isAuthenticated && (
                       <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                        <Button className="w-full btn-primary" data-testid="mobile-login-button">
+                        <Button
+                          className="w-full btn-primary"
+                          data-testid="mobile-login-button"
+                        >
                           Sign In
                         </Button>
                       </Link>
