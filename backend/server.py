@@ -2241,15 +2241,10 @@ async def health():
 # Include the router
 app.include_router(api_router)
 
-app = FastAPI(title="Mariso Candles API")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000", 
-                   "http://localhost:3000,"
-                   "https://marisofrontend.vercel.app"
-    ],
     allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000,https://marisofrontend.vercel.app").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
