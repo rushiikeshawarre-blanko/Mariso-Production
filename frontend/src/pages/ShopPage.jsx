@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
@@ -11,58 +11,139 @@ import { getProducts, getCategories } from '../lib/api';
 
 const ShopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [sortBy, setSortBy] = useState('newest');
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
+  const [selectedParentSlug, setSelectedParentSlug] = useState(searchParams.get('parent') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') || '');
+    setSelectedCategory(searchParams.get('category') || '');
+    setSelectedParentSlug(searchParams.get('parent') || '');
+    setShowOnSale(searchParams.get('sale') === 'true');
   }, [searchParams]);
+
+  const parentCategories = useMemo(() => {
+    return categories
+      .filter((category) => !category.parent_id && category.is_active !== false)
+      .sort(
+        (a, b) =>
+          (a.sort_order || 0) - (b.sort_order || 0) ||
+          a.name.localeCompare(b.name)
+      );
+  }, [categories]);
+
+  const childCategories = useMemo(() => {
+    return categories
+      .filter((category) => category.parent_id && category.is_active !== false)
+      .sort(
+        (a, b) =>
+          (a.sort_order || 0) - (b.sort_order || 0) ||
+          a.name.localeCompare(b.name)
+      );
+  }, [categories]);
+
+  const selectedParentCategory = useMemo(() => {
+    if (!selectedParentSlug) return null;
+    return parentCategories.find((category) => category.slug === selectedParentSlug) || null;
+  }, [parentCategories, selectedParentSlug]);
+
+  const selectedParentChildren = useMemo(() => {
+    if (!selectedParentCategory) return [];
+    return childCategories.filter(
+      (category) => category.parent_id === selectedParentCategory.id
+    );
+  }, [childCategories, selectedParentCategory]);
+
+  const groupedChildCategories = useMemo(() => {
+    return parentCategories
+      .map((parent) => ({
+        parent,
+        children: childCategories.filter((category) => category.parent_id === parent.id),
+      }))
+      .filter((group) => group.children.length > 0);
+  }, [parentCategories, childCategories]);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+
       try {
-        const [prods, cats] = await Promise.all([
+        const [allProducts, cats] = await Promise.all([
           getProducts({
-            category_id: selectedCategory || undefined,
-            on_sale: showOnSale || undefined
+            on_sale: showOnSale || undefined,
           }),
-          getCategories()
+          getCategories(),
         ]);
 
-        let sorted = [...prods];
-        switch (sortBy) {
-          case 'price-low':
-            sorted.sort((a, b) => (a.sale_price || a.price) - (b.sale_price || b.price));
-            break;
-          case 'price-high':
-            sorted.sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
-            break;
-          case 'name':
-            sorted.sort((a, b) => a.name.localeCompare(b.name));
-            break;
-          default:
-            sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        let filtered = [...allProducts];
+        const normalizedCategories = [...cats];
+
+        const activeParents = normalizedCategories.filter(
+          (category) => !category.parent_id && category.is_active !== false
+        );
+        const activeChildren = normalizedCategories.filter(
+          (category) => category.parent_id && category.is_active !== false
+        );
+
+        const parentCategory =
+          activeParents.find((category) => category.slug === selectedParentSlug) || null;
+
+        const parentChildIds = parentCategory
+          ? activeChildren
+              .filter((category) => category.parent_id === parentCategory.id)
+              .map((category) => category.id)
+          : [];
+
+        if (selectedCategory) {
+          filtered = filtered.filter(
+            (product) => product.category_id === selectedCategory
+          );
+        } else if (parentCategory) {
+          filtered = filtered.filter((product) =>
+            parentChildIds.includes(product.category_id)
+          );
         }
 
         if (searchQuery.trim()) {
           const query = searchQuery.trim().toLowerCase();
-          sorted = sorted.filter((product) =>
-            product.name?.toLowerCase().includes(query) ||
-            product.description?.toLowerCase().includes(query) ||
-            product.short_description?.toLowerCase().includes(query) ||
-            product.sku?.toLowerCase().includes(query)
+          filtered = filtered.filter(
+            (product) =>
+              product.name?.toLowerCase().includes(query) ||
+              product.description?.toLowerCase().includes(query) ||
+              product.short_description?.toLowerCase().includes(query) ||
+              product.sku?.toLowerCase().includes(query)
           );
         }
 
-        setProducts(sorted);
-        setCategories(cats);
+        const getEffectivePrice = (product) => {
+          const hasSalePrice = product.is_on_sale && product.discount_price != null;
+          return Number(hasSalePrice ? product.discount_price : product.price) || 0;
+        };
+
+        switch (sortBy) {
+          case 'price-low':
+            filtered.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
+            break;
+          case 'price-high':
+            filtered.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
+            break;
+          case 'name':
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+          default:
+            filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+
+        setProducts(filtered);
+        setCategories(normalizedCategories);
       } catch (error) {
         console.error('Error fetching products:', error);
       } finally {
@@ -71,27 +152,32 @@ const ShopPage = () => {
     };
 
     fetchData();
-  }, [selectedCategory, showOnSale, sortBy, searchQuery]);
+  }, [selectedCategory, selectedParentSlug, showOnSale, sortBy, searchQuery]);
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
+
     const params = new URLSearchParams(searchParams);
+
     if (categoryId) {
       params.set('category', categoryId);
     } else {
       params.delete('category');
     }
+
     setSearchParams(params);
   };
 
   const handleSaleToggle = (checked) => {
     setShowOnSale(checked);
+
     const params = new URLSearchParams(searchParams);
     if (checked) {
       params.set('sale', 'true');
     } else {
       params.delete('sale');
     }
+
     setSearchParams(params);
   };
 
@@ -103,19 +189,39 @@ const ShopPage = () => {
   };
 
   const clearFilters = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('category');
+    params.delete('sale');
+    params.delete('search');
+
     setSelectedCategory('');
     setShowOnSale(false);
     setSortBy('newest');
     setSearchQuery('');
-    setSearchParams({});
+
+    setSearchParams(params);
   };
 
-  const activeFiltersCount = (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (searchQuery ? 1 : 0);
+  const activeFiltersCount =
+    (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (searchQuery ? 1 : 0);
+
+  const selectedCategoryName = categories.find(
+    (category) => category.id === selectedCategory
+  )?.name;
+
+  const pageTitle =
+    selectedCategoryName ||
+    selectedParentCategory?.name ||
+    'All Products';
+
 
   const FilterContent = () => (
     <div className="space-y-7">
       <div>
-        <h3 className="font-heading text-[1.55rem] mb-4">Categories</h3>
+        <h3 className="font-heading text-[1.55rem] mb-4">
+          {selectedParentCategory ? `${selectedParentCategory.name} Categories` : 'Categories'}
+        </h3>
+
         <div className="space-y-2.5">
           <button
             onClick={() => handleCategoryChange('')}
@@ -124,20 +230,47 @@ const ShopPage = () => {
             }`}
             data-testid="filter-all-categories"
           >
-            All Products
+            {selectedParentCategory ? `All ${selectedParentCategory.name}` : 'All Products'}
           </button>
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              onClick={() => handleCategoryChange(category.id)}
-              className={`block text-sm transition-colors ${
-                selectedCategory === category.id ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              data-testid={`filter-category-${category.id}`}
-            >
-              {category.name}
-            </button>
-          ))}
+
+          {selectedParentCategory ? (
+            selectedParentChildren.map((category) => (
+              <button
+                key={category.id}
+                onClick={() => handleCategoryChange(category.id)}
+                className={`block text-sm transition-colors ${
+                  selectedCategory === category.id
+                    ? 'text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid={`filter-category-${category.id}`}
+              >
+                {category.name}
+              </button>
+            ))
+          ) : (
+            groupedChildCategories.map((group) => (
+              <div key={group.parent.id} className="space-y-2 pt-2 first:pt-0">
+                <p className="text-sm font-medium text-foreground">{group.parent.name}</p>
+                <div className="space-y-2 pl-3">
+                  {group.children.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => handleCategoryChange(category.id)}
+                      className={`block text-sm transition-colors ${
+                        selectedCategory === category.id
+                          ? 'text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      data-testid={`filter-category-${category.id}`}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -166,8 +299,6 @@ const ShopPage = () => {
     </div>
   );
 
-  const selectedCategoryName = categories.find(c => c.id === selectedCategory)?.name;
-
   return (
     <Layout>
       <div className="pt-24 pb-20 min-h-screen" data-testid="shop-page">
@@ -176,7 +307,7 @@ const ShopPage = () => {
             <div className="flex items-end justify-between gap-6">
               <div>
                 <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-2">
-                  {selectedCategoryName || 'All Products'}
+                  {pageTitle}
                 </h1>
                 <p className="text-sm text-muted-foreground">
                   {loading ? 'Loading...' : `${products.length} products`}
@@ -250,6 +381,13 @@ const ShopPage = () => {
                     </button>
                   </span>
                 )}
+
+                {selectedParentCategory && !selectedCategory && (
+                  <span className="inline-flex items-center gap-1 bg-clay/20 text-sm px-3 py-1 rounded-full">
+                    {selectedParentCategory.name}
+                  </span>
+                )}
+
                 {selectedCategory && (
                   <span className="inline-flex items-center gap-1 bg-clay/30 text-sm px-3 py-1 rounded-full">
                     {selectedCategoryName}
@@ -258,6 +396,7 @@ const ShopPage = () => {
                     </button>
                   </span>
                 )}
+
                 {showOnSale && (
                   <span className="inline-flex items-center gap-1 bg-terracotta/20 text-terracotta text-sm px-3 py-1 rounded-full">
                     On Sale
@@ -300,6 +439,6 @@ const ShopPage = () => {
       </div>
     </Layout>
   );
-};
+ }; 
 
 export default ShopPage;

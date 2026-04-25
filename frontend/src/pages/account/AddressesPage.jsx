@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 import { addAddress, deleteAddress } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -10,7 +10,7 @@ import { MapPin, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AddressesPage = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const [addresses, setAddresses] = useState(user?.addresses || []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);

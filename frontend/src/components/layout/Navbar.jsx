@@ -20,7 +20,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
-import { searchProducts } from '../../lib/api';
+import { searchProducts, getCategories } from '../../lib/api';
 
 export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -30,6 +30,7 @@ export const Navbar = () => {
   const [searchInput, setSearchInput] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [navCategories, setNavCategories] = useState([]);
   const { getCartCount } = useCart();
   const {
     user,
@@ -47,6 +48,24 @@ export const Navbar = () => {
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const fetchNavCategories = async () => {
+      try {
+        const categories = await getCategories();
+        const topLevelNavCategories = categories
+          .filter((category) => !category.parent_id && category.show_in_nav && category.is_active !== false)
+          .sort((a, b) => ((a.sort_order || 0) - (b.sort_order || 0)) || a.name.localeCompare(b.name));
+
+        setNavCategories(topLevelNavCategories);
+      } catch (error) {
+        console.error('Failed to fetch navigation categories:', error);
+        setNavCategories([]);
+      }
+    };
+
+    fetchNavCategories();
   }, []);
 
   useEffect(() => {
@@ -76,9 +95,10 @@ export const Navbar = () => {
 
   const navLinks = [
     { name: 'Shop', href: '/shop' },
-    { name: 'Candles', href: '/shop?category=container-candles' },
-    { name: 'Homewares', href: '/shop?category=coasters' },
-    { name: 'Gifts', href: '/shop?category=bouquets' },
+    ...navCategories.map((category) => ({
+      name: category.name,
+      href: `/shop?parent=${encodeURIComponent(category.slug)}`,
+    })),
   ];
 
   const handleLogout = () => {

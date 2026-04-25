@@ -26,6 +26,14 @@ export const ProductCard = ({
   const originalPrice = product.is_on_sale && product.discount_price ? product.price : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
 
+  const totalVariantStock = Array.isArray(product.variants)
+    ? product.variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0)
+    : 0;
+
+  const hasVariants = Array.isArray(product.variants) && product.variants.length > 0;
+  const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
+  const isOutOfStock = effectiveStock <= 0;
+
   useEffect(() => {
     setIsWishlisted(initialIsWishlisted);
   }, [initialIsWishlisted, product.id]);
@@ -160,11 +168,11 @@ export const ProductCard = ({
           <Button
             onClick={handleAddToCart}
             className="w-full bg-white/95 backdrop-blur-sm text-foreground hover:bg-white h-11 rounded-full text-sm font-medium shadow-lg"
-            disabled={product.stock === 0}
+            disabled={isOutOfStock}
             data-testid={`${testIdPrefix}-add-to-cart`}
           >
             <ShoppingBag className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
           </Button>
         </div>
       </div>
@@ -189,10 +197,10 @@ export const ProductCard = ({
             </>
           )}
         </div>
-        {product.stock <= 5 && product.stock > 0 && (
-          <p className="mt-2 text-[11px] text-[#9C6B5B]/90">Only {product.stock} left</p>
+        {effectiveStock <= 5 && effectiveStock > 0 && (
+          <p className="mt-2 text-[11px] text-[#9C6B5B]/90">Only {effectiveStock} left</p>
         )}
-        {product.stock === 0 && (
+        {isOutOfStock && (
           <p className="mt-2 text-[11px] text-[#9C6B5B]/90">Out of stock</p>
         )}
       </div>

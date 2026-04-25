@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getDashboardStats } from '../../lib/api';
+import { getDashboardStats, exportOrdersExcel } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { 
   LayoutDashboard, 
@@ -26,13 +26,17 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
+
 const AdminLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [exportLoading, setExportLoading] = useState(false);
   const { user, isAuthenticated, loginWithRedirect, logout: auth0Logout } = useAuth0();
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [period, setPeriod] = useState('weekly');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM format for month picker
+  const currentMonth = new Date().toISOString().slice(0, 7);
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [appliedCustomRange, setAppliedCustomRange] = useState({ start: '', end: '' });
   const adminEmails = ['mariso.store@gmail.com'];
@@ -53,6 +57,25 @@ const AdminLayout = () => {
     }
   }, [isAuthenticated, loginWithRedirect, navigate, isAdmin]);
 
+  useEffect(() => {
+    if (!stats?.period_stats?.length) return;
+
+    const latest = stats.period_stats[stats.period_stats.length - 1]?._id;
+    if (!latest) return;
+
+    const date = new Date(latest);
+    const latestMonth = date.toISOString().slice(0, 7);
+
+    if (period === 'monthly' && latestMonth !== selectedMonth) {
+      setSelectedMonth(latestMonth);
+    }
+  }, [stats, period, selectedMonth]);
+
+  useEffect(() => {
+    if (period !== 'custom') return;
+    setAppliedCustomRange({ start: '', end: '' });
+  }, [period]);
+
   const fetchStats = useCallback(async () => {
     if (location.pathname !== '/admin') return;
 
@@ -60,10 +83,17 @@ const AdminLayout = () => {
       return;
     }
 
+    if (period === 'monthly' && !selectedMonth) {
+      return;
+    }
+
     setStatsLoading(true);
     try {
       const params = {
         period,
+        ...(period === 'monthly' && selectedMonth
+          ? { month: selectedMonth }
+          : {}),
         ...(period === 'custom'
           ? {
               start_date: appliedCustomRange.start,
@@ -79,7 +109,7 @@ const AdminLayout = () => {
     } finally {
       setStatsLoading(false);
     }
-  }, [location.pathname, period, appliedCustomRange.start, appliedCustomRange.end]);
+  }, [location.pathname, period, selectedMonth, appliedCustomRange.start, appliedCustomRange.end]);
 
   useEffect(() => {
     if (!isAuthenticated || !isAdmin) return;
@@ -92,6 +122,50 @@ const AdminLayout = () => {
         returnTo: window.location.origin,
       },
     });
+  };
+
+  const handleExport = async () => {
+    if (exportLoading) return;
+
+    try {
+      setExportLoading(true);
+
+      const params = {
+        period: period === 'custom' ? 'custom' : period,
+        ...(period === 'monthly' && selectedMonth
+          ? { month: selectedMonth }
+          : {}),
+        ...(period === 'custom' && appliedCustomRange.start && appliedCustomRange.end
+          ? {
+              start_date: appliedCustomRange.start,
+              end_date: appliedCustomRange.end,
+            }
+          : {}),
+      };
+      
+      const response = await exportOrdersExcel(params);
+
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+       });
+
+       const contentDisposition = response.headers['content-disposition'] || '';
+       const fileNameMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+       const fileName = fileNameMatch?.[1] || `mariso_orders_${period}.xlsx`;
+
+       const url = window.URL.createObjectURL(blob);
+       const link = document.createElement('a');
+       link.href = url;
+       link.setAttribute('download', fileName);
+       document.body.appendChild(link);
+       link.click();
+       link.remove();
+       window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting orders:', error);
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const navItems = [
@@ -148,6 +222,13 @@ const AdminLayout = () => {
     return new Date(value).toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
   };
 
+  const formatMonthLabel = (monthStr) => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const date = new Date(Number(year), Number(month) - 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+
   // Dashboard Overview Component
   const DashboardOverview = () => {
     if (statsLoading || !stats) {
@@ -189,7 +270,10 @@ const AdminLayout = () => {
                   ₹{stats.total_revenue?.toLocaleString()}
                 </p>
                 <p className="mt-2 text-xs uppercase tracking-[0.14em] text-foreground/45">
-                  {getRevenueTitle()}: ₹{(stats.period_revenue ?? 0).toLocaleString()}
+                  {period === 'monthly'
+                    ? `${formatMonthLabel(selectedMonth)}: ₹${(stats.period_revenue ?? 0).toLocaleString()}`
+                    : `${getRevenueTitle()}: ₹${(stats.period_revenue ?? 0).toLocaleString()}`
+                  }
                 </p>
               </div>
               <div className="w-12 h-12 bg-terracotta/10 rounded-full flex items-center justify-center">
@@ -253,7 +337,9 @@ const AdminLayout = () => {
               <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">
                 {period === 'custom' && appliedCustomRange.start && appliedCustomRange.end
                   ? `${appliedCustomRange.start} → ${appliedCustomRange.end}`
-                  : period}
+                  : period === 'monthly' && selectedMonth
+                    ? formatMonthLabel(selectedMonth)
+                    : period}
               </span>
             </div>
 
@@ -498,12 +584,33 @@ const AdminLayout = () => {
                 </div>
               )}
 
+              {period === 'monthly' && (
+                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
+                  <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">Month</span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    max={currentMonth}
+                    title="Future months are not available yet"
+                    className="bg-transparent outline-none text-foreground font-medium cursor-pointer"
+                  />
+                </div>
+              )}
+
               {/* Export Button */}
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition"
+                onClick={handleExport}
+                disabled={
+                  exportLoading ||
+                  (period === 'monthly' && !selectedMonth) ||
+                  (period === 'custom' &&
+                    (!appliedCustomRange.start || !appliedCustomRange.end))
+                }
+                className="flex items-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Export Data
+                {exportLoading ? 'Exporting...' : 'Export Data'}
               </button>
 
               {/* Status Pill */}

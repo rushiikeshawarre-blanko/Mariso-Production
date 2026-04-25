@@ -4,16 +4,18 @@ const CartContext = createContext();
 
 const normalizeCartItem = (product, quantity = 1) => ({
   ...product,
-  price: product.original_price ?? product.price,
-  discount_price: product.discount_price ?? null,
-  sale_price: product.sale_price ?? null,
+  price: Number(product.original_price ?? product.price) || 0,
+  discount_price: product.discount_price != null ? Number(product.discount_price) : null,
+  sale_price: product.sale_price != null ? Number(product.sale_price) : null,
   is_on_sale: Boolean(product.is_on_sale && (product.sale_price != null || product.discount_price != null)),
   quantity,
 });
 
 const getCartItemKey = (item) => {
+  if (item.variantId) return `${item.id}-${item.variantId}`;
   return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
 };
+
 
 const cartReducer = (state, action) => {
   switch (action.type) {
@@ -23,13 +25,18 @@ const cartReducer = (state, action) => {
       );
       if (existingIndex >= 0) {
         const newItems = [...state.items];
+        const nextQuantity = newItems[existingIndex].quantity + (action.payload.quantity || 1); 
+        const maxStock = Number(newItems[existingIndex].variantStock ?? newItems[existingIndex].stock) || Infinity;
+
         newItems[existingIndex] = {
           ...newItems[existingIndex],
           ...action.payload,
-          quantity: newItems[existingIndex].quantity + (action.payload.quantity || 1),
+          quantity: Math.min(nextQuantity, maxStock),
         };
+
         return { ...state, items: newItems };
       }
+        
       return { 
         ...state, 
         items: [...state.items, action.payload]
@@ -43,8 +50,13 @@ const cartReducer = (state, action) => {
     case 'UPDATE_QUANTITY': {
       const newItems = state.items.map(item =>
         getCartItemKey(item) === action.payload.id
-          ? { ...item, quantity: action.payload.quantity }
-          : item
+          ? { 
+              ...item, 
+              quantity: Math.min(
+                action.payload.quantity,
+                item.variantStock ?? item.stock ?? Infinity
+              ),
+            } : item
       );
       return { ...state, items: newItems.filter(item => item.quantity > 0) };
     }
@@ -62,10 +74,16 @@ export const CartProvider = ({ children }) => {
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    const savedCart = localStorage.getItem('mariso_cart');
-    if (savedCart) {
-      const parsedCart = JSON.parse(savedCart).map(item => normalizeCartItem(item, item.quantity || 1));
-      dispatch({ type: 'LOAD_CART', payload: parsedCart });
+    try {
+      const savedCart = localStorage.getItem('mariso_cart');
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart).map(item =>
+          normalizeCartItem(item, item.quantity || 1)
+        );
+        dispatch({ type: 'LOAD_CART', payload: parsedCart });
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error);
     }
   }, []);
 

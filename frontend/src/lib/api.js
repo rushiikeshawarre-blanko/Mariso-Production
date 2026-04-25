@@ -231,6 +231,19 @@ export const getDashboardStats = async (params = {}) => {
   }
 };
 
+export const exportOrdersExcel = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/admin/export-orders`, {
+      params,
+      responseType: 'blob',
+    });
+    return response;
+  } catch (error) {
+    console.error('Error exporting orders:', error);
+    throw error;
+  }
+};
+
 export const getAllOrders = async (status = null) => {
   try {
     const params = status ? { status } : {};
@@ -265,7 +278,7 @@ export const getCustomers = async () => {
 // Admin Product Management
 export const createProduct = async (productData) => {
   try {
-    const response = await axiosInstance.post(`/admin/products`, productData);
+    const response = await axiosInstance.post(`/products/admin`, productData);
     return response.data;
   } catch (error) {
     console.error('Error creating product:', error);
@@ -275,7 +288,7 @@ export const createProduct = async (productData) => {
 
 export const updateProduct = async (productId, productData) => {
   try {
-    const response = await axiosInstance.put(`/admin/products/${productId}`, productData);
+    const response = await axiosInstance.put(`/products/admin/${productId}`, productData);
     return response.data;
   } catch (error) {
     console.error('Error updating product:', error);
@@ -284,13 +297,13 @@ export const updateProduct = async (productId, productData) => {
 };
 
 export const deleteProduct = async (productId) => {
-  const response = await axiosInstance.delete(`/admin/products/${productId}`);
+  const response = await axiosInstance.delete(`/products/admin/${productId}`);
   return response.data;
 };
 
 export const generateProductVariants = async (productId) => {
   try {
-    const response = await axiosInstance.post(`/admin/products/${productId}/generate-variants`);
+    const response = await axiosInstance.post(`/products/admin/${productId}/generate-variants`);
     return response.data;
   } catch (error) {
     console.error('Error generating product variants:', error);
@@ -300,17 +313,17 @@ export const generateProductVariants = async (productId) => {
 
 // Admin Category Management
 export const createCategory = async (categoryData) => {
-  const response = await axiosInstance.post(`/admin/categories`, categoryData);
+  const response = await axiosInstance.post(`/categories/admin`, categoryData);
   return response.data;
 };
 
 export const updateCategory = async (categoryId, categoryData) => {
-  const response = await axiosInstance.put(`/admin/categories/${categoryId}`, categoryData);
+  const response = await axiosInstance.put(`/categories/admin/${categoryId}`, categoryData);
   return response.data;
 };
 
 export const deleteCategory = async (categoryId) => {
-  const response = await axiosInstance.delete(`/admin/categories/${categoryId}`);
+  const response = await axiosInstance.delete(`/categories/admin/${categoryId}`);
   return response.data;
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getProducts, getCategories, createProduct, updateProduct, deleteProduct, generateProductVariants } from '../../lib/api';
+import { getProducts, getCategories, createProduct, updateProduct, deleteProduct } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -248,87 +248,83 @@ const AdminProducts = () => {
 
   // ==================== VARIANT COMBINATIONS ====================
 
-  const generateVariantCombinations = async () => {
-    if (editingProduct) {
-      // If editing, call the API to generate variants
-      setGenerating(true);
-      try {
-        const updatedProduct = await generateProductVariants(editingProduct.id);
-        setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
-        toast.success('Variant combinations generated successfully');
-      } catch (error) {
-        console.error('Error generating variants:', error);
-        const message = error.response?.data?.detail || 'Failed to generate variants';
-        toast.error(message);
-      } finally {
-        setGenerating(false);
-      }
-    } else {
-      // For new products, generate locally
-      const newVariants = [];
-      const existingCombos = new Set(formData.variants.map(v => `${v.color_id}-${v.flavor_id}`));
-      
-      if (formData.color_options.length > 0 && formData.flavor_options.length > 0) {
-        // Both colors and flavors
-        for (const color of formData.color_options) {
-          for (const flavor of formData.flavor_options) {
-            const comboKey = `${color.id}-${flavor.id}`;
-            if (!existingCombos.has(comboKey)) {
-              newVariants.push({
-                id: `temp-${Date.now()}-${newVariants.length}`,
-                color_id: color.id,
-                color_name: color.name,
-                flavor_id: flavor.id,
-                flavor_name: flavor.name,
-                sku: '',
-                price_override: null,
-                stock: 0,
-                is_active: true
-              });
-            }
-          }
-        }
-      } else if (formData.color_options.length > 0) {
-        // Only colors
-        for (const color of formData.color_options) {
-          const comboKey = `${color.id}-null`;
-          if (!existingCombos.has(comboKey)) {
-            newVariants.push({
-              id: `temp-${Date.now()}-${newVariants.length}`,
-              color_id: color.id,
-              color_name: color.name,
-              flavor_id: null,
-              flavor_name: null,
-              sku: '',
-              price_override: null,
-              stock: 0,
-              is_active: true
-            });
-          }
-        }
-      } else if (formData.flavor_options.length > 0) {
-        // Only flavors
+  const buildVariantCombinationsFromForm = () => {
+    const existingVariantMap = new Map(
+      formData.variants.map((variant) => [
+        `${variant.color_id ?? 'null'}-${variant.flavor_id ?? 'null'}`,
+        variant,
+      ])
+    );
+
+    const generatedVariants = [];
+
+    if (formData.color_options.length > 0 && formData.flavor_options.length > 0) {
+      for (const color of formData.color_options) {
         for (const flavor of formData.flavor_options) {
-          const comboKey = `null-${flavor.id}`;
-          if (!existingCombos.has(comboKey)) {
-            newVariants.push({
-              id: `temp-${Date.now()}-${newVariants.length}`,
-              color_id: null,
-              color_name: null,
-              flavor_id: flavor.id,
-              flavor_name: flavor.name,
-              sku: '',
-              price_override: null,
-              stock: 0,
-              is_active: true
-            });
-          }
+          const comboKey = `${color.id}-${flavor.id}`;
+          const existingVariant = existingVariantMap.get(comboKey);
+
+          generatedVariants.push({
+            id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
+            color_id: color.id,
+            color_name: color.name,
+            flavor_id: flavor.id,
+            flavor_name: flavor.name,
+            sku: existingVariant?.sku || '',
+            price_override: existingVariant?.price_override ?? null,
+            stock: existingVariant?.stock ?? 0,
+            is_active: existingVariant?.is_active ?? true,
+          });
         }
       }
-      
-      setFormData(prev => ({ ...prev, variants: [...prev.variants, ...newVariants] }));
-      toast.success(`Generated ${newVariants.length} new variant combinations`);
+    } else if (formData.color_options.length > 0) {
+      for (const color of formData.color_options) {
+        const comboKey = `${color.id}-null`;
+        const existingVariant = existingVariantMap.get(comboKey);
+
+        generatedVariants.push({
+          id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
+          color_id: color.id,
+          color_name: color.name,
+          flavor_id: null,
+          flavor_name: null,
+          sku: existingVariant?.sku || '',
+          price_override: existingVariant?.price_override ?? null,
+          stock: existingVariant?.stock ?? 0,
+          is_active: existingVariant?.is_active ?? true,
+        });
+      }
+    } else if (formData.flavor_options.length > 0) {
+      for (const flavor of formData.flavor_options) {
+        const comboKey = `null-${flavor.id}`;
+        const existingVariant = existingVariantMap.get(comboKey);
+
+        generatedVariants.push({
+          id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
+          color_id: null,
+          color_name: null,
+          flavor_id: flavor.id,
+          flavor_name: flavor.name,
+          sku: existingVariant?.sku || '',
+          price_override: existingVariant?.price_override ?? null,
+          stock: existingVariant?.stock ?? 0,
+          is_active: existingVariant?.is_active ?? true,
+        });
+      }
     }
+
+    return generatedVariants;
+  };
+
+  const generateVariantCombinations = async () => {
+    const generatedVariants = buildVariantCombinationsFromForm();
+
+    setFormData((prev) => ({
+      ...prev,
+      variants: generatedVariants,
+    }));
+
+    toast.success(`Generated ${generatedVariants.length} variant combinations`);
   };
 
   const updateVariant = (index, field, value) => {
