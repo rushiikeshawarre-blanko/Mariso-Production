@@ -81,13 +81,13 @@ def test_admin_create_product(admin_client):
         "is_bestseller": False,
         "is_on_sale": False
     }
-    resp = admin_client.post(f"{BASE_URL}/api/admin/products", json=product_data)
+    resp = admin_client.post(f"{BASE_URL}/api/products/admin", json=product_data)
     assert resp.status_code in [200, 201]
     data = resp.json()
     assert "id" in data
     
     # Cleanup
-    admin_client.delete(f"{BASE_URL}/api/admin/products/{data['id']}")
+    admin_client.delete(f"{BASE_URL}/api/products/admin/{data['id']}")
 
 
 def test_admin_create_category(admin_client):
@@ -97,13 +97,13 @@ def test_admin_create_category(admin_client):
         "description": "Test category",
         "image": "https://example.com/cat.jpg"
     }
-    resp = admin_client.post(f"{BASE_URL}/api/admin/categories", json=cat_data)
+    resp = admin_client.post(f"{BASE_URL}/api/categories/admin", json=cat_data)
     assert resp.status_code in [200, 201]
     data = resp.json()
     assert "id" in data
     
     # Cleanup
-    admin_client.delete(f"{BASE_URL}/api/admin/categories/{data['id']}")
+    admin_client.delete(f"{BASE_URL}/api/categories/admin/{data['id']}")
 
 
 def test_admin_dashboard_stats(admin_client):

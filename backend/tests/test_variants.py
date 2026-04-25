@@ -205,7 +205,7 @@ class TestVariantCombinations:
 
 
 class TestProductVariantsUpdate:
-    """Tests for PUT /api/admin/products/{id} variant updates"""
+    """Tests for PUT /api/products/admin/{id} variant updates"""
     
     def test_admin_can_add_color_option(self, admin_client):
         """Admin can add a new color option to a product"""
@@ -229,7 +229,7 @@ class TestProductVariantsUpdate:
         }
         
         response = admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_COLORS}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_COLORS}",
             json=update_data
         )
         
@@ -243,7 +243,7 @@ class TestProductVariantsUpdate:
         # Cleanup: remove the test color
         cleanup_colors = [c for c in updated['color_options'] if not c['name'].startswith('TEST_')]
         admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_COLORS}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_COLORS}",
             json={"color_options": cleanup_colors}
         )
     
@@ -268,7 +268,7 @@ class TestProductVariantsUpdate:
         }
         
         response = admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_FLAVORS}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_FLAVORS}",
             json=update_data
         )
         
@@ -282,7 +282,7 @@ class TestProductVariantsUpdate:
         # Cleanup: remove the test flavor
         cleanup_flavors = [f for f in updated['flavor_options'] if not f['name'].startswith('TEST_')]
         admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_FLAVORS}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_FLAVORS}",
             json={"flavor_options": cleanup_flavors}
         )
     
@@ -303,7 +303,7 @@ class TestProductVariantsUpdate:
         updated_variants[0]['stock'] = original_stock + 5
         
         response = admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_BOTH}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_BOTH}",
             json={"variants": updated_variants}
         )
         
@@ -318,7 +318,7 @@ class TestProductVariantsUpdate:
         # Restore original stock
         updated_variants[0]['stock'] = original_stock
         admin_client.put(
-            f"{BASE_URL}/api/admin/products/{PRODUCT_WITH_BOTH}",
+            f"{BASE_URL}/api/products/admin/{PRODUCT_WITH_BOTH}",
             json={"variants": updated_variants}
         )
 
