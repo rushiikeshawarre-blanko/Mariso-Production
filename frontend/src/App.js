@@ -35,7 +35,11 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      loginWithRedirect();
+      loginWithRedirect({
+        appState: {
+          returnTo: `${window.location.pathname}${window.location.search}`,
+        },
+      });
     }
   }, [isLoading, isAuthenticated, loginWithRedirect]);
 

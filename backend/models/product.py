@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 import uuid
 
 
@@ -7,6 +7,7 @@ class ColorOption(BaseModel):
     id: str = ""
     name: str
     hex_code: str
+    hex_code_secondary: Optional[str] = None
     images: List[str] = Field(default_factory=list)
 
 class FlavorOption(BaseModel):
@@ -33,7 +34,7 @@ class ProductCreate(BaseModel):
     description: str
     short_description: Optional[str] = ""
     price: float = Field(..., gt=0)
-    discount_price: Optional[float] = None
+    discount_price: Optional[float] = Field(None, gt=0)
     category_id: str
     subcategory: Optional[str] = ""
     sku: Optional[str] = ""
@@ -59,6 +60,16 @@ class ProductCreate(BaseModel):
     materials: Optional[str] = ""
     dimensions: Optional[str] = ""
     burn_time: Optional[str] = ""
+    @model_validator(mode="after")
+    def validate_sale_pricing(self):
+        if self.is_on_sale:
+            if self.discount_price is None:
+                raise ValueError("discount_price is required when is_on_sale is true")
+            if self.discount_price >= self.price:
+                raise ValueError("discount_price must be less than price when is_on_sale is true")
+        else:
+            self.discount_price = None
+        return self
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -89,6 +100,14 @@ class ProductUpdate(BaseModel):
     materials: Optional[str] = None
     dimensions: Optional[str] = None
     burn_time: Optional[str] = None
+    @model_validator(mode="after")
+    def validate_sale_pricing(self):
+        if self.is_on_sale is False:
+            self.discount_price = None
+        if self.is_on_sale is True and self.price is not None and self.discount_price is not None:
+            if self.discount_price >= self.price:
+                raise ValueError("discount_price must be less than price when is_on_sale is true")
+        return self
 
 class ProductResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")

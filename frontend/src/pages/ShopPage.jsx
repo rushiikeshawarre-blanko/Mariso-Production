@@ -193,8 +193,10 @@ const ShopPage = () => {
     params.delete('category');
     params.delete('sale');
     params.delete('search');
+    params.delete('parent');
 
     setSelectedCategory('');
+    setSelectedParentSlug('');
     setShowOnSale(false);
     setSortBy('newest');
     setSearchQuery('');

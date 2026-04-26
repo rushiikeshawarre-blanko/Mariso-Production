@@ -120,10 +120,6 @@ const ProductPage = () => {
         const prod = await getProduct(id);
         setProduct(prod);
         
-        // Set default selected color if product has color options
-        setSelectedColor(null);
-        setSelectedFlavor(null);
-        
         // Fetch related products from same category
         const related = await getProducts({ category_id: prod.category_id });
         setRelatedProducts(related.filter(p => p.id !== prod.id).slice(0, 4));
@@ -138,6 +134,51 @@ const ProductPage = () => {
     setQuantity(1);
     window.scrollTo(0, 0);
   }, [id]);
+
+  useEffect(() => {
+    if (!product) return;
+
+    const colors = product.color_options || [];
+    const flavors = product.flavor_options || [];
+    const variants = product.variants || [];
+
+    const hasColors = product.has_color_options && colors.length > 0;
+    const hasFlavors = product.has_flavor_options && flavors.length > 0;
+
+    if (!hasColors && !hasFlavors) return;
+
+    if (variants.length > 0) {
+      const firstAvailableVariant = variants.find((variant) => {
+        if (variant.is_active === false) return false;
+        if ((variant.stock ?? 0) <= 0) return false;
+
+        const colorOk = !hasColors || colors.some((color) => color.id === variant.color_id);
+        const flavorOk = !hasFlavors || flavors.some((flavor) => flavor.id === variant.flavor_id);
+
+        return colorOk && flavorOk;
+      });
+
+      if (firstAvailableVariant) {
+        if (hasColors) {
+          const matchedColor = colors.find((color) => color.id === firstAvailableVariant.color_id) || null;
+          setSelectedColor(matchedColor);
+        } else {
+          setSelectedColor(null);
+        }
+
+        if (hasFlavors) {
+          const matchedFlavor = flavors.find((flavor) => flavor.id === firstAvailableVariant.flavor_id) || null;
+          setSelectedFlavor(matchedFlavor);
+        } else {
+          setSelectedFlavor(null);
+        }
+        return;
+      }
+    }
+
+    setSelectedColor(hasColors ? colors[0] : null);
+    setSelectedFlavor(hasFlavors ? flavors[0] : null);
+  }, [product]);
 
   // Reset quantity when variant changes
   useEffect(() => {
@@ -380,27 +421,29 @@ const ProductPage = () => {
               </h1>
               
               {/* Price */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span
-                  className={`text-[2rem] md:text-[2.2rem] font-medium tracking-[-0.02em] ${originalPrice ? 'text-terracotta' : 'text-foreground'}`}
-                  data-testid="product-price"
-                >
-                  ₹{displayPrice?.toLocaleString()}
-                </span>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <span
+                    className={`text-[2rem] md:text-[2.2rem] font-medium tracking-[-0.02em] ${originalPrice ? 'text-terracotta' : 'text-foreground'}`}
+                    data-testid="product-price"
+                  >
+                    ₹{displayPrice?.toLocaleString()}
+                  </span>
+
+                  {originalPrice && (
+                    <span className="text-sm font-medium text-terracotta/90 uppercase tracking-[0.12em]">
+                      {discountPercent}% off
+                    </span>
+                  )}
+                </div>
 
                 {originalPrice && (
-                  <>
-                    <span
-                      className="text-lg text-foreground/40 line-through"
-                      data-testid="product-original-price"
-                    >
-                      ₹{originalPrice.toLocaleString()}
-                    </span>
-
-                    <span className="inline-flex items-center rounded-full bg-[#EEE6DC] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/70">
-                      Save ₹{(originalPrice - displayPrice).toLocaleString()}
-                    </span>
-                  </>
+                  <span
+                    className="block text-base text-foreground/40 line-through"
+                    data-testid="product-original-price"
+                  >
+                    ₹{originalPrice.toLocaleString()}
+                  </span>
                 )}
               </div>
 

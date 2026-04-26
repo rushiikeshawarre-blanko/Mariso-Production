@@ -13,9 +13,16 @@ from utils.helpers import generate_slug, get_selected_variant, ensure_product_de
 
 logger = logging.getLogger(__name__)
 
-def validate_discount(price: Optional[float], discount_price: Optional[float]) -> None:
-    if price is not None and discount_price is not None and discount_price >= price:
-        raise HTTPException(status_code=400, detail="Discount price must be less than price")
+def validate_sale_pricing_payload(price, discount_price, is_on_sale):
+    if is_on_sale:
+        if discount_price is None:
+            raise HTTPException(status_code=400, detail="Sale price is required when product is marked on sale")
+        if discount_price <= 0:
+            raise HTTPException(status_code=400, detail="Sale price must be greater than zero")
+        if discount_price >= price:
+            raise HTTPException(status_code=400, detail="Sale price must be less than base price")
+    return None if not is_on_sale else discount_price
+
     
 def validate_sale_dates(sale_start: Optional[str], sale_end: Optional[str]) -> None:
     if sale_start and sale_end:
@@ -187,17 +194,16 @@ async def get_bestsellers():
     return await enrich_products(products)
 
 async def get_product(product_id: str):
-    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    product = await db.products.find_one({"id": product_id, "is_active": True}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    
+
     return (await enrich_products([product]))[0]
 
 
 async def get_product_variant_stock(product_id: str, color_id: Optional[str] = None, flavor_id: Optional[str] = None):
     """Return stock, availability, and variant details for a given product selection."""
-    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    product = await db.products.find_one({"id": product_id, "is_active": True}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -220,7 +226,11 @@ async def get_product_variant_stock(product_id: str, color_id: Optional[str] = N
     }
 
 async def create_product(product: ProductCreate):
-    validate_discount(product.price, product.discount_price)
+    price = product.price
+    discount_price = product.discount_price
+    is_on_sale = product.is_on_sale
+
+    discount_price = validate_sale_pricing_payload(price, discount_price, is_on_sale)
 
     validate_sale_dates(product.sale_start, product.sale_end)
 
@@ -243,8 +253,8 @@ async def create_product(product: ProductCreate):
         "slug": product.slug or generate_slug(product.name),
         "description": product.description,
         "short_description": product.short_description or "",
-        "price": product.price,
-        "discount_price": product.discount_price,
+        "price": price,
+        "discount_price": discount_price,
         "category_id": product.category_id,
         "subcategory": product.subcategory or "",
         "sku": product.sku or f"SKU-{product_id[:8].upper()}",
@@ -259,7 +269,7 @@ async def create_product(product: ProductCreate):
         "is_featured": product.is_featured,
         "is_bestseller": product.is_bestseller,
         "is_new_arrival": product.is_new_arrival,
-        "is_on_sale": product.is_on_sale,
+        "is_on_sale": is_on_sale,
         "sale_start": product.sale_start,
         "sale_end": product.sale_end,
         "care_instructions": product.care_instructions or "",
@@ -286,9 +296,14 @@ async def update_product(product_id: str, product: ProductUpdate):
         raise HTTPException(status_code=404, detail="Product not found")
 
     effective_price = product.price if product.price is not None else existing.get("price")
-    effective_discount = product.discount_price if product.discount_price is not None else existing.get("discount_price")
+    effective_discount_price = product.discount_price if product.discount_price is not None else existing.get("discount_price")
+    effective_is_on_sale = product.is_on_sale if product.is_on_sale is not None else existing.get("is_on_sale", False)
 
-    validate_discount(effective_price, effective_discount)
+    normalized_discount_price = validate_sale_pricing_payload(
+        effective_price,
+        effective_discount_price,
+        effective_is_on_sale,
+        )
 
     effective_sale_start = product.sale_start if product.sale_start is not None else existing.get("sale_start")
     effective_sale_end = product.sale_end if product.sale_end is not None else existing.get("sale_end")
@@ -311,6 +326,9 @@ async def update_product(product_id: str, product: ProductUpdate):
         else:
             update_data[key] = value
     
+    if "is_on_sale" in update_data or "discount_price" in update_data or "price" in update_data:
+        update_data["discount_price"] = normalized_discount_price
+
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     
@@ -355,4 +373,3 @@ async def generate_product_variants(product_id: str):
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     
     return (await enrich_products([updated]))[0]
-    

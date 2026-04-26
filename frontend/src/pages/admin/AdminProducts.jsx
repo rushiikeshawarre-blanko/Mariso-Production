@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getProducts, getCategories, createProduct, updateProduct, deleteProduct } from '../../lib/api';
+import { getAdminProducts, getCategories, createProduct, updateProduct, deleteProduct } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -9,7 +9,7 @@ import { Switch } from '../../components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 
@@ -23,6 +23,8 @@ const AdminProducts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
   const [generating, setGenerating] = useState(false);
+  const [editingColorIndex, setEditingColorIndex] = useState(null);
+  const [editingFlavorIndex, setEditingFlavorIndex] = useState(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -62,7 +64,7 @@ const AdminProducts = () => {
   const fetchData = async () => {
     try {
       const [prods, cats] = await Promise.all([
-        getProducts(),
+        getAdminProducts(),
         getCategories()
       ]);
       setProducts(prods);
@@ -108,6 +110,8 @@ const AdminProducts = () => {
     setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
     setNewFlavor({ name: '', description: '' });
     setActiveTab('basic');
+    setEditingColorIndex(null);
+    setEditingFlavorIndex(null);
   };
 
   const openCreateDialog = () => {
@@ -145,6 +149,8 @@ const AdminProducts = () => {
       variants: product.variants || []
     });
     setActiveTab('basic');
+    setEditingColorIndex(null);
+    setEditingFlavorIndex(null);
     setDialogOpen(true);
   };
 
@@ -168,6 +174,7 @@ const AdminProducts = () => {
       color_options: [...formData.color_options, newColorOption]
     });
     setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
+    setEditingColorIndex(null);
     toast.success('Color option added');
   };
 
@@ -175,6 +182,11 @@ const AdminProducts = () => {
     const colorToRemove = formData.color_options[index];
     // Also remove variants that use this color
     const updatedVariants = formData.variants.filter(v => v.color_id !== colorToRemove.id);
+    if (editingColorIndex === index) {
+      setEditingColorIndex(null);
+    } else if (editingColorIndex !== null && editingColorIndex > index) {
+      setEditingColorIndex(editingColorIndex - 1);
+    }
     setFormData({
       ...formData,
       color_options: formData.color_options.filter((_, i) => i !== index),
@@ -193,6 +205,12 @@ const AdminProducts = () => {
       updatedColors[colorIndex].images.push('');
     }
     updatedColors[colorIndex].images[imageIndex] = url;
+    setFormData({ ...formData, color_options: updatedColors });
+  };
+
+  const updateColorOption = (index, field, value) => {
+    const updatedColors = [...formData.color_options];
+    updatedColors[index] = { ...updatedColors[index], [field]: value };
     setFormData({ ...formData, color_options: updatedColors });
   };
 
@@ -225,6 +243,7 @@ const AdminProducts = () => {
       flavor_options: [...formData.flavor_options, newFlavorOption]
     });
     setNewFlavor({ name: '', description: '' });
+    setEditingFlavorIndex(null);
     toast.success('Fragrance option added');
   };
 
@@ -232,6 +251,11 @@ const AdminProducts = () => {
     const flavorToRemove = formData.flavor_options[index];
     // Also remove variants that use this flavor
     const updatedVariants = formData.variants.filter(v => v.flavor_id !== flavorToRemove.id);
+    if (editingFlavorIndex === index) {
+      setEditingFlavorIndex(null);
+    } else if (editingFlavorIndex !== null && editingFlavorIndex > index) {
+      setEditingFlavorIndex(editingFlavorIndex - 1);
+    }
     setFormData({
       ...formData,
       flavor_options: formData.flavor_options.filter((_, i) => i !== index),
@@ -360,9 +384,15 @@ const AdminProducts = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (formData.discount_price && parseFloat(formData.discount_price) > parseFloat(formData.price)) {
-      toast.error('Sale price cannot be greater than base price');
-      return;
+    if (formData.is_on_sale) {
+      if (!formData.discount_price) {
+        toast.error('Sale price is required when On Sale is enabled');
+        return;
+      }
+      if (parseFloat(formData.discount_price) >= parseFloat(formData.price)) {
+        toast.error('Sale price must be less than base price');
+        return;
+      }
     }
     
     // Clean up color images (remove empty strings)
@@ -376,7 +406,7 @@ const AdminProducts = () => {
       description: formData.description,
       short_description: formData.short_description,
       price: parseFloat(formData.price) || 0,
-      discount_price: formData.discount_price ? parseFloat(formData.discount_price) : null,
+      discount_price: formData.is_on_sale && formData.discount_price ? parseFloat(formData.discount_price) : null,
       category_id: formData.category_id,
       sku: formData.sku,
       stock: parseInt(formData.stock, 10) || 0,
@@ -548,12 +578,14 @@ const AdminProducts = () => {
                         id="discount_price"
                         name="discount_price"
                         type="number"
-                        min="0"
+                        min="0.01"
                         step="0.01"
                         value={formData.discount_price}
                         onChange={handleChange}
                         className="mt-1"
                         data-testid="product-sale-price-input"
+                        disabled={!formData.is_on_sale}
+                        placeholder={formData.is_on_sale ? 'Enter sale price' : 'Enable On Sale to enter sale price'}
                       />
                     </div>
                     <div>
@@ -614,7 +646,13 @@ const AdminProducts = () => {
                     <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.is_on_sale}
-                        onCheckedChange={(checked) => setFormData({ ...formData, is_on_sale: checked })}
+                        onCheckedChange={(checked) =>
+                          setFormData({
+                            ...formData,
+                            is_on_sale: checked,
+                            discount_price: checked ? formData.discount_price : ''
+                          })
+                        }
                         data-testid="product-sale-toggle"
                       />
                       <Label>On Sale</Label>
@@ -726,43 +764,116 @@ const AdminProducts = () => {
                         const hasDualColor = color.hex_code_secondary && color.hex_code_secondary !== color.hex_code;
                         return (
                         <div key={color.id} className="border rounded-lg p-4 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {/* Dual or Single color swatch preview */}
-                              <div 
-                                className="w-10 h-10 rounded-full border-2 border-border shadow-sm overflow-hidden"
-                              >
-                                {hasDualColor ? (
-                                  <div 
-                                    className="w-full h-full"
-                                    style={{ 
-                                      background: `linear-gradient(135deg, ${color.hex_code} 50%, ${color.hex_code_secondary} 50%)`
-                                    }}
-                                  />
-                                ) : (
-                                  <div 
-                                    className="w-full h-full"
-                                    style={{ backgroundColor: color.hex_code }}
-                                  />
-                                )}
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-3">
+                                {/* Dual or Single color swatch preview */}
+                                <div className="w-10 h-10 rounded-full border-2 border-border shadow-sm overflow-hidden">
+                                  {hasDualColor ? (
+                                    <div
+                                      className="w-full h-full"
+                                      style={{
+                                        background: `linear-gradient(135deg, ${color.hex_code} 50%, ${color.hex_code_secondary} 50%)`
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      className="w-full h-full"
+                                      style={{ backgroundColor: color.hex_code }}
+                                    />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{color.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {color.hex_code}
+                                    {hasDualColor && ` + ${color.hex_code_secondary}`}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium">{color.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {color.hex_code}
-                                  {hasDualColor && ` + ${color.hex_code_secondary}`}
-                                </p>
-                              </div>
+
+                              {editingColorIndex === colorIndex ? (
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                      <Label className="text-xs">Name</Label>
+                                      <Input
+                                        value={color.name}
+                                        onChange={(e) => updateColorOption(colorIndex, 'name', e.target.value)}
+                                        placeholder="Color name"
+                                        className="mt-1"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <Label className="text-xs">Primary Color</Label>
+                                      <div className="flex gap-1 mt-1">
+                                        <Input
+                                          type="color"
+                                          value={color.hex_code || '#F5F0E8'}
+                                          onChange={(e) => updateColorOption(colorIndex, 'hex_code', e.target.value)}
+                                          className="w-10 h-9 p-1 cursor-pointer"
+                                        />
+                                        <Input
+                                          value={color.hex_code || ''}
+                                          onChange={(e) => updateColorOption(colorIndex, 'hex_code', e.target.value)}
+                                          className="flex-1 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <Label className="text-xs">Secondary Color (optional)</Label>
+                                      <div className="flex gap-1 mt-1">
+                                        <Input
+                                          type="color"
+                                          value={color.hex_code_secondary || '#FFFFFF'}
+                                          onChange={(e) => updateColorOption(colorIndex, 'hex_code_secondary', e.target.value)}
+                                          className="w-10 h-9 p-1 cursor-pointer"
+                                        />
+                                        <Input
+                                          value={color.hex_code_secondary || ''}
+                                          onChange={(e) => updateColorOption(colorIndex, 'hex_code_secondary', e.target.value)}
+                                          placeholder="Leave empty for single"
+                                          className="flex-1 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                </div>
+                              ) : null}
                             </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeColorOption(colorIndex)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+
+                            <div className="flex items-center gap-1">
+                              {editingColorIndex === colorIndex ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingColorIndex(null)}
+                                >
+                                  <Check className="h-4 w-4 mr-1" /> Done
+                                </Button>
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingColorIndex(editingColorIndex === colorIndex ? null : colorIndex)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeColorOption(colorIndex)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                           
                           {/* Image Gallery for this color (up to 5 images) */}
@@ -961,28 +1072,57 @@ const AdminProducts = () => {
                             <Droplets className="h-5 w-5 text-terracotta" />
                           </div>
                           <div className="flex-1 space-y-2">
-                            <Input
-                              value={flavor.name}
-                              onChange={(e) => updateFlavorOption(index, 'name', e.target.value)}
-                              className="font-medium"
-                              placeholder="Fragrance name"
-                            />
-                            <Input
-                              value={flavor.description || ''}
-                              onChange={(e) => updateFlavorOption(index, 'description', e.target.value)}
-                              className="text-sm"
-                              placeholder="Description (optional)"
-                            />
+                            <div>
+                              <p className="font-medium">{flavor.name}</p>
+                              <p className="text-sm text-muted-foreground">{flavor.description || 'No description'}</p>
+                            </div>
+
+                            {editingFlavorIndex === index ? (
+                              <div className="space-y-2">
+                                <Input
+                                  value={flavor.name}
+                                  onChange={(e) => updateFlavorOption(index, 'name', e.target.value)}
+                                  className="font-medium"
+                                  placeholder="Fragrance name"
+                                />
+                                <Input
+                                  value={flavor.description || ''}
+                                  onChange={(e) => updateFlavorOption(index, 'description', e.target.value)}
+                                  className="text-sm"
+                                  placeholder="Description (optional)"
+                                />
+                              </div>
+                            ) : null}
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeFlavorOption(index)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            {editingFlavorIndex === index ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingFlavorIndex(null)}
+                              >
+                                <Check className="h-4 w-4 mr-1" /> Done
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingFlavorIndex(editingFlavorIndex === index ? null : index)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeFlavorOption(index)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       

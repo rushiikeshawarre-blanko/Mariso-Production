@@ -82,7 +82,7 @@ const HomePage = () => {
               Designed to Glow with Your Space
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-              <Link to="/shop?category=container-candles">
+              <Link to="/shop?parent=candles">
                 <Button
                   className={`min-w-[215px] h-12 rounded-full transition-all duration-300 text-[12px] tracking-[0.22em] px-8 shadow-sm ${
                     hoveredButton === 'homewares'
@@ -96,7 +96,7 @@ const HomePage = () => {
                   SHOP CANDLES
                 </Button>
               </Link>
-              <Link to="/shop">
+              <Link to="/shop?parent=homewares">
                 <Button
                   className={`min-w-[215px] h-12 rounded-full transition-all duration-300 text-[12px] tracking-[0.22em] px-8 shadow-sm ${
                     hoveredButton === 'homewares'

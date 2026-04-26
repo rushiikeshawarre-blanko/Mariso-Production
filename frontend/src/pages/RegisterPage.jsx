@@ -1,54 +1,29 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
-import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 const RegisterPage = () => {
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const rawRedirect = searchParams.get('redirect') || '/';
+  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/';
   const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: ''
-  });
 
   if (isAuthenticated) {
     return <Navigate to={redirect} replace />;
   }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!formData.name || !formData.email || !formData.password) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
+  const handleSignup = async () => {
     try {
       await loginWithRedirect({
         appState: {
-          returnTo: redirect,
+          returnTo: redirect || '/',
         },
         authorizationParams: {
           screen_hint: 'signup',
-          login_hint: formData.email,
         },
       });
     } catch (error) {
@@ -82,73 +57,23 @@ const RegisterPage = () => {
 
             <h1 className="font-heading text-3xl mb-2">Create Account</h1>
             <p className="text-muted-foreground mb-8">
-              Join us and discover handcrafted luxury.
+              Create your account through Mariso's secure sign up.
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={handleChange}
-                  placeholder="Enter your name"
-                  className="mt-2"
-                  data-testid="register-name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="you@example.com"
-                  className="mt-2"
-                  data-testid="register-email"
-                />
-              </div>
-              <div>
-                <Label htmlFor="password">Password</Label>
-                <div className="relative mt-2">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="Create a password (min 6 characters)"
-                    className="pr-10"
-                    data-testid="register-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    data-testid="toggle-password-register"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <Button
-                type="submit"
-                className="btn-primary w-full"
-                disabled={isLoading}
-                data-testid="register-submit"
-              >
-                {isLoading ? 'Redirecting...' : 'Create Account'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </form>
+            <Button
+              type="button"
+              className="btn-primary w-full"
+              disabled={isLoading}
+              onClick={handleSignup}
+              data-testid="register-submit"
+            >
+              {isLoading ? 'Redirecting...' : 'Create account securely'}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
 
             <p className="text-center text-muted-foreground mt-8">
               Already have an account?{' '}
-              <Link to={`/login?redirect=${redirect}`} className="text-foreground font-medium hover:underline" data-testid="go-to-login">
+              <Link to={`/login?redirect=${encodeURIComponent(redirect)}`} className="text-foreground font-medium hover:underline" data-testid="go-to-login">
                 Sign in
               </Link>
             </p>

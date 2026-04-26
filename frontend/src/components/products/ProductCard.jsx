@@ -185,16 +185,21 @@ export const ProductCard = ({
         <h3 className="mt-1 min-h-[2.6rem] font-heading text-[1.08rem] leading-[1.3] tracking-[-0.01em] text-foreground group-hover:text-foreground/80 transition-colors duration-300" data-testid={`${testIdPrefix}-name`}>
           {product.name}
         </h3>
-        <div className="mt-1.5 flex items-baseline gap-2">
-          <span className={`text-[1.08rem] font-semibold tracking-[-0.01em] transition-colors duration-300 ${product.is_on_sale ? 'text-terracotta' : 'text-foreground'}`} data-testid={`${testIdPrefix}-price`}>
-            ₹{price.toLocaleString()}
-          </span>
-          {originalPrice && (
-            <>
-              <span className="text-[0.88rem] text-foreground/35 line-through" data-testid={`${testIdPrefix}-original-price`}>
-                ₹{originalPrice.toLocaleString()}
+        <div className="mt-1.5 space-y-1">
+          <div className="flex items-baseline gap-2">
+            <span className={`text-[1.08rem] font-semibold tracking-[-0.01em] transition-colors duration-300 ${product.is_on_sale ? 'text-terracotta' : 'text-foreground'}`} data-testid={`${testIdPrefix}-price`}>
+              ₹{price.toLocaleString()}
+            </span>
+            {originalPrice && (
+              <span className="text-[0.72rem] font-medium uppercase tracking-[0.12em] text-terracotta/90">
+                {discountPercent}% off
               </span>
-            </>
+            )}
+          </div>
+          {originalPrice && (
+            <span className="block text-[0.88rem] text-foreground/35 line-through" data-testid={`${testIdPrefix}-original-price`}>
+              ₹{originalPrice.toLocaleString()}
+            </span>
           )}
         </div>
         {effectiveStock <= 5 && effectiveStock > 0 && (

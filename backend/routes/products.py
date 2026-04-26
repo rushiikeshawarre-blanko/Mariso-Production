@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from core.auth import get_admin_user
 from services.product_service import (
@@ -29,6 +28,28 @@ async def get_products(
     bestseller: Optional[bool] = None,
     new_arrival: Optional[bool] = None,
     active_only: Optional[bool] = True,
+):
+    return await fetch_products(
+        category_id=category_id,
+        search=search,
+        on_sale=on_sale,
+        featured=featured,
+        bestseller=bestseller,
+        new_arrival=new_arrival,
+        active_only=active_only,
+    )
+
+
+@router.get("/admin", response_model=List[ProductResponse])
+async def get_admin_products(
+    category_id: Optional[str] = None,
+    search: Optional[str] = None,
+    on_sale: Optional[bool] = None,
+    featured: Optional[bool] = None,
+    bestseller: Optional[bool] = None,
+    new_arrival: Optional[bool] = None,
+    active_only: Optional[bool] = None,
+    admin: dict = Depends(get_admin_user),
 ):
     return await fetch_products(
         category_id=category_id,

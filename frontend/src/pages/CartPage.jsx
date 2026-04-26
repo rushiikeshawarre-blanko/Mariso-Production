@@ -28,6 +28,9 @@ const CartPage = () => {
   const GIFT_PACKAGING_PRICE = 149;
 
   const getCartItemKey = useCallback((item) => {
+    if (item.variantId) {
+      return `${item.id}-${item.variantId}`;
+    }
     return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
   }, []);
 
@@ -129,11 +132,15 @@ const CartPage = () => {
 
 
   const getItemAvailableStock = (item) => {
-    return stockMap[getCartStockKey(item)] ?? item.stock ?? item.variantStock ?? 0;
+    return stockMap[getCartStockKey(item)] ?? item.variantStock ?? item.stock ?? 0;
   };
 
   const isItemAvailable = (item) => {
     return getItemAvailableStock(item) > 0;
+  };
+
+  const getRemainingAddableStock = (item) => {
+    return Math.max(0, getItemAvailableStock(item) - item.quantity);
   };
 
   const isItemQuantityValid = (item) => {
@@ -212,9 +219,13 @@ const CartPage = () => {
                             <p className="text-sm text-destructive font-medium">
                               Out of Stock
                             </p>
-                          ) : getItemAvailableStock(item) <= 5 ? (
+                          ) : getRemainingAddableStock(item) === 0 ? (
+                            <p className="text-sm text-muted-foreground font-medium">
+                              No more available
+                            </p>
+                          ) : getRemainingAddableStock(item) <= 5 ? (
                             <p className="text-sm text-terracotta font-medium">
-                              Only {getItemAvailableStock(item)} left
+                              Only {getRemainingAddableStock(item)} more available
                             </p>
                           ) : null}
                           {isItemAvailable(item) && !isItemQuantityValid(item) && (
@@ -437,6 +448,7 @@ const CartPage = () => {
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Button
+              variant="outline"
               className="flex-1"
               onClick={confirmCheckout}
               data-testid="confirm-checkout-button"
@@ -445,7 +457,6 @@ const CartPage = () => {
             </Button>
 
             <Button
-              variant="outline"
               className="flex-1"
               onClick={continueShoppingFromDialog}
               data-testid="continue-shopping-button"

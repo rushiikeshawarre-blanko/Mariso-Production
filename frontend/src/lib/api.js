@@ -43,6 +43,17 @@ export const getProducts = async (params = {}) => {
   }
 };
 
+export const getAdminProducts = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/products/admin`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin products:', error);
+    throw error;
+  }
+};
+
+
 export const searchProducts = async (query) => {
   const trimmedQuery = query?.trim().toLowerCase();
 

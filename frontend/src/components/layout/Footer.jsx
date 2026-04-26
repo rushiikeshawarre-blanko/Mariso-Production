@@ -59,22 +59,17 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/shop?category=container-candles" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-candles">
-                  Container Candles
+                <Link to="/shop?parent=candles" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-candles">
+                  Candles
                 </Link>
               </li>
               <li>
-                <Link to="/shop?category=coasters" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-coasters">
-                  Coasters
+                <Link to="/shop?parent=homewares" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-coasters">
+                  Homewares
                 </Link>
               </li>
               <li>
-                <Link to="/shop?category=bouquets" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-bouquets">
-                  Candle Bouquets
-                </Link>
-              </li>
-              <li>
-                <Link to="/shop?sale=true" className="text-terracotta hover:text-terracotta/80 transition-colors" data-testid="footer-sale">
+                <Link to="/shop?sale=true" className="text-muted-foreground hover:text-terracotta transition-colors" data-testid="footer-sale">
                   Sale
                 </Link>
               </li>
