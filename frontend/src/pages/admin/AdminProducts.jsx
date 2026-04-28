@@ -472,7 +472,7 @@ const AdminProducts = () => {
 
   return (
     <div data-testid="admin-products">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="font-heading text-3xl">Products</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -481,7 +481,7 @@ const AdminProducts = () => {
               Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] max-w-none overflow-y-auto p-4 sm:max-w-[900px] sm:p-6">
             <DialogHeader>
               <DialogTitle className="font-heading text-xl">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -492,7 +492,7 @@ const AdminProducts = () => {
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
                 <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
                 <TabsTrigger value="colors" data-testid="tab-colors">
                   <Palette className="h-4 w-4 mr-1" /> Colors
@@ -508,7 +508,7 @@ const AdminProducts = () => {
               <form onSubmit={handleSubmit}>
                 {/* ==================== BASIC INFO TAB ==================== */}
                 <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="col-span-2 md:col-span-1">
                       <Label htmlFor="name">Product Name *</Label>
                       <Input
@@ -556,7 +556,7 @@ const AdminProducts = () => {
                       data-testid="product-description-input"
                     />
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                     <div>
                       <Label htmlFor="price">Base Price (₹) *</Label>
                       <Input
@@ -683,7 +683,7 @@ const AdminProducts = () => {
                   {/* Additional Details */}
                   <div className="pt-4 border-t space-y-4">
                     <h3 className="font-medium">Additional Details</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
                         <Label htmlFor="materials">Materials</Label>
                         <Input
@@ -745,7 +745,7 @@ const AdminProducts = () => {
 
                 {/* ==================== COLORS TAB ==================== */}
                 <TabsContent value="colors" className="space-y-6 mt-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.has_color_options}
@@ -764,7 +764,7 @@ const AdminProducts = () => {
                         const hasDualColor = color.hex_code_secondary && color.hex_code_secondary !== color.hex_code;
                         return (
                         <div key={color.id} className="border rounded-lg p-4 space-y-4">
-                          <div className="flex items-start justify-between gap-4">
+                          <div className="flex flex-col items-start justify-between gap-4 md:flex-row">
                             <div className="flex-1 space-y-3">
                               <div className="flex items-center gap-3">
                                 {/* Dual or Single color swatch preview */}
@@ -794,7 +794,7 @@ const AdminProducts = () => {
 
                               {editingColorIndex === colorIndex ? (
                                 <div className="space-y-3">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                                     <div>
                                       <Label className="text-xs">Name</Label>
                                       <Input
@@ -882,7 +882,7 @@ const AdminProducts = () => {
                               <Image className="h-4 w-4 inline mr-1" />
                               Images for {color.name} (up to 5)
                             </Label>
-                            <div className="grid grid-cols-5 gap-2">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                               {[0, 1, 2, 3, 4].map((imageIndex) => {
                                 const imageUrl = color.images?.[imageIndex] || '';
                                 return (
@@ -941,7 +941,7 @@ const AdminProducts = () => {
                       {/* Add New Color */}
                       <div className="border-2 border-dashed rounded-lg p-4 space-y-4">
                         <h4 className="font-medium text-sm">Add New Color</h4>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                           <div>
                             <Label className="text-xs">Name</Label>
                             <Input
@@ -952,7 +952,7 @@ const AdminProducts = () => {
                               data-testid="new-color-name"
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <div>
                               <Label className="text-xs">Primary Color</Label>
                               <div className="flex gap-1 mt-1">
@@ -1017,7 +1017,7 @@ const AdminProducts = () => {
                         {/* Images for new color */}
                         <div>
                           <Label className="text-xs mb-2 block">Images (up to 5)</Label>
-                          <div className="grid grid-cols-5 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                             {[0, 1, 2, 3, 4].map((i) => (
                               <Input
                                 key={i}
@@ -1051,7 +1051,7 @@ const AdminProducts = () => {
 
                 {/* ==================== FRAGRANCES TAB ==================== */}
                 <TabsContent value="fragrances" className="space-y-6 mt-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
                       <Switch
                         checked={formData.has_flavor_options}
@@ -1067,7 +1067,7 @@ const AdminProducts = () => {
                     <div className="space-y-4">
                       {/* Existing Fragrances */}
                       {formData.flavor_options.map((flavor, index) => (
-                        <div key={flavor.id} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                        <div key={flavor.id} className="flex flex-col items-start gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row">
                           <div className="w-10 h-10 rounded-full bg-terracotta/20 flex items-center justify-center flex-shrink-0">
                             <Droplets className="h-5 w-5 text-terracotta" />
                           </div>
@@ -1129,7 +1129,7 @@ const AdminProducts = () => {
                       {/* Add New Fragrance */}
                       <div className="border-2 border-dashed rounded-lg p-4 space-y-3">
                         <h4 className="font-medium text-sm">Add New Fragrance</h4>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <div>
                             <Label className="text-xs">Name</Label>
                             <Input
@@ -1168,7 +1168,7 @@ const AdminProducts = () => {
 
                 {/* ==================== VARIANT STOCK TAB ==================== */}
                 <TabsContent value="variants" className="space-y-4 mt-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <div>
                       <h3 className="font-medium">Variant Combination Stock</h3>
                       <p className="text-sm text-muted-foreground">
@@ -1197,8 +1197,8 @@ const AdminProducts = () => {
                       </p>
                     </div>
                   ) : (
-                    <div className="border rounded-lg overflow-hidden">
-                      <Table>
+                    <div className="overflow-x-auto rounded-lg border">
+                      <Table className="min-w-[760px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Color</TableHead>
@@ -1300,7 +1300,7 @@ const AdminProducts = () => {
                   
                   {/* Summary */}
                   {formData.variants.length > 0 && (
-                    <div className="flex gap-4 p-4 bg-muted/50 rounded-lg text-sm">
+                    <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4 text-sm sm:flex-row sm:flex-wrap sm:gap-4">
                       <div>
                         <span className="text-muted-foreground">Total Combinations:</span>
                         <span className="font-medium ml-2">
@@ -1326,7 +1326,7 @@ const AdminProducts = () => {
                 </TabsContent>
 
                 {/* Submit Buttons */}
-                <div className="flex gap-3 mt-6 pt-4 border-t">
+                <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row">
                   <Button 
                     type="button" 
                     variant="outline" 
@@ -1358,8 +1358,8 @@ const AdminProducts = () => {
       </div>
 
       {/* Products Table */}
-      <div className="bg-white rounded-xl card-shadow overflow-hidden">
-        <Table>
+      <div className="overflow-x-auto rounded-xl bg-white card-shadow">
+        <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow>
               <TableHead>Product</TableHead>

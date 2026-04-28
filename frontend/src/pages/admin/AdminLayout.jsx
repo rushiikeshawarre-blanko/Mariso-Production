@@ -3,17 +3,21 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getDashboardStats, exportOrdersExcel } from '../../lib/api';
 import { Button } from '../../components/ui/button';
-import { 
-  LayoutDashboard, 
-  Package, 
-  FolderTree, 
-  ShoppingCart, 
-  Users, 
+import {
+  LayoutDashboard,
+  Package,
+  FolderTree,
+  ShoppingCart,
+  Users,
   LogOut,
   TrendingUp,
   DollarSign,
   Box,
-  UserCheck
+  UserCheck,
+  FileText,
+  HelpCircle,
+  Menu,
+  X
 } from 'lucide-react';
 import { Toaster } from '../../components/ui/sonner';
 import {
@@ -31,6 +35,7 @@ const AdminLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [exportLoading, setExportLoading] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { user, isAuthenticated, loginWithRedirect, logout: auth0Logout } = useAuth0();
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -174,6 +179,8 @@ const AdminLayout = () => {
     { name: 'Categories', href: '/admin/categories', icon: FolderTree },
     { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
     { name: 'Customers', href: '/admin/customers', icon: Users },
+    { name: 'Content Pages', href: '/admin/content-pages', icon: FileText },
+    { name: 'FAQs', href: '/admin/faqs', icon: HelpCircle },
   ];
 
   const isActive = (href) => {
@@ -189,8 +196,12 @@ const AdminLayout = () => {
     if (location.pathname.startsWith('/admin/categories')) return 'Categories';
     if (location.pathname.startsWith('/admin/orders')) return 'Orders';
     if (location.pathname.startsWith('/admin/customers')) return 'Customers';
+    if (location.pathname.startsWith('/admin/content-pages')) return 'Content Pages';
+    if (location.pathname.startsWith('/admin/faqs')) return 'FAQs';
     return 'Admin';
   };
+
+  const closeMobileSidebar = () => setMobileSidebarOpen(false);
 
   const getRevenueTitle = () => {
     if (period === 'monthly') return 'Monthly Revenue';
@@ -435,7 +446,7 @@ const AdminLayout = () => {
                 </div>
               </div>
             ) : (
-              <table className="w-full">
+              <table className="min-w-[760px] w-full">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Order ID</th>
@@ -469,9 +480,16 @@ const AdminLayout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F5F1] flex text-foreground" data-testid="admin-layout">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#F2ECE5] border-r border-border/60 min-h-screen flex-shrink-0 fixed left-0 top-0 bottom-0">
+    <div className="min-h-screen bg-[#F8F5F1] text-foreground" data-testid="admin-layout">
+      {mobileSidebarOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={closeMobileSidebar}
+          aria-hidden="true"
+        />
+      ) : null}
+
+      <aside className="hidden min-h-screen w-64 border-r border-border/60 bg-[#F2ECE5] lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:flex-col">
         <div className="px-6 pt-7 pb-5 border-b border-border/40">
           <Link to="/" className="font-heading text-[2rem] tracking-[-0.02em] text-foreground block">
             Mariso
@@ -479,7 +497,7 @@ const AdminLayout = () => {
           <p className="text-xs uppercase tracking-[0.18em] text-foreground/45 mt-1.5">Admin Dashboard</p>
         </div>
 
-        <nav className="px-4 py-5 space-y-1.5">
+        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -500,7 +518,7 @@ const AdminLayout = () => {
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border/50 bg-[#F2ECE5]">
+        <div className="p-4 border-t border-border/50 bg-[#F2ECE5]">
           <div className="px-4 py-3 mb-2 rounded-xl bg-white/70 border border-border/50">
             <p className="font-medium text-sm text-foreground">{user?.name}</p>
             <p className="text-xs text-muted-foreground mt-1 break-all">{user?.email}</p>
@@ -516,10 +534,82 @@ const AdminLayout = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 ml-64 px-8 py-8 lg:px-10 lg:py-9">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[86vw] flex-col border-r border-border/60 bg-[#F2ECE5] transition-transform duration-300 lg:hidden ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
+          <div>
+            <Link to="/" className="font-heading text-[1.75rem] tracking-[-0.02em] text-foreground block" onClick={closeMobileSidebar}>
+              Mariso
+            </Link>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-foreground/45 mt-1">Admin Dashboard</p>
+          </div>
+          <button
+            type="button"
+            onClick={closeMobileSidebar}
+            className="rounded-full border border-border/60 bg-white p-2 text-foreground/70"
+            aria-label="Close admin menu"
+          >
+            <X className="h-5 w-5" strokeWidth={1.8} />
+          </button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1.5">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.name}
+                to={item.href}
+                onClick={closeMobileSidebar}
+                className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium transition-all duration-200 ${
+                  isActive(item.href)
+                    ? 'bg-white text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.06)] border border-border/60'
+                    : 'text-foreground/70 border border-transparent hover:bg-white/70 hover:text-foreground hover:border-border/50'
+                }`}
+                data-testid={`admin-mobile-nav-${item.name.toLowerCase()}`}
+              >
+                <Icon className={`h-[18px] w-[18px] transition-colors duration-200 ${isActive(item.href) ? 'text-foreground' : 'text-foreground/55 group-hover:text-foreground/80'}`} strokeWidth={1.7} />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-border/50 bg-[#F2ECE5]">
+          <div className="px-4 py-3 mb-2 rounded-xl bg-white/70 border border-border/50">
+            <p className="font-medium text-sm text-foreground">{user?.name}</p>
+            <p className="text-xs text-muted-foreground mt-1 break-all">{user?.email}</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium text-foreground/70 transition-all duration-200 hover:bg-white/70 hover:text-destructive border border-transparent hover:border-border/50"
+            data-testid="admin-mobile-logout"
+          >
+            <LogOut className="h-[18px] w-[18px] text-foreground/55 transition-colors duration-200 group-hover:text-destructive" strokeWidth={1.7} />
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:ml-64 lg:px-10 lg:py-9">
         <div className="max-w-[1240px] mx-auto">
-          <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="mb-6 flex items-center justify-between gap-3 lg:hidden">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-foreground/45 mb-1">Mariso Admin</p>
+              <h1 className="font-heading text-[1.8rem] leading-none tracking-[-0.03em] text-foreground">
+                {getPageTitle()}
+              </h1>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex items-center justify-center rounded-full border border-border/60 bg-white p-3 text-foreground shadow-[0_6px_20px_rgba(0,0,0,0.04)]"
+              aria-label="Open admin menu"
+            >
+              <Menu className="h-5 w-5" strokeWidth={1.8} />
+            </button>
+          </div>
+
+          <div className="mb-8 hidden flex-col gap-6 lg:flex lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.22em] text-foreground/45 mb-2">Mariso Admin</p>
               <h1 className="font-heading text-[2.6rem] leading-none tracking-[-0.03em] text-foreground">
@@ -527,10 +617,7 @@ const AdminLayout = () => {
               </h1>
             </div>
 
-            {/* Controls */}
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-
-              {/* Period Selector */}
               <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
                 <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">View</span>
                 <select
@@ -546,7 +633,6 @@ const AdminLayout = () => {
                 </select>
               </div>
 
-              {/* Custom Date Range */}
               {period === 'custom' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
@@ -598,7 +684,6 @@ const AdminLayout = () => {
                 </div>
               )}
 
-              {/* Export Button */}
               <button
                 type="button"
                 onClick={handleExport}
@@ -613,12 +698,94 @@ const AdminLayout = () => {
                 {exportLoading ? 'Exporting...' : 'Export Data'}
               </button>
 
-              {/* Status Pill */}
               <div className="hidden md:flex items-center gap-2 rounded-full border border-border/60 bg-white/80 px-4 py-2 text-sm text-foreground/70 shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
                 Admin Active
               </div>
+            </div>
+          </div>
 
+          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border/60 bg-white p-4 shadow-[0_8px_24px_rgba(0,0,0,0.04)] lg:hidden">
+            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm">
+              <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">View</span>
+              <select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent outline-none text-foreground font-medium cursor-pointer"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            {period === 'custom' && (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="date"
+                  value={customRange.start}
+                  onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
+                  className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
+                />
+                <input
+                  type="date"
+                  value={customRange.end}
+                  onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
+                  className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedCustomRange({
+                      start: customRange.start,
+                      end: customRange.end,
+                    });
+                  }}
+                  disabled={
+                    !customRange.start ||
+                    !customRange.end ||
+                    statsLoading ||
+                    (appliedCustomRange.start === customRange.start &&
+                      appliedCustomRange.end === customRange.end)
+                  }
+                  className="rounded-full border border-border/60 bg-white px-4 py-2 text-sm font-medium text-foreground transition hover:bg-white/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Apply Range
+                </button>
+              </div>
+            )}
+
+            {period === 'monthly' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                max={currentMonth}
+                title="Future months are not available yet"
+                className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1] text-foreground font-medium"
+              />
+            )}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={
+                  exportLoading ||
+                  (period === 'monthly' && !selectedMonth) ||
+                  (period === 'custom' &&
+                    (!appliedCustomRange.start || !appliedCustomRange.end))
+                }
+                className="flex items-center justify-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exportLoading ? 'Exporting...' : 'Export Data'}
+              </button>
+              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm text-foreground/70">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
+                Admin Active
+              </div>
             </div>
           </div>
 

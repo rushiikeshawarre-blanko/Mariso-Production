@@ -1,10 +1,64 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getContentPages } from '../../lib/api';
 import { Instagram, Facebook, Mail, MapPin, Phone } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 
 export const Footer = () => {
+  const [footerPages, setFooterPages] = useState([]);
+
+  useEffect(() => {
+    const fetchFooterPages = async () => {
+      try {
+        const data = await getContentPages({ footer_only: true });
+        setFooterPages(data || []);
+      } catch (error) {
+        console.error('Error fetching footer content pages:', error);
+      }
+    };
+
+    fetchFooterPages();
+  }, []);
+
+  const helpPages = useMemo(() => {
+    return footerPages.filter(
+      (page) => !['privacy-policy', 'terms-of-service'].includes(page.slug)
+    );
+  }, [footerPages]);
+
+  const policyPages = useMemo(() => {
+    return footerPages.filter((page) =>
+      ['privacy-policy', 'terms-of-service'].includes(page.slug)
+    );
+  }, [footerPages]);
+
+  const renderFooterPageLink = (page, testIdPrefix) => {
+    if (page.external_url) {
+      return (
+        <a
+          href={page.external_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          data-testid={`${testIdPrefix}-${page.slug}`}
+        >
+          {page.footer_label}
+        </a>
+      );
+    }
+
+    return (
+      <Link
+        to={`/pages/${page.slug}`}
+        className="text-muted-foreground hover:text-foreground transition-colors"
+        data-testid={`${testIdPrefix}-${page.slug}`}
+      >
+        {page.footer_label}
+      </Link>
+    );
+  };
+
   return (
     <footer className="bg-[#F8F5F1] border-t border-border" data-testid="footer">
       <div className="max-w-[1440px] mx-auto px-4 md:px-8 lg:px-12 py-16 md:py-24">
@@ -80,21 +134,9 @@ export const Footer = () => {
           <div>
             <h4 className="font-heading text-lg mb-6">Help</h4>
             <ul className="space-y-3">
-              <li>
-                <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-contact">
-                  Contact Us
-                </Link>
-              </li>
-              <li>
-                <Link to="/shipping" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-shipping">
-                  Shipping Info
-                </Link>
-              </li>
-              <li>
-                <Link to="/returns" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-returns">
-                  Returns & Exchanges
-                </Link>
-              </li>
+              {helpPages.map((page) => (
+                <li key={page.id}>{renderFooterPageLink(page, 'footer-help')}</li>
+              ))}
               <li>
                 <Link to="/faq" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-faq">
                   FAQ
@@ -109,14 +151,14 @@ export const Footer = () => {
             <p className="text-muted-foreground mb-4">
               Subscribe for exclusive offers and updates.
             </p>
-            <form className="flex gap-2" onSubmit={(e) => e.preventDefault()}>
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => e.preventDefault()}>
               <Input
                 type="email"
                 placeholder="Your email"
                 className="flex-1 bg-white/50 border-border"
                 data-testid="newsletter-email"
               />
-              <Button type="submit" className="btn-primary px-6" data-testid="newsletter-submit">
+              <Button type="submit" className="btn-primary w-full px-6 sm:w-auto" data-testid="newsletter-submit">
                 Join
               </Button>
             </form>
@@ -138,13 +180,30 @@ export const Footer = () => {
           <p className="text-sm text-muted-foreground">
             © 2024 Mariso Candles. All rights reserved.
           </p>
-          <div className="flex gap-6 text-sm text-muted-foreground">
-            <Link to="/privacy" className="hover:text-foreground transition-colors" data-testid="footer-privacy">
-              Privacy Policy
-            </Link>
-            <Link to="/terms" className="hover:text-foreground transition-colors" data-testid="footer-terms">
-              Terms of Service
-            </Link>
+          <div className="flex flex-wrap gap-4 sm:gap-6 text-sm text-muted-foreground">
+            {policyPages.map((page) => (
+              <React.Fragment key={page.id}>
+                {page.external_url ? (
+                  <a
+                    href={page.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground transition-colors"
+                    data-testid={`footer-policy-${page.slug}`}
+                  >
+                    {page.footer_label}
+                  </a>
+                ) : (
+                  <Link
+                    to={`/pages/${page.slug}`}
+                    className="hover:text-foreground transition-colors"
+                    data-testid={`footer-policy-${page.slug}`}
+                  >
+                    {page.footer_label}
+                  </Link>
+                )}
+              </React.Fragment>
+            ))}
           </div>
         </div>
       </div>

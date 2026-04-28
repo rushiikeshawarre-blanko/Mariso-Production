@@ -11,6 +11,7 @@ from routes.addresses import router as addresses_router
 from routes.seed import router as seed_router
 from routes.upload import router as upload_router
 from routes.auth import router as auth_router
+from routes.content import router as content_router
 
 from core.config import (
     FRONTEND_URL
@@ -69,6 +70,7 @@ async def health():
     return {"status": "ok"}
 
 # Include the routers
+app.include_router(content_router)
 app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(seed_router)

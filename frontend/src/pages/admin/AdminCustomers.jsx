@@ -31,7 +31,7 @@ const AdminCustomers = () => {
 
   return (
     <div data-testid="admin-customers">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="font-heading text-3xl">Customers</h1>
       </div>
 
@@ -48,8 +48,8 @@ const AdminCustomers = () => {
       </div>
 
       {/* Customers Table */}
-      <div className="bg-white rounded-xl card-shadow overflow-hidden">
-        <Table>
+      <div className="overflow-x-auto rounded-xl bg-white card-shadow">
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
               <TableHead>Customer</TableHead>

@@ -130,16 +130,18 @@ const AdminCategories = () => {
 
   return (
     <div data-testid="admin-categories">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="font-heading text-3xl">Categories</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openCreateDialog} className="btn-primary" data-testid="add-category-button">
-              <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
-              Add Category
-            </Button>
+            <div className="w-full sm:w-auto">
+              <Button onClick={openCreateDialog} className="btn-primary w-full sm:w-auto" data-testid="add-category-button">
+                <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                Add Category
+              </Button>
+            </div>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-none p-4 sm:max-w-[425px] sm:p-6">
             <DialogHeader>
               <DialogTitle className="font-heading text-xl">
                 {editingCategory ? 'Edit Category' : 'Add New Category'}
@@ -301,7 +303,7 @@ const AdminCategories = () => {
                   <p><span className="font-medium text-foreground">Active:</span> {category.is_active !== false ? 'Yes' : 'No'}</p>
                   <p><span className="font-medium text-foreground">Sort Order:</span> {category.sort_order || 0}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Button
                     variant="outline"
                     size="sm"

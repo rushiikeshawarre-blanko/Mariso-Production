@@ -18,6 +18,9 @@ import OrderDetailsPage from "./pages/account/OrderDetailsPage";
 import OrdersPage from "./pages/account/OrdersPage";
 import WishlistPage from "./pages/account/WishlistPage";
 import AddressesPage from "./pages/account/AddressesPage";
+import FaqPage from "./pages/FaqPage";
+import ContentPage from "./pages/ContentPage";
+import Layout from "./components/layout/Layout";
 
 // Admin Pages
 import AdminLayout from "./pages/admin/AdminLayout";
@@ -25,6 +28,8 @@ import AdminProducts from "./pages/admin/AdminProducts";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminContentPages from "./pages/admin/AdminContentPages";
+import AdminFaqs from "./pages/admin/AdminFaqs";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
@@ -98,10 +103,11 @@ function AppRoutes() {
       <Route path="/" element={<HomePage />} />
       <Route path="/shop" element={<ShopPage />} />
       <Route path="/product/:id" element={<ProductPage />} />
+      <Route path="/faq" element={<Layout><FaqPage /></Layout>} />
       <Route path="/cart" element={<CartPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-
+      <Route path="/pages/:slug" element={<Layout><ContentPage /></Layout>} />
       {/* Protected Routes */}
       <Route
         path="/checkout"
@@ -148,6 +154,8 @@ function AppRoutes() {
         <Route path="categories" element={<AdminCategories />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="customers" element={<AdminCustomers />} />
+        <Route path="content-pages" element={<AdminContentPages />} />
+        <Route path="faqs" element={<AdminFaqs />} />
       </Route>
 
       {/* Catch all - redirect to home */}

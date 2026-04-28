@@ -1,29 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Star, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
-import { getCategories, getFeaturedProducts, getBestsellers } from '../lib/api';
+import { getCategories, getFeaturedProducts, getBestsellers, getHomepageFaqs } from '../lib/api';
 
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [bestsellers, setBestsellers] = useState([]);
+  const [homepageFaqs, setHomepageFaqs] = useState([]);
+  const [openFaqId, setOpenFaqId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hoveredButton, setHoveredButton] = useState(null);
 
   useEffect(() => {
     const initializeData = async () => {
       try {
-        const [cats, featured, best] = await Promise.all([
+        const [catsResult, featuredResult, bestResult, homepageFaqsResult] = await Promise.allSettled([
           getCategories(),
           getFeaturedProducts(),
-          getBestsellers()
+          getBestsellers(),
+          getHomepageFaqs()
         ]);
-        setCategories(cats);
-        setFeaturedProducts(featured);
-        setBestsellers(best);
+
+        if (catsResult.status === 'fulfilled') {
+          setCategories(catsResult.value || []);
+        }
+
+        if (featuredResult.status === 'fulfilled') {
+          setFeaturedProducts(featuredResult.value || []);
+        }
+
+        if (bestResult.status === 'fulfilled') {
+          setBestsellers(bestResult.value || []);
+        }
+
+        if (homepageFaqsResult.status === 'fulfilled') {
+          const faqItems = homepageFaqsResult.value || [];
+          setHomepageFaqs(faqItems);
+          setOpenFaqId(null);
+        }
+
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -33,6 +52,10 @@ const HomePage = () => {
     
     initializeData();
   }, []);
+
+  const toggleFaq = (faqId) => {
+    setOpenFaqId((current) => (current === faqId ? null : faqId));
+  };
 
   const testimonials = [
     {
@@ -388,6 +411,72 @@ const HomePage = () => {
         </div>
       </section>
 
+      {/* Homepage FAQs */}
+      {homepageFaqs.length > 0 && (
+        <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="homepage-faqs-section">
+          <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
+                Help Center
+              </p>
+              <h2 className="font-heading text-4xl md:text-5xl tracking-tight">Frequently Asked Questions</h2>
+              <p className="mt-4 text-sm md:text-base text-muted-foreground max-w-2xl mx-auto leading-7">
+                Quick answers to the most common questions about shopping, shipping, returns, and support.
+              </p>
+            </div>
+
+            <div className="max-w-4xl mx-auto space-y-4">
+              {homepageFaqs
+                .slice()
+                .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                .map((faq) => {
+                  const isOpen = openFaqId === faq.id;
+
+                  return (
+                    <div
+                      key={faq.id}
+                      className="overflow-hidden rounded-[1.25rem] border border-black/5 bg-[#C7A88A] shadow-[0_10px_30px_rgba(0,0,0,0.06)]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleFaq(faq.id)}
+                        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-[#BE9D7C] md:px-6"
+                      >
+                        <span className="text-sm md:text-base font-medium leading-6 text-white">
+                          {faq.question}
+                        </span>
+                        <span className="shrink-0 text-white">
+                          {isOpen ? (
+                            <ChevronDown className="h-5 w-5" />
+                          ) : (
+                            <ChevronRight className="h-5 w-5" />
+                          )}
+                        </span>
+                      </button>
+
+                      {isOpen ? (
+                        <div className="border-t border-white/20 bg-[#F8F5F1] px-5 py-5 md:px-6">
+                          <p className="whitespace-pre-line text-sm md:text-base leading-7 text-muted-foreground">
+                            {faq.answer}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="text-center mt-10">
+              <Link to="/faq">
+                <Button variant="ghost" className="group text-foreground/80 hover:text-foreground px-0" data-testid="view-all-homepage-faqs">
+                  View All FAQs
+                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" strokeWidth={1.5} />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
       {/* Testimonials */}
       <section className="py-24 md:py-28 bg-clay/20" data-testid="testimonials-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">

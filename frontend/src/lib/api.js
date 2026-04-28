@@ -2,9 +2,33 @@ import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000'}/api`;
 
+
 const axiosInstance = axios.create({
   baseURL: API,
 });
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const shouldRetryPublicGet = (error) => {
+  if (!error.response) return true;
+  const status = error.response.status;
+  return status >= 500 || status === 429;
+};
+
+const getWithRetry = async (url, config = {}, retries = 2, backoffMs = 300) => {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await axiosInstance.get(url, config);
+      return response.data;
+    } catch (error) {
+      const canRetry = attempt < retries && shouldRetryPublicGet(error);
+      if (!canRetry) {
+        throw error;
+      }
+      await sleep(backoffMs * (attempt + 1));
+    }
+  }
+};
 
 let accessTokenGetter = null;
 
@@ -35,8 +59,7 @@ axiosInstance.interceptors.request.use(
 // Products
 export const getProducts = async (params = {}) => {
   try {
-    const response = await axiosInstance.get(`/products`, { params });
-    return response.data;
+    return await getWithRetry(`/products`, { params });
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
@@ -75,10 +98,9 @@ export const searchProducts = async (query) => {
 
 export const getProductsByCategory = async (categoryId, params = {}) => {
   try {
-    const response = await axiosInstance.get(`/products`, { 
+    return await getWithRetry(`/products`, {
       params: { ...params, category_id: categoryId }
     });
-    return response.data;
   } catch (error) {
     console.error('Error fetching products by category:', error);
     throw error;
@@ -87,8 +109,7 @@ export const getProductsByCategory = async (categoryId, params = {}) => {
 
 export const getFeaturedProducts = async () => {
   try {
-    const response = await axiosInstance.get(`/products/featured`);
-    return response.data;
+    return await getWithRetry(`/products/featured`);
   } catch (error) {
     console.error('Error fetching featured products:', error);
     throw error;
@@ -97,8 +118,7 @@ export const getFeaturedProducts = async () => {
 
 export const getBestsellers = async () => {
   try {
-    const response = await axiosInstance.get(`/products/bestsellers`);
-    return response.data;
+    return await getWithRetry(`/products/bestsellers`);
   } catch (error) {
     console.error('Error fetching bestsellers:', error);
     throw error;
@@ -107,8 +127,7 @@ export const getBestsellers = async () => {
 
 export const getProduct = async (id) => {
   try {
-    const response = await axiosInstance.get(`/products/${id}`);
-    return response.data;
+    return await getWithRetry(`/products/${id}`);
   } catch (error) {
     console.error('Error fetching product:', error);
     throw error;
@@ -118,8 +137,7 @@ export const getProduct = async (id) => {
 // Categories
 export const getCategories = async () => {
   try {
-    const response = await axiosInstance.get(`/categories`);
-    return response.data;
+    return await getWithRetry(`/categories`);
   } catch (error) {
     console.error('Error fetching categories:', error);
     throw error;
@@ -128,8 +146,7 @@ export const getCategories = async () => {
 
 export const getCategory = async (id) => {
   try {
-    const response = await axiosInstance.get(`/categories/${id}`);
-    return response.data;
+    return await getWithRetry(`/categories/${id}`);
   } catch (error) {
     console.error('Error fetching category:', error);
     throw error;
@@ -338,6 +355,130 @@ export const deleteCategory = async (categoryId) => {
   return response.data;
 };
 
+// Content Pages & FAQs
+
+
+export const getAdminContentPages = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/content/pages/admin`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin content pages:', error);
+    throw error;
+  }
+};
+
+export const getContentPages = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/content/pages`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching content pages:', error);
+    throw error;
+  }
+};
+
+export const getContentPageBySlug = async (slug) => {
+  try {
+    const response = await axiosInstance.get(`/content/pages/${slug}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching content page:', error);
+    throw error;
+  }
+};
+
+export const createContentPage = async (pageData) => {
+  try {
+    const response = await axiosInstance.post(`/content/pages/admin`, pageData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating content page:', error);
+    throw error;
+  }
+};
+
+export const updateContentPage = async (pageId, pageData) => {
+  try {
+    const response = await axiosInstance.put(`/content/pages/admin/${pageId}`, pageData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating content page:', error);
+    throw error;
+  }
+};
+
+export const deleteContentPage = async (pageId) => {
+  try {
+    const response = await axiosInstance.delete(`/content/pages/admin/${pageId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting content page:', error);
+    throw error;
+  }
+};
+
+export const getAdminFaqs = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/content/faqs/admin`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin FAQs:', error);
+    throw error;
+  }
+};
+
+export const getFaqs = async (params = {}) => {
+  try {
+    const response = await axiosInstance.get(`/content/faqs`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching FAQs:', error);
+    throw error;
+  }
+};
+
+export const getHomepageFaqs = async () => {
+  try {
+    const response = await axiosInstance.get(`/content/faqs/homepage`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching homepage FAQs:', error);
+    throw error;
+  }
+};
+
+export const createFaq = async (faqData) => {
+  try {
+    const response = await axiosInstance.post(`/content/faqs/admin`, faqData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating FAQ:', error);
+    throw error;
+  }
+};
+
+export const updateFaq = async (faqId, faqData) => {
+  try {
+    const response = await axiosInstance.put(`/content/faqs/admin/${faqId}`, faqData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating FAQ:', error);
+    throw error;
+  }
+};
+
+export const deleteFaq = async (faqId) => {
+  try {
+    const response = await axiosInstance.delete(`/content/faqs/admin/${faqId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting FAQ:', error);
+    throw error;
+  }
+};
+
+
 // Seed database
 export const seedDatabase = async () => {
   const response = await axiosInstance.post(`/seed`);
@@ -353,3 +494,4 @@ export const uploadImage = async (file) => {
   });
   return response.data;
 };
+

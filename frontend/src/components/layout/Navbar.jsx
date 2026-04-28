@@ -171,7 +171,7 @@ export const Navbar = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8 flex-1 justify-center">
+          <div className="hidden lg:flex items-center gap-8 flex-1 justify-center">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
@@ -188,7 +188,7 @@ export const Navbar = () => {
           <div className="flex items-center gap-2 relative">
             {searchOpen && (
               <div
-                className="hidden md:block absolute right-full mr-2 top-1/2 -translate-y-1/2 w-[360px] z-40"
+                className="hidden lg:block absolute right-full mr-2 top-1/2 -translate-y-1/2 w-[320px] xl:w-[360px] z-40"
                 data-testid="desktop-search-panel"
               >
                 <div className="flex items-center gap-2 rounded-lg bg-background/95 backdrop-blur-sm">
@@ -245,7 +245,7 @@ export const Navbar = () => {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="hidden md:flex"
+              className="hidden lg:flex"
               data-testid="search-button"
               onClick={toggleDesktopSearch}
             >
@@ -255,7 +255,7 @@ export const Navbar = () => {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               data-testid="mobile-search-button"
               onClick={() => setMobileSearchOpen(true)}
             >
@@ -350,13 +350,13 @@ export const Navbar = () => {
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="md:hidden"
+                  className="lg:hidden"
                   data-testid="mobile-menu-button"
                 >
                   <Menu className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-full sm:w-[400px] bg-[#F8F5F1]">
+              <SheetContent side="right" className="w-full overflow-y-auto bg-[#F8F5F1] sm:w-[400px]">
                 <div className="flex flex-col h-full pt-8">
                   <div className="flex flex-col gap-6">
                     {navLinks.map((link) => (

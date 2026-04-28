@@ -190,7 +190,7 @@ const CartPage = () => {
                 return (
                   <div 
                     key={getCartItemKey(item)}
-                    className="flex gap-6 p-6 bg-white rounded-xl card-shadow"
+                    className="flex flex-col gap-4 rounded-xl bg-white p-4 card-shadow sm:flex-row sm:gap-6 sm:p-6"
                     data-testid={`cart-item-${getCartItemKey(item)}`}
                   >
                     {/* Image */}
@@ -198,13 +198,13 @@ const CartPage = () => {
                       <img
                         src={item.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=200'}
                         alt={item.name}
-                        className="w-24 h-32 md:w-32 md:h-40 object-cover rounded-lg"
+                        className="h-32 w-24 rounded-lg object-cover sm:h-36 sm:w-28 md:h-40 md:w-32"
                       />
                     </Link>
 
                     {/* Details */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="flex justify-between items-start">
+                    <div className="flex flex-1 flex-col">
+                      <div className="flex items-start justify-between gap-3">
                         <div>
                           <Link to={`/product/${item.id}`}>
                             <h3 className="font-heading text-lg hover:text-foreground/70 transition-colors" data-testid={`cart-item-name-${item.id}`}>
@@ -243,9 +243,9 @@ const CartPage = () => {
                         </button>
                       </div>
 
-                      <div className="mt-auto flex items-end justify-between">
+                      <div className="mt-4 flex flex-col gap-4 sm:mt-auto sm:flex-row sm:items-end sm:justify-between">
                         {/* Quantity */}
-                        <div className="flex items-center border-border rounded-full">
+                        <div className="flex items-center rounded-full border border-border">
                           <button
                             onClick={() => updateQuantity(getCartItemKey(item), item.quantity - 1)}
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
@@ -274,7 +274,7 @@ const CartPage = () => {
                         </div>
 
                         {/* Price */}
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${getCartItemKey(item)}`}>
                             ₹{(price * item.quantity).toLocaleString()}
                           </p>
@@ -297,8 +297,8 @@ const CartPage = () => {
               })}
 
               {/* Gift Packaging Option */}
-              <div className="bg-white rounded-xl p-6 card-shadow" data-testid="gift-packaging-section">
-                <div className="flex items-start gap-4">
+              <div className="rounded-xl bg-white p-4 card-shadow sm:p-6" data-testid="gift-packaging-section">
+                <div className="flex items-start gap-3 sm:gap-4">
                   <Checkbox
                     id="gift-packaging"
                     checked={giftPackaging}
@@ -336,7 +336,7 @@ const CartPage = () => {
 
             {/* Order Summary */}
             <div className="lg:col-span-1">
-              <div className="bg-white rounded-xl p-8 card-shadow sticky top-32">
+              <div className="sticky top-32 rounded-xl bg-white p-5 card-shadow sm:p-8">
                 <h2 className="font-heading text-xl mb-6">Order Summary</h2>
                 
                 <div className="space-y-4 mb-6">
@@ -380,7 +380,7 @@ const CartPage = () => {
                 </div>
 
                 <div className="border-t border-border pt-4 mb-8">
-                  <div className="flex justify-between font-medium">
+                  <div className="flex items-center justify-between gap-4 font-medium">
                     <span>Total</span>
                     <span className="text-xl" data-testid="cart-total">₹{getFinalTotal().toLocaleString()}</span>
                   </div>
@@ -428,7 +428,7 @@ const CartPage = () => {
                 <Sparkles className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
                 <h2 className="font-heading text-2xl">You Might Also Like</h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
+              <div className="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-y-12">
                 {recommendedProducts.map((product) => (
                   <ProductCard key={product.id} product={product} testIdPrefix="recommended" />
                 ))}

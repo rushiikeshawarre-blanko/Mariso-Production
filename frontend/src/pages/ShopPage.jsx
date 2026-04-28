@@ -76,74 +76,90 @@ const ShopPage = () => {
       setLoading(true);
 
       try {
-        const [allProducts, cats] = await Promise.all([
+        const [productResult, categoriesResult] = await Promise.allSettled([
           getProducts({
             on_sale: showOnSale || undefined,
           }),
           getCategories(),
         ]);
 
-        let filtered = [...allProducts];
-        const normalizedCategories = [...cats];
-
-        const activeParents = normalizedCategories.filter(
-          (category) => !category.parent_id && category.is_active !== false
-        );
-        const activeChildren = normalizedCategories.filter(
-          (category) => category.parent_id && category.is_active !== false
-        );
-
-        const parentCategory =
-          activeParents.find((category) => category.slug === selectedParentSlug) || null;
-
-        const parentChildIds = parentCategory
-          ? activeChildren
-              .filter((category) => category.parent_id === parentCategory.id)
-              .map((category) => category.id)
-          : [];
-
-        if (selectedCategory) {
-          filtered = filtered.filter(
-            (product) => product.category_id === selectedCategory
-          );
-        } else if (parentCategory) {
-          filtered = filtered.filter((product) =>
-            parentChildIds.includes(product.category_id)
-          );
+        if (productResult.status === 'rejected') {
+          console.error('Error fetching products:', productResult.reason);
         }
 
-        if (searchQuery.trim()) {
-          const query = searchQuery.trim().toLowerCase();
-          filtered = filtered.filter(
-            (product) =>
-              product.name?.toLowerCase().includes(query) ||
-              product.description?.toLowerCase().includes(query) ||
-              product.short_description?.toLowerCase().includes(query) ||
-              product.sku?.toLowerCase().includes(query)
+        if (categoriesResult.status === 'rejected') {
+          console.error('Error fetching categories:', categoriesResult.reason);
+        }
+
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value || []);
+        }
+
+        if (productResult.status === 'fulfilled') {
+          const allProducts = productResult.value || [];
+          const categoriesForFiltering =
+            categoriesResult.status === 'fulfilled' ? categoriesResult.value || [] : [];
+
+          let filtered = [...allProducts];
+
+          const activeParents = categoriesForFiltering.filter(
+            (category) => !category.parent_id && category.is_active !== false
           );
+          const activeChildren = categoriesForFiltering.filter(
+            (category) => category.parent_id && category.is_active !== false
+          );
+
+          const parentCategory =
+            activeParents.find((category) => category.slug === selectedParentSlug) || null;
+
+          const parentChildIds = parentCategory
+            ? activeChildren
+                .filter((category) => category.parent_id === parentCategory.id)
+                .map((category) => category.id)
+            : [];
+
+          if (selectedCategory) {
+            filtered = filtered.filter(
+              (product) => product.category_id === selectedCategory
+            );
+          } else if (parentCategory) {
+            filtered = filtered.filter((product) =>
+              parentChildIds.includes(product.category_id)
+            );
+          }
+
+          if (searchQuery.trim()) {
+            const query = searchQuery.trim().toLowerCase();
+            filtered = filtered.filter(
+              (product) =>
+                product.name?.toLowerCase().includes(query) ||
+                product.description?.toLowerCase().includes(query) ||
+                product.short_description?.toLowerCase().includes(query) ||
+                product.sku?.toLowerCase().includes(query)
+            );
+          }
+
+          const getEffectivePrice = (product) => {
+            const hasSalePrice = product.is_on_sale && product.discount_price != null;
+            return Number(hasSalePrice ? product.discount_price : product.price) || 0;
+          };
+
+          switch (sortBy) {
+            case 'price-low':
+              filtered.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
+              break;
+            case 'price-high':
+              filtered.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
+              break;
+            case 'name':
+              filtered.sort((a, b) => a.name.localeCompare(b.name));
+              break;
+            default:
+              filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          }
+
+          setProducts(filtered);
         }
-
-        const getEffectivePrice = (product) => {
-          const hasSalePrice = product.is_on_sale && product.discount_price != null;
-          return Number(hasSalePrice ? product.discount_price : product.price) || 0;
-        };
-
-        switch (sortBy) {
-          case 'price-low':
-            filtered.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
-            break;
-          case 'price-high':
-            filtered.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
-            break;
-          case 'name':
-            filtered.sort((a, b) => a.name.localeCompare(b.name));
-            break;
-          default:
-            filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        }
-
-        setProducts(filtered);
-        setCategories(normalizedCategories);
       } catch (error) {
         console.error('Error fetching products:', error);
       } finally {
@@ -441,6 +457,6 @@ const ShopPage = () => {
       </div>
     </Layout>
   );
- }; 
+};
 
 export default ShopPage;

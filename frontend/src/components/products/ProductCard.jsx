@@ -111,15 +111,6 @@ export const ProductCard = ({
     >
       {/* Image */}
       <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem] bg-[#F3EEE8]">
-        {/* Sale Badge with Discount Percent */}
-        {product.is_on_sale && (
-          <span
-            className="absolute left-4 top-4 z-20 inline-flex items-center rounded-full bg-[#EEE6DC] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/70"
-            data-testid={`${testIdPrefix}-sale-badge`}
-          >
-            {discountPercent}% OFF
-          </span>
-        )}
         
         <img
           src={product.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'}

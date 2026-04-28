@@ -69,8 +69,8 @@ def enrich_product(product: dict, category_map: Optional[dict] = None) -> dict:
     if not product:
         return product
     category_map = category_map or {}
+    product = ensure_product_defaults(product)
     product["category_name"] = category_map.get(product.get("category_id"), "")
-    ensure_product_defaults(product)
     return product
 
 async def enrich_products(products: List[dict]) -> List[dict]:
