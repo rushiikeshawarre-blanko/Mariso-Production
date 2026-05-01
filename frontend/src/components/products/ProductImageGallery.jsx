@@ -103,7 +103,7 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
   }
 
   return (
-    <div className="space-y-3 px-1.5 md:space-y-4 md:px-0" data-testid="product-image-gallery">
+    <div className="space-y-3 px-2 md:space-y-4 md:px-6 xl:px-0" data-testid="product-image-gallery">
       {/* Main Image Carousel */}
       <div 
         className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-[#F8F5F1] shadow-[0_8px_24px_rgba(0,0,0,0.05)] md:aspect-[4/5]"

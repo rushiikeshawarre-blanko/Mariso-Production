@@ -380,7 +380,7 @@ const ProductPage = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-20 xl:gap-24">
             {/* Left Side - Image Gallery */}
-            <div className="relative">
+            <div className="relative md:pl-4 xl:pl-0">
               
               {/* Wishlist Button */}
               <button
