@@ -1,7 +1,14 @@
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000'}/api`;
+const rawBackendUrl = process.env.REACT_APP_BACKEND_URL;
+const isDev = process.env.NODE_ENV === 'development';
 
+if (!rawBackendUrl && !isDev) {
+  throw new Error('Missing REACT_APP_BACKEND_URL in production.');
+}
+
+const backendUrl = rawBackendUrl || 'http://localhost:8000';
+const API = `${backendUrl}/api`;
 
 const axiosInstance = axios.create({
   baseURL: API,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
@@ -14,44 +14,63 @@ const HomePage = () => {
   const [openFaqId, setOpenFaqId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hoveredButton, setHoveredButton] = useState(null);
+  const [featuredStatus, setFeaturedStatus] = useState('loading');
+  const [bestsellerStatus, setBestsellerStatus] = useState('loading');
+
+  const initializeData = useCallback(async () => {
+    setLoading(true);
+    setFeaturedStatus('loading');
+    setBestsellerStatus('loading');
+
+    try {
+      const [catsResult, featuredResult, bestResult, homepageFaqsResult] = await Promise.allSettled([
+        getCategories(),
+        getFeaturedProducts(),
+        getBestsellers(),
+        getHomepageFaqs()
+      ]);
+
+      if (catsResult.status === 'fulfilled') {
+        setCategories(catsResult.value || []);
+      }
+
+      if (featuredResult.status === 'fulfilled') {
+        const items = featuredResult.value || [];
+        setFeaturedProducts(items);
+        setFeaturedStatus(items.length > 0 ? 'success' : 'empty');
+      } else {
+        console.error('Error fetching featured products:', featuredResult.reason);
+        setFeaturedProducts([]);
+        setFeaturedStatus('error');
+      }
+
+      if (bestResult.status === 'fulfilled') {
+        const items = bestResult.value || [];
+        setBestsellers(items);
+        setBestsellerStatus(items.length > 0 ? 'success' : 'empty');
+      } else {
+        console.error('Error fetching bestsellers:', bestResult.reason);
+        setBestsellers([]);
+        setBestsellerStatus('error');
+      }
+
+      if (homepageFaqsResult.status === 'fulfilled') {
+        const faqItems = homepageFaqsResult.value || [];
+        setHomepageFaqs(faqItems);
+        setOpenFaqId(null);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setFeaturedStatus((current) => (current === 'loading' ? 'error' : current));
+      setBestsellerStatus((current) => (current === 'loading' ? 'error' : current));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const initializeData = async () => {
-      try {
-        const [catsResult, featuredResult, bestResult, homepageFaqsResult] = await Promise.allSettled([
-          getCategories(),
-          getFeaturedProducts(),
-          getBestsellers(),
-          getHomepageFaqs()
-        ]);
-
-        if (catsResult.status === 'fulfilled') {
-          setCategories(catsResult.value || []);
-        }
-
-        if (featuredResult.status === 'fulfilled') {
-          setFeaturedProducts(featuredResult.value || []);
-        }
-
-        if (bestResult.status === 'fulfilled') {
-          setBestsellers(bestResult.value || []);
-        }
-
-        if (homepageFaqsResult.status === 'fulfilled') {
-          const faqItems = homepageFaqsResult.value || [];
-          setHomepageFaqs(faqItems);
-          setOpenFaqId(null);
-        }
-
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     initializeData();
-  }, []);
+  }, [initializeData]);
 
   const toggleFaq = (faqId) => {
     setOpenFaqId((current) => (current === faqId ? null : faqId));
@@ -163,7 +182,7 @@ const HomePage = () => {
             </Link>
           </div>
 
-          {loading ? (
+          {loading && featuredStatus === 'loading' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="space-y-4">
@@ -172,6 +191,18 @@ const HomePage = () => {
                   <div className="h-6 bg-muted rounded w-3/4 animate-pulse" />
                 </div>
               ))}
+            </div>
+          ) : featuredStatus === 'error' ? (
+            <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+              <p className="text-base font-medium text-foreground">Unable to load featured products right now.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Please try again.</p>
+              <Button className="mt-5" onClick={initializeData} data-testid="retry-featured-products">
+                Retry
+              </Button>
+            </div>
+          ) : featuredStatus === 'empty' ? (
+            <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+              <p className="text-base font-medium text-foreground">No featured products available right now.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
@@ -283,7 +314,29 @@ const HomePage = () => {
               </Button>
             </Link>
           </div>
-          {!loading && (
+          {loading && bestsellerStatus === 'loading' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="space-y-4">
+                  <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
+                  <div className="h-4 bg-muted rounded w-1/2 animate-pulse" />
+                  <div className="h-6 bg-muted rounded w-3/4 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : bestsellerStatus === 'error' ? (
+            <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+              <p className="text-base font-medium text-foreground">Unable to load bestsellers right now.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Please try again.</p>
+              <Button className="mt-5" onClick={initializeData} data-testid="retry-bestsellers">
+                Retry
+              </Button>
+            </div>
+          ) : bestsellerStatus === 'empty' ? (
+            <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+              <p className="text-base font-medium text-foreground">No bestsellers available right now.</p>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
               {bestsellers.slice(0, 4).map((product) => (
                 <ProductCard key={product.id} product={product} testIdPrefix="bestseller" />

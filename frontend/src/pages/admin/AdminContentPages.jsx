@@ -49,6 +49,7 @@ const AdminContentPages = () => {
   const [editingPage, setEditingPage] = useState(null);
   const [formData, setFormData] = useState(initialFormState);
   const editorRef = useRef(null);
+  const selectionRangeRef = useRef(null);
 
   const fetchPages = async () => {
     setLoading(true);
@@ -118,6 +119,62 @@ const AdminContentPages = () => {
     });
   };
 
+  const saveSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    if (!editorRef.current?.contains(range.commonAncestorContainer)) return;
+
+    selectionRangeRef.current = range.cloneRange();
+  };
+
+  const restoreSelection = () => {
+    const selection = window.getSelection();
+    const savedRange = selectionRangeRef.current;
+    if (!selection || !savedRange) return;
+
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  };
+
+  const handleToolbarMouseDown = (e) => {
+    e.preventDefault();
+    saveSelection();
+  };
+
+  const escapeHtml = (value = '') =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const insertListAtSelection = (listTag) => (e) => {
+    e.preventDefault();
+    if (!editorRef.current) return;
+
+    editorRef.current.focus();
+    restoreSelection();
+
+    const selection = window.getSelection();
+    const selectedText = selection?.toString() || '';
+    const lines = selectedText
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const items = lines.length > 0 ? lines : ['List item'];
+    const listHtml = `<${listTag}>${items
+      .map((item) => `<li>${escapeHtml(item)}</li>`)
+      .join('')}</${listTag}><p><br></p>`;
+
+    document.execCommand('insertHTML', false, listHtml);
+    saveSelection();
+    handleEditorInput();
+  };
+
   const handleEditorInput = () => {
     const html = normalizeEditorHtml(editorRef.current?.innerHTML || '');
     setFormData((prev) => ({
@@ -129,14 +186,21 @@ const AdminContentPages = () => {
   const applyEditorCommand = (command, value = null) => {
     if (!editorRef.current) return;
     editorRef.current.focus();
+    restoreSelection();
     document.execCommand(command, false, value);
+    saveSelection();
     handleEditorInput();
   };
 
   const handleAddLink = () => {
+    saveSelection();
     const url = window.prompt('Enter the URL');
     if (!url) return;
-    applyEditorCommand('createLink', url);
+    editorRef.current?.focus();
+    restoreSelection();
+    document.execCommand('createLink', false, url);
+    saveSelection();
+    handleEditorInput();
   };
 
   const validateForm = () => {
@@ -327,34 +391,21 @@ const AdminContentPages = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyEditorCommand('formatBlock', 'H2')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  H2
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('formatBlock', 'H3')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  H3
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('insertUnorderedList')}
+                  onMouseDown={insertListAtSelection('ul')}
                   className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
                 >
                   Bullet List
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyEditorCommand('insertOrderedList')}
+                  onMouseDown={insertListAtSelection('ol')}
                   className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
                 >
                   Numbered List
                 </button>
                 <button
                   type="button"
+                  onMouseDown={handleToolbarMouseDown}
                   onClick={handleAddLink}
                   className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
                 >
@@ -374,7 +425,10 @@ const AdminContentPages = () => {
                 contentEditable
                 suppressContentEditableWarning
                 onInput={handleEditorInput}
-                className="min-h-[260px] w-full px-3 py-3 text-sm leading-7 outline-none"
+                onKeyUp={saveSelection}
+                onMouseUp={saveSelection}
+                onFocus={saveSelection}
+                className="min-h-[260px] w-full px-3 py-3 text-sm leading-7 outline-none [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_li]:my-1"
                 data-testid="content-page-rich-editor"
                 style={{ whiteSpace: 'pre-wrap' }}
               />

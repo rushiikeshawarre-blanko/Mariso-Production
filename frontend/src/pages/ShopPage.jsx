@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
@@ -22,6 +22,9 @@ const ShopPage = () => {
   const [selectedParentSlug, setSelectedParentSlug] = useState(searchParams.get('parent') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [productsStatus, setProductsStatus] = useState('loading');
+  const requestSequenceRef = useRef(0);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') || '');
@@ -72,8 +75,11 @@ const ShopPage = () => {
   }, [parentCategories, childCategories]);
 
   useEffect(() => {
+    const currentRequestId = ++requestSequenceRef.current;
+
     const fetchData = async () => {
       setLoading(true);
+      setProductsStatus('loading');
 
       try {
         const [productResult, categoriesResult] = await Promise.allSettled([
@@ -83,8 +89,14 @@ const ShopPage = () => {
           getCategories(),
         ]);
 
+        if (currentRequestId !== requestSequenceRef.current) {
+          return;
+        }
+
         if (productResult.status === 'rejected') {
           console.error('Error fetching products:', productResult.reason);
+          setProducts([]);
+          setProductsStatus('error');
         }
 
         if (categoriesResult.status === 'rejected') {
@@ -159,16 +171,24 @@ const ShopPage = () => {
           }
 
           setProducts(filtered);
+          setProductsStatus(filtered.length > 0 ? 'success' : 'empty');
         }
       } catch (error) {
+        if (currentRequestId !== requestSequenceRef.current) {
+          return;
+        }
         console.error('Error fetching products:', error);
+        setProducts([]);
+        setProductsStatus('error');
       } finally {
-        setLoading(false);
+        if (currentRequestId === requestSequenceRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
-  }, [selectedCategory, selectedParentSlug, showOnSale, sortBy, searchQuery]);
+  }, [selectedCategory, selectedParentSlug, showOnSale, sortBy, searchQuery, retryNonce]);
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
@@ -328,7 +348,7 @@ const ShopPage = () => {
                   {pageTitle}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {loading ? 'Loading...' : `${products.length} products`}
+                  {loading ? 'Loading...' : productsStatus === 'error' ? 'Unable to load products' : `${products.length} products`}
                 </p>
               </div>
 
@@ -425,7 +445,7 @@ const ShopPage = () => {
                 )}
               </div>
 
-              {loading ? (
+              {loading && productsStatus === 'loading' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 xl:gap-6">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div key={i} className="space-y-4">
@@ -435,7 +455,20 @@ const ShopPage = () => {
                     </div>
                   ))}
                 </div>
-              ) : products.length === 0 ? (
+              ) : productsStatus === 'error' ? (
+                <div className="py-16 text-center">
+                  <p className="mb-4 text-muted-foreground">Unable to load products right now.</p>
+                  <Button
+                    onClick={() => {
+                      setRetryNonce((current) => current + 1);
+                    }}
+                    variant="outline"
+                    data-testid="retry-products-empty"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : productsStatus === 'empty' ? (
                 <div className="text-center py-16">
                   <p className="text-muted-foreground mb-4">
                     {searchQuery ? `No products found for "${searchQuery}"` : 'No products found'}

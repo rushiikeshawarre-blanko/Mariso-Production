@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import { setAccessTokenGetter } from './lib/api';
 import { CartProvider } from "./context/CartContext";
@@ -70,6 +70,18 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
   return children;
 };
 
+function ScrollToTop() {
+  const { pathname, search, hash } = useLocation();
+
+  useEffect(() => {
+    if (hash) {
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname, search, hash]);
+
+  return null;
+}
 
 const Auth0TokenBridge = () => {
   const { getAccessTokenSilently, isAuthenticated } = useAuth0();
@@ -169,7 +181,8 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <CartProvider>
-          <Auth0TokenBridge/>
+          <ScrollToTop />
+          <Auth0TokenBridge />
           <AppRoutes />
         </CartProvider>
       </BrowserRouter>

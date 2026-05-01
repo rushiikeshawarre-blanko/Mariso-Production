@@ -96,17 +96,17 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
 
   if (galleryImages.length === 0) {
     return (
-      <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
+      <div className="aspect-[4/5] rounded-[1.75rem] bg-[#F8F5F1] flex items-center justify-center md:aspect-[3/4]">
         <p className="text-muted-foreground">No images available</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4" data-testid="product-image-gallery">
+    <div className="space-y-3 px-1.5 md:space-y-4 md:px-0" data-testid="product-image-gallery">
       {/* Main Image Carousel */}
       <div 
-        className="relative aspect-[3/4] md:aspect-square lg:aspect-[3/4] bg-muted rounded-xl overflow-hidden group"
+        className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-[#F8F5F1] shadow-[0_8px_24px_rgba(0,0,0,0.05)] md:aspect-[4/5]"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -137,7 +137,7 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
                 paginate(-1);
               }
             }}
-            className="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing"
+            className="absolute inset-0 h-full w-full object-cover cursor-grab active:cursor-grabbing"
             data-testid="gallery-main-image"
           />
         </AnimatePresence>
@@ -145,40 +145,24 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
         {/* Navigation Arrows */}
         <button
           onClick={() => paginate(-1)}
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:scale-110 z-10"
+          className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-foreground shadow-[0_10px_25px_rgba(0,0,0,0.12)] transition hover:bg-white sm:left-4 sm:h-12 sm:w-12"
           aria-label="Previous image"
           data-testid="gallery-prev-button"
         >
-          <ChevronLeft className="h-6 w-6" strokeWidth={1.5} />
+          <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
         </button>
         <button
           onClick={() => paginate(1)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:scale-110 z-10"
+          className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-foreground shadow-[0_10px_25px_rgba(0,0,0,0.12)] transition hover:bg-white sm:right-4 sm:h-12 sm:w-12"
           aria-label="Next image"
           data-testid="gallery-next-button"
         >
-          <ChevronRight className="h-6 w-6" strokeWidth={1.5} />
+          <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
         </button>
 
         {/* Image Counter */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-medium shadow-lg z-10">
           {currentIndex + 1} / {galleryImages.length}
-        </div>
-
-        {/* Dots Indicator (Mobile) */}
-        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 flex gap-2 md:hidden z-10">
-          {galleryImages.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => goToSlide(index)}
-              className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                currentIndex === index 
-                  ? 'bg-foreground w-6' 
-                  : 'bg-foreground/30 hover:bg-foreground/50'
-              }`}
-              aria-label={`Go to image ${index + 1}`}
-            />
-          ))}
         </div>
       </div>
 
@@ -191,7 +175,7 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
               onClick={() => goToSlide(index)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`relative flex-shrink-0 w-20 h-24 md:w-24 md:h-28 rounded-lg overflow-hidden snap-start transition-all duration-300 ${
+              className={`relative flex-shrink-0 w-14 h-[4.25rem] md:w-24 md:h-28 rounded-lg overflow-hidden snap-start transition-all duration-300 ${
                 currentIndex === index 
                   ? 'ring-2 ring-foreground ring-offset-2' 
                   : 'ring-1 ring-border hover:ring-foreground/50'
@@ -203,7 +187,7 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
               <img
                 src={image}
                 alt={`${productName} thumbnail ${index + 1}`}
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
               />
               {currentIndex === index && (
                 <motion.div

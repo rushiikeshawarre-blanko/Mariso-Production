@@ -381,12 +381,6 @@ const ProductPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-20 xl:gap-24">
             {/* Left Side - Image Gallery */}
             <div className="relative">
-              {/* Sale Badge */}
-              {originalPrice && displayPrice < originalPrice && (
-                <span className="absolute top-4 left-4 z-20 bg-terracotta text-white text-sm font-medium px-4 py-1.5 rounded-full">
-                  {discountPercent}% OFF
-                </span>
-              )}
               
               {/* Wishlist Button */}
               <button
@@ -409,7 +403,7 @@ const ProductPage = () => {
             </div>
 
             {/* Right Side - Product Details */}
-            <div className="lg:sticky lg:top-32 lg:self-start space-y-6">
+            <div className="space-y-6 px-1.5 md:px-0 lg:sticky lg:top-32 lg:self-start">
               {/* Category */}
               <p className="text-[11px] tracking-[0.24em] uppercase text-foreground/45">
                 {product.category_name}
@@ -500,7 +494,15 @@ const ProductPage = () => {
               {/* Flavor/Fragrance Variants - Only show if product has flavor options */}
               {product.has_flavor_options && product.flavor_options?.length > 0 && (
                 <div data-testid="flavor-variants">
-                  <p className="text-sm font-medium mb-3 tracking-[0.01em]">Fragrance: <span className="text-foreground/55">{selectedFlavor?.name || 'Select a Fragrance'}</span></p>
+                  <p className="text-sm font-medium mb-3 tracking-[0.01em]">
+                    Fragrance:{' '}
+                    <span className="text-foreground/55">
+                      {selectedFlavor?.name || 'Select a Fragrance'}
+                      {selectedFlavor?.description ? (
+                        <span className="text-foreground/40"> ({selectedFlavor.description})</span>
+                      ) : null}
+                    </span>
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {product.flavor_options.map((flavor) => (
                       <button
@@ -518,9 +520,6 @@ const ProductPage = () => {
                       </button>
                     ))}
                   </div>
-                  {selectedFlavor?.description && (
-                    <p className="text-xs text-muted-foreground mt-2 italic">{selectedFlavor.description}</p>
-                  )}
                 </div>
               )}
 
