@@ -22,6 +22,18 @@ const shouldRetryPublicGet = (error) => {
   return status >= 500 || status === 429;
 };
 
+const withPublicNoCache = (params = {}) => ({
+  skipAuth: true,
+  headers: {
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+  },
+  params: {
+    ...params,
+    _ts: Date.now(),
+  },
+});
+
 const getWithRetry = async (url, config = {}, retries = 2, backoffMs = 300) => {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -47,6 +59,12 @@ axiosInstance.interceptors.request.use(
   async (config) => {
     config.headers = config.headers || {};
 
+    if (config.skipAuth) {
+      delete config.headers.Authorization;
+      delete config.skipAuth;
+      return config;
+    }
+
     if (accessTokenGetter) {
       try {
         const token = await accessTokenGetter();
@@ -66,7 +84,7 @@ axiosInstance.interceptors.request.use(
 // Products
 export const getProducts = async (params = {}) => {
   try {
-    return await getWithRetry(`/products`, { params });
+    return await getWithRetry(`/products`, withPublicNoCache(params));
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
@@ -105,9 +123,7 @@ export const searchProducts = async (query) => {
 
 export const getProductsByCategory = async (categoryId, params = {}) => {
   try {
-    return await getWithRetry(`/products`, {
-      params: { ...params, category_id: categoryId }
-    });
+    return await getWithRetry(`/products`, withPublicNoCache({ ...params, category_id: categoryId }));
   } catch (error) {
     console.error('Error fetching products by category:', error);
     throw error;
@@ -116,7 +132,7 @@ export const getProductsByCategory = async (categoryId, params = {}) => {
 
 export const getFeaturedProducts = async () => {
   try {
-    return await getWithRetry(`/products/featured`);
+    return await getWithRetry(`/products/featured`, withPublicNoCache());
   } catch (error) {
     console.error('Error fetching featured products:', error);
     throw error;
@@ -125,7 +141,7 @@ export const getFeaturedProducts = async () => {
 
 export const getBestsellers = async () => {
   try {
-    return await getWithRetry(`/products/bestsellers`);
+    return await getWithRetry(`/products/bestsellers`, withPublicNoCache());
   } catch (error) {
     console.error('Error fetching bestsellers:', error);
     throw error;
@@ -134,7 +150,7 @@ export const getBestsellers = async () => {
 
 export const getProduct = async (id) => {
   try {
-    return await getWithRetry(`/products/${id}`);
+    return await getWithRetry(`/products/${id}`, withPublicNoCache());
   } catch (error) {
     console.error('Error fetching product:', error);
     throw error;
@@ -144,7 +160,7 @@ export const getProduct = async (id) => {
 // Categories
 export const getCategories = async () => {
   try {
-    return await getWithRetry(`/categories`);
+    return await getWithRetry(`/categories`, withPublicNoCache());
   } catch (error) {
     console.error('Error fetching categories:', error);
     throw error;
@@ -153,7 +169,7 @@ export const getCategories = async () => {
 
 export const getCategory = async (id) => {
   try {
-    return await getWithRetry(`/categories/${id}`);
+    return await getWithRetry(`/categories/${id}`, withPublicNoCache());
   } catch (error) {
     console.error('Error fetching category:', error);
     throw error;
@@ -377,7 +393,7 @@ export const getAdminContentPages = async (params = {}) => {
 
 export const getContentPages = async (params = {}) => {
   try {
-    const response = await axiosInstance.get(`/content/pages`, { params });
+    const response = await axiosInstance.get(`/content/pages`, withPublicNoCache(params));
     return response.data;
   } catch (error) {
     console.error('Error fetching content pages:', error);
@@ -387,7 +403,7 @@ export const getContentPages = async (params = {}) => {
 
 export const getContentPageBySlug = async (slug) => {
   try {
-    const response = await axiosInstance.get(`/content/pages/${slug}`);
+    const response = await axiosInstance.get(`/content/pages/${slug}`, withPublicNoCache());
     return response.data;
   } catch (error) {
     console.error('Error fetching content page:', error);
@@ -437,7 +453,7 @@ export const getAdminFaqs = async (params = {}) => {
 
 export const getFaqs = async (params = {}) => {
   try {
-    const response = await axiosInstance.get(`/content/faqs`, { params });
+    const response = await axiosInstance.get(`/content/faqs`, withPublicNoCache(params));
     return response.data;
   } catch (error) {
     console.error('Error fetching FAQs:', error);
@@ -447,7 +463,7 @@ export const getFaqs = async (params = {}) => {
 
 export const getHomepageFaqs = async () => {
   try {
-    const response = await axiosInstance.get(`/content/faqs/homepage`);
+    const response = await axiosInstance.get(`/content/faqs/homepage`, withPublicNoCache());
     return response.data;
   } catch (error) {
     console.error('Error fetching homepage FAQs:', error);
@@ -492,6 +508,29 @@ export const seedDatabase = async () => {
   return response.data;
 };
 
+export const createPresignedUpload = async (payload) => {
+  try {
+    const response = await axiosInstance.post(`/uploads/presign`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating presigned upload:', error);
+    throw error;
+  }
+};
+
+export const uploadFileToPresignedUrl = async (uploadUrl, file, contentType) => {
+  try {
+    await axios.put(uploadUrl, file, {
+      headers: {
+        'Content-Type': contentType || file.type,
+      },
+    });
+  } catch (error) {
+    console.error('Error uploading file to presigned URL:', error);
+    throw error;
+  }
+};
+
 // Upload image
 export const uploadImage = async (file) => {
   const formData = new FormData();
@@ -501,4 +540,3 @@ export const uploadImage = async (file) => {
   });
   return response.data;
 };
-

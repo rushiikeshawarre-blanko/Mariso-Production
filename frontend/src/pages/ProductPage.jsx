@@ -97,20 +97,31 @@ const ProductPage = () => {
     return product.images || [];
   }, [product, selectedColor]);
 
-  // Ensure we have at least some images to display
-  const displayImages = useMemo(() => {
+  // Build gallery media with images plus optional product video
+  const galleryMedia = useMemo(() => {
     const images = currentImages.length > 0 ? currentImages : (product?.images || []);
-    
-    // If still no images, use fallback
-    if (images.length === 0) {
+    const filteredImages = images.filter(Boolean).map((url) => ({
+      type: 'image',
+      url,
+    }));
+
+    // If still no images, use fallback placeholders
+    const fallbackImages = filteredImages.length === 0
+      ? [
+          'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
+          'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
+          'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
+        ].map((url) => ({ type: 'image', url }))
+      : filteredImages;
+
+    if (product?.video) {
       return [
-        'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
-        'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
-        'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
+        ...fallbackImages,
+        { type: 'video', url: product.video },
       ];
     }
-    
-    return images;
+
+    return fallbackImages;
   }, [currentImages, product]);
 
   useEffect(() => {
@@ -366,8 +377,8 @@ const ProductPage = () => {
 
   return (
     <Layout>
-      <div className="pt-32 pb-24" data-testid="product-page">
-        <div className="max-w-[1440px] mx-auto container-padding">
+      <div className="pt-28 pb-20 md:pt-32 md:pb-24" data-testid="product-page">
+        <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <Link 
             to="/shop" 
@@ -378,14 +389,14 @@ const ProductPage = () => {
             Back to Shop
           </Link>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-20 xl:gap-24">
+          <div className="grid w-full grid-cols-1 gap-8 md:gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20 xl:gap-24">
             {/* Left Side - Image Gallery */}
-            <div className="relative md:pl-4 xl:pl-0">
+            <div className="relative w-full min-w-0 md:pl-4 xl:pl-0">
               
               {/* Wishlist Button */}
               <button
                 onClick={handleAddToWishlist}
-                className={`absolute top-4 right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                className={`absolute top-4 right-4 md:top-6 md:right-7 xl:top-4 xl:right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${
                   isWishlisted 
                     ? 'bg-terracotta text-white' 
                     : 'bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110'
@@ -397,20 +408,20 @@ const ProductPage = () => {
 
               {/* Image Gallery Component */}
               <ProductImageGallery 
-                images={displayImages}
+                media={galleryMedia}
                 productName={product.name}
               />
             </div>
 
             {/* Right Side - Product Details */}
-            <div className="space-y-6 px-1.5 md:px-0 lg:sticky lg:top-32 lg:self-start">
+            <div className="w-full min-w-0 space-y-6 px-0 lg:sticky lg:top-32 lg:self-start">
               {/* Category */}
               <p className="text-[11px] tracking-[0.24em] uppercase text-foreground/45">
                 {product.category_name}
               </p>
               
               {/* Product Name */}
-              <h1 className="font-heading text-4xl md:text-5xl lg:text-[3.4rem] tracking-[-0.03em] leading-[1.02]" data-testid="product-title">
+              <h1 className="font-heading text-3xl sm:text-4xl md:text-5xl lg:text-[3.4rem] tracking-[-0.03em] leading-[1.06] break-words" data-testid="product-title">
                 {product.name}
               </h1>
               
@@ -595,7 +606,7 @@ const ProductPage = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex w-full flex-col gap-4 sm:flex-row">
                 <Button 
                   onClick={handleAddToCart}
                   variant="outline"

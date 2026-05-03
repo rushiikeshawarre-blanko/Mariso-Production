@@ -1,8 +1,25 @@
 from fastapi import APIRouter, UploadFile, File, Depends
+from pydantic import BaseModel
 from core.auth import get_current_user
-from services.upload_service import upload_image, get_image
+from services.upload_service import upload_image, get_image, create_presigned_upload
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+
+class PresignUploadRequest(BaseModel):
+    filename: str
+    content_type: str
+    folder: str
+
+@router.post("/uploads/presign", response_model=dict)
+async def create_presigned_upload_route(
+    payload: PresignUploadRequest,
+    user: dict = Depends(get_current_user),
+):
+    return await create_presigned_upload(
+        filename=payload.filename,
+        content_type=payload.content_type,
+        folder=payload.folder,
+    )
 
 # ==================== IMAGE UPLOAD ROUTE ====================
 

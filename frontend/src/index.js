@@ -14,6 +14,28 @@ if (!auth0Domain || !auth0ClientId) {
   );
 }
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => {
+      registrations.forEach((registration) => registration.unregister());
+    })
+    .catch((error) => {
+      console.warn("Service worker cleanup failed:", error);
+    });
+}
+
+if ("caches" in window) {
+  caches
+    .keys()
+    .then((cacheNames) => {
+      cacheNames.forEach((cacheName) => caches.delete(cacheName));
+    })
+    .catch((error) => {
+      console.warn("Cache storage cleanup failed:", error);
+    });
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>

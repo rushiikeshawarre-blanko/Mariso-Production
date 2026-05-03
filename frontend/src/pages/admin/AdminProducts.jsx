@@ -1,16 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { getAdminProducts, getCategories, createProduct, updateProduct, deleteProduct } from '../../lib/api';
+import React, { useState, useEffect, useRef } from 'react';
+import Cropper from 'react-easy-crop';
+import {
+  getAdminProducts,
+  getCategories,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  createPresignedUpload,
+  uploadFileToPresignedUrl,
+} from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronUp, ChevronDown, Package, RefreshCw, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronLeft, ChevronRight, Package, RefreshCw, Check, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { image } from 'framer-motion/client';
 
 
 
@@ -25,6 +35,35 @@ const AdminProducts = () => {
   const [generating, setGenerating] = useState(false);
   const [editingColorIndex, setEditingColorIndex] = useState(null);
   const [editingFlavorIndex, setEditingFlavorIndex] = useState(null);
+  const [uploadingDefaultImage, setUploadingDefaultImage] = useState(false);
+  const [isDraggingDefaultImage, setIsDraggingDefaultImage] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [pendingDefaultImageFile, setPendingDefaultImageFile] = useState(null);
+  const [pendingDefaultImageUrl, setPendingDefaultImageUrl] = useState('');
+  const [pendingDefaultImageIndex, setPendingDefaultImageIndex] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [uploadingColorImage, setUploadingColorImage] = useState(false);
+  const [colorCropModalOpen, setColorCropModalOpen] = useState(false);
+  const [pendingColorImageFile, setPendingColorImageFile] = useState(null);
+  const [pendingColorImageUrl, setPendingColorImageUrl] = useState('');
+  const [pendingColorImageMeta, setPendingColorImageMeta] = useState({ colorIndex: null, imageIndex: null });
+  const [colorCrop, setColorCrop] = useState({ x: 0, y: 0 });
+  const [colorZoom, setColorZoom] = useState(1);
+  const [colorCroppedAreaPixels, setColorCroppedAreaPixels] = useState(null);
+  const [newColorCropModalOpen, setNewColorCropModalOpen] = useState(false);
+  const [pendingNewColorImageFile, setPendingNewColorImageFile] = useState(null);
+  const [pendingNewColorImageUrl, setPendingNewColorImageUrl] = useState('');
+  const [pendingNewColorImageIndex, setPendingNewColorImageIndex] = useState(null);
+  const [newColorCrop, setNewColorCrop] = useState({ x: 0, y: 0 });
+  const [newColorZoom, setNewColorZoom] = useState(1);
+  const [newColorCroppedAreaPixels, setNewColorCroppedAreaPixels] = useState(null);
+  const [draggingNewColorImageIndex, setDraggingNewColorImageIndex] = useState(null);
+  const [uploadingProductVideo, setUploadingProductVideo] = useState(false);
+
+  const colorCropSectionRef = useRef(null);
+  const newColorCropSectionRef = useRef(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -35,7 +74,8 @@ const AdminProducts = () => {
     category_id: '',
     sku: '',
     stock: '',
-    images: '',
+    images: [],
+    video: '',
     is_on_sale: false,
     is_featured: false,
     is_bestseller: false,
@@ -80,6 +120,774 @@ const AdminProducts = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleImagesTextChange = (e) => {
+    const rawValue = e.target.value || '';
+    const normalizedImages = rawValue
+      .split(/\n|,/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    setFormData({
+      ...formData,
+      images: normalizedImages,
+    });
+  };
+
+  const createImage = (url) =>
+    new Promise((resolve, reject) => {
+      const image = new window.Image();
+      image.addEventListener('load', () => resolve(image));
+      image.addEventListener('error', (error) => reject(error));
+      image.setAttribute('crossOrigin', 'anonymous');
+      image.src = url;
+    });
+
+  const getCroppedImageBlob = async (imageSrc, cropPixels, fileType = 'image/jpeg') => {
+    const image = await createImage(imageSrc);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    canvas.width = cropPixels.width;
+    canvas.height = cropPixels.height;
+
+    context.drawImage(
+      image,
+      cropPixels.x,
+      cropPixels.y,
+      cropPixels.width,
+      cropPixels.height,
+      0,
+      0,
+      cropPixels.width,
+      cropPixels.height
+    );
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Failed to create cropped image blob'));
+            return;
+          }
+          resolve(blob);
+        },
+        fileType,
+        0.92
+      );
+    });
+  };
+
+  const closeDefaultImageCropModal = () => {
+    if (pendingDefaultImageUrl && pendingDefaultImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingDefaultImageUrl);
+      }
+
+    setCropModalOpen(false);
+    setPendingDefaultImageFile(null);
+    setPendingDefaultImageUrl('');
+    setPendingDefaultImageIndex(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+  };
+
+  const openDefaultImageCropper = (file, imageIndex = null) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    if (pendingDefaultImageUrl) {
+      URL.revokeObjectURL(pendingDefaultImageUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingDefaultImageFile(file);
+    setPendingDefaultImageUrl(previewUrl);
+    setPendingDefaultImageIndex(imageIndex);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setCropModalOpen(true);
+  };
+
+  const onCropComplete = (_, croppedPixels) => {
+    setCroppedAreaPixels(croppedPixels);
+  };
+
+  const buildPlaceholderImageFile = (fallbackName, imageUrl) => {
+  const sanitizedName = fallbackName || 'image';
+  const urlWithoutQuery = (imageUrl || '').split('?')[0];
+  const extensionMatch = urlWithoutQuery.match(/\.([a-zA-Z0-9]+)$/);
+  const extension = extensionMatch?.[1]?.toLowerCase();
+
+  let mimeType = 'image/jpeg';
+  if (extension === 'png') mimeType = 'image/png';
+  if (extension === 'webp') mimeType = 'image/webp';
+  if (extension === 'gif') mimeType = 'image/gif';
+
+  const hasExtension = /\.[a-zA-Z0-9]+$/.test(sanitizedName);
+  const filename = hasExtension ? sanitizedName : `${sanitizedName}.${extension || 'jpg'}`;
+
+  return new File([], filename, { type: mimeType });
+};
+
+const openDefaultImageRecropper = (imageUrl, index) => {
+  if (!imageUrl) return;
+
+  if (pendingDefaultImageUrl && pendingDefaultImageUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(pendingDefaultImageUrl);
+  }
+
+  setPendingDefaultImageFile(buildPlaceholderImageFile(`product-image-${index + 1}`, imageUrl));
+  setPendingDefaultImageUrl(imageUrl);
+  setPendingDefaultImageIndex(index);
+  setCrop({ x: 0, y: 0 });
+  setZoom(1);
+  setCroppedAreaPixels(null);
+  setCropModalOpen(true);
+};
+
+const openExistingColorImageRecropper = (imageUrl, colorIndex, imageIndex) => {
+  if (!imageUrl) return;
+
+  if (pendingColorImageUrl && pendingColorImageUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(pendingColorImageUrl);
+  }
+
+  setPendingColorImageFile(
+    buildPlaceholderImageFile(`color-${colorIndex + 1}-image-${imageIndex + 1}`, imageUrl)
+  );
+  setPendingColorImageUrl(imageUrl);
+  setPendingColorImageMeta({ colorIndex, imageIndex });
+  setColorCrop({ x: 0, y: 0 });
+  setColorZoom(1);
+  setColorCroppedAreaPixels(null);
+  setColorCropModalOpen(true);
+  setTimeout(() => {
+    colorCropSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 0);
+};
+
+const openNewColorImageRecropper = (imageUrl, imageIndex) => {
+  if (!imageUrl) return;
+
+  if (pendingNewColorImageUrl && pendingNewColorImageUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(pendingNewColorImageUrl);
+  }
+
+  setPendingNewColorImageFile(buildPlaceholderImageFile(`new-color-image-${imageIndex + 1}`, imageUrl));
+  setPendingNewColorImageUrl(imageUrl);
+  setPendingNewColorImageIndex(imageIndex);
+  setNewColorCrop({ x: 0, y: 0 });
+  setNewColorZoom(1);
+  setNewColorCroppedAreaPixels(null);
+  setNewColorCropModalOpen(true);
+  setTimeout(() => {
+    newColorCropSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 0);
+};
+
+
+  const handleDefaultImageRecrop = async (imageUrl, index) => {
+  try {
+    openDefaultImageRecropper(imageUrl, index);
+  } catch (error) {
+    console.error('Error preparing default image for re-crop:', error);
+    toast.error('Failed to open image for re-crop');
+  }
+};
+
+  const handleExistingColorImageRecrop = async (imageUrl, colorIndex, imageIndex) => {
+  try {
+    openExistingColorImageRecropper(imageUrl, colorIndex, imageIndex);
+  } catch (error) {
+    console.error('Error preparing color image for re-crop:', error);
+    toast.error('Failed to open color image for re-crop');
+  }
+};
+
+  const handleNewColorImageRecrop = async (imageUrl, imageIndex) => {
+  try {
+    openNewColorImageRecropper(imageUrl, imageIndex);
+  } catch (error) {
+    console.error('Error preparing new color image for re-crop:', error);
+    toast.error('Failed to open image for re-crop');
+  }
+};
+
+  const handleCropAndUpload = async () => {
+    if (!pendingDefaultImageFile || !pendingDefaultImageUrl || !croppedAreaPixels) {
+      toast.error('Please adjust the crop before uploading');
+      return;
+    }
+
+    try {
+      const croppedBlob = await getCroppedImageBlob(
+        pendingDefaultImageUrl,
+        croppedAreaPixels,
+        pendingDefaultImageFile.type
+      );
+
+      const croppedFile = new File(
+        [croppedBlob],
+        `cropped-${pendingDefaultImageFile.name}`,
+        { type: croppedBlob.type || pendingDefaultImageFile.type }
+      );
+
+      await uploadDefaultImageFile(croppedFile, pendingDefaultImageIndex);
+      closeDefaultImageCropModal();
+    } catch (error) {
+      console.error('Error cropping default image:', error);
+      toast.error('Failed to crop and upload image');
+    }
+  };
+
+  const closeColorImageCropModal = () => {
+    if (pendingColorImageUrl && pendingColorImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingColorImageUrl);
+    }
+
+    setColorCropModalOpen(false);
+    setPendingColorImageFile(null);
+    setPendingColorImageUrl('');
+    setPendingColorImageMeta({ colorIndex: null, imageIndex: null });
+    setColorCrop({ x: 0, y: 0 });
+    setColorZoom(1);
+    setColorCroppedAreaPixels(null);
+  };
+
+  const openColorImageCropper = (file, colorIndex, imageIndex) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    if (pendingColorImageUrl) {
+      URL.revokeObjectURL(pendingColorImageUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingColorImageFile(file);
+    setPendingColorImageUrl(previewUrl);
+    setPendingColorImageMeta({ colorIndex, imageIndex });
+    setColorCrop({ x: 0, y: 0 });
+    setColorZoom(1);
+    setColorCroppedAreaPixels(null);
+    setColorCropModalOpen(true);
+    setTimeout(() => {
+      colorCropSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const onColorCropComplete = (_, croppedPixels) => {
+    setColorCroppedAreaPixels(croppedPixels);
+  };
+
+  const uploadColorImageFile = async (file, colorIndex, imageIndex) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    try {
+      setUploadingColorImage(true);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/colors',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      updateColorImage(colorIndex, imageIndex, presigned.file_url);
+      toast.success('Color image uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading color image:', error);
+      toast.error('Failed to upload color image');
+    } finally {
+      setUploadingColorImage(false);
+    }
+  };
+
+  const handleColorCropAndUpload = async () => {
+    const { colorIndex, imageIndex } = pendingColorImageMeta;
+
+    if (
+      !pendingColorImageFile ||
+      !pendingColorImageUrl ||
+      !colorCroppedAreaPixels ||
+      colorIndex === null ||
+      imageIndex === null
+    ) {
+      toast.error('Please adjust the crop before uploading');
+      return;
+    }
+
+    try {
+      const croppedBlob = await getCroppedImageBlob(
+        pendingColorImageUrl,
+        colorCroppedAreaPixels,
+        pendingColorImageFile.type
+      );
+
+      const croppedFile = new File(
+        [croppedBlob],
+        `cropped-${pendingColorImageFile.name}`,
+        { type: croppedBlob.type || pendingColorImageFile.type }
+      );
+
+      await uploadColorImageFile(croppedFile, colorIndex, imageIndex);
+      closeColorImageCropModal();
+    } catch (error) {
+      console.error('Error cropping color image:', error);
+      toast.error('Failed to crop and upload color image');
+    }
+  };
+
+  const handleColorImageUpload = (e, colorIndex, imageIndex) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    openColorImageCropper(file, colorIndex, imageIndex);
+    e.target.value = '';
+  };
+
+  const uploadNewColorImageFile = async (file, imageIndex) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    try {
+      setUploadingColorImage(true);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/colors',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      const nextImages = [...newColor.images];
+      while (nextImages.length < 5) {
+        nextImages.push('');
+      }
+      nextImages[imageIndex] = presigned.file_url;
+
+      setNewColor((prev) => ({
+        ...prev,
+        images: nextImages,
+      }));
+
+      toast.success('New color image uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading new color image:', error);
+      toast.error('Failed to upload new color image');
+    } finally {
+      setUploadingColorImage(false);
+    }
+  };
+
+  const handleNewColorImageUpload = (e, imageIndex) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    openNewColorImageCropper(file, imageIndex);
+    e.target.value = '';
+  };
+
+  const closeNewColorImageCropModal = () => {
+    if (pendingNewColorImageUrl && pendingNewColorImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingNewColorImageUrl);
+    }
+
+    setNewColorCropModalOpen(false);
+    setPendingNewColorImageFile(null);
+    setPendingNewColorImageUrl('');
+    setPendingNewColorImageIndex(null);
+    setNewColorCrop({ x: 0, y: 0 });
+    setNewColorZoom(1);
+    setNewColorCroppedAreaPixels(null);
+  };
+
+  const openNewColorImageCropper = (file, imageIndex) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    if (pendingNewColorImageUrl) {
+      URL.revokeObjectURL(pendingNewColorImageUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingNewColorImageFile(file);
+    setPendingNewColorImageUrl(previewUrl);
+    setPendingNewColorImageIndex(imageIndex);
+    setNewColorCrop({ x: 0, y: 0 });
+    setNewColorZoom(1);
+    setNewColorCroppedAreaPixels(null);
+    setNewColorCropModalOpen(true);
+    setTimeout(() => {
+      newColorCropSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const onNewColorCropComplete = (_, croppedPixels) => {
+    setNewColorCroppedAreaPixels(croppedPixels);
+  };
+
+  const handleNewColorCropAndUpload = async () => {
+    if (
+      !pendingNewColorImageFile ||
+      !pendingNewColorImageUrl ||
+      !newColorCroppedAreaPixels ||
+      pendingNewColorImageIndex === null
+    ) {
+      toast.error('Please adjust the crop before uploading');
+      return;
+    }
+
+    try {
+      const croppedBlob = await getCroppedImageBlob(
+        pendingNewColorImageUrl,
+        newColorCroppedAreaPixels,
+        pendingNewColorImageFile.type
+      );
+
+      const croppedFile = new File(
+        [croppedBlob],
+        `cropped-${pendingNewColorImageFile.name}`,
+        { type: croppedBlob.type || pendingNewColorImageFile.type }
+      );
+
+      await uploadNewColorImageFile(croppedFile, pendingNewColorImageIndex);
+      closeNewColorImageCropModal();
+    } catch (error) {
+      console.error('Error cropping new color image:', error);
+      toast.error('Failed to crop and upload new color image');
+    }
+  };
+
+  const handleNewColorImageDragOver = (e, imageIndex) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!uploadingColorImage) {
+      setDraggingNewColorImageIndex(imageIndex);
+    }
+  };
+
+  const handleNewColorImageDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingNewColorImageIndex(null);
+  };
+
+  const handleNewColorImageDrop = (e, imageIndex) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingNewColorImageIndex(null);
+
+    if (uploadingColorImage) return;
+
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    openNewColorImageCropper(file, imageIndex);
+  };
+
+  const moveNewColorImage = (fromIndex, toIndex) => {
+    setNewColor((prev) => {
+      const nextImages = [...(prev.images || [])];
+
+      while (nextImages.length < 5) {
+        nextImages.push('');
+      }
+
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= nextImages.length ||
+        toIndex >= nextImages.length ||
+        !nextImages[fromIndex]
+      ) {
+        return prev;
+      }
+
+      [nextImages[fromIndex], nextImages[toIndex]] = [
+        nextImages[toIndex],
+        nextImages[fromIndex],
+      ];
+
+      return {
+        ...prev,
+        images: nextImages,
+      };
+    });
+  };
+
+  const uploadDefaultImageFile = async (file, replaceIndex = null) => {
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
+      return;
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Image size must be 30MB or less');
+      return;
+    }
+
+    try {
+      setUploadingDefaultImage(true);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/default',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      setFormData((prev) => {
+        const currentImages = [...(prev.images || [])].filter(Boolean);
+
+        if (typeof replaceIndex === 'number') {
+          const nextImages = [...currentImages];
+          nextImages[replaceIndex] = presigned.file_url;
+
+          return {
+            ...prev,
+            images: nextImages.slice(0, 5),
+          };
+        }
+
+        if (currentImages.length >= 5) {
+          toast.error('You can upload up to 5 product images only');
+          return prev;
+        }
+
+        return {
+          ...prev,
+          images: [...currentImages, presigned.file_url].slice(0, 5),
+        };
+      });  
+
+      toast.success('Image uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading default image:', error);
+      toast.error('Failed to upload image');
+    } finally {
+      setUploadingDefaultImage(false);
+    }
+  };
+
+  const handleDefaultImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    openDefaultImageCropper(file);
+    e.target.value = '';
+  };
+
+  const handleDefaultImageReplace = (e, index) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    openDefaultImageCropper(file, index);
+    e.target.value = '';
+  };
+
+  const handleDefaultImageDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!uploadingDefaultImage) {
+      setIsDraggingDefaultImage(true);
+    }
+  };
+
+  const handleDefaultImageDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingDefaultImage(false);
+  };
+
+  const handleDefaultImageDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingDefaultImage(false);
+
+    if (uploadingDefaultImage) return;
+
+    const currentImageCount = (formData.images || []).filter(Boolean).length;
+    if (currentImageCount >= 5) {
+      toast.error('You can upload up to 5 product images only');
+      return;
+    }
+
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    openDefaultImageCropper(file);
+  };
+
+  const removeDefaultImage = (indexToRemove) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, index) => index !== indexToRemove),
+    }));
+  };
+
+  const moveDefaultImage = (fromIndex, toIndex) => {
+    setFormData((prev) => {
+      const nextImages = [...(prev.images || [])];
+
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= nextImages.length ||
+        toIndex >= nextImages.length ||
+        !nextImages[fromIndex]
+      ) {
+        return prev;
+      }
+
+      [nextImages[fromIndex], nextImages[toIndex]] = [
+        nextImages[toIndex],
+        nextImages[fromIndex],
+      ];
+
+      return {
+        ...prev,
+        images: nextImages,
+      };
+    });
+  };
+
+  const uploadProductVideoFile = async (file) => {
+    if (!file) return;
+
+    const allowedTypes = ['video/mp4'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload an MP4 video');
+      return;
+    }
+
+    const maxSizeBytes = 100 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Video size must be 100MB or less');
+      return;
+    }
+
+    try {
+      setUploadingProductVideo(true);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/videos',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      setFormData((prev) => ({
+        ...prev,
+        video: presigned.file_url,
+      }));
+
+      toast.success('Video uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading product video:', error);
+      toast.error('Failed to upload video');
+    } finally {
+      setUploadingProductVideo(false);
+    }
+  };
+
+  const handleProductVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    await uploadProductVideoFile(file);
+    e.target.value = '';
+  };
+
+  const removeProductVideo = () => {
+    setFormData((prev) => ({
+      ...prev,
+      video: '',
+    }));
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -90,7 +898,8 @@ const AdminProducts = () => {
       category_id: '',
       sku: '',
       stock: '',
-      images: '',
+      images: [],
+      video: '',
       is_on_sale: false,
       is_featured: false,
       is_bestseller: false,
@@ -131,7 +940,8 @@ const AdminProducts = () => {
       category_id: product.category_id,
       sku: product.sku || '',
       stock: product.stock.toString(),
-      images: product.images?.join(', ') || '',
+      images: product.images || [],
+      video: product.video || '',
       is_on_sale: product.is_on_sale || false,
       is_featured: product.is_featured || false,
       is_bestseller: product.is_bestseller || false,
@@ -155,7 +965,6 @@ const AdminProducts = () => {
   };
 
   // ==================== COLOR OPTIONS ====================
-  
   const addColorOption = () => {
     if (!newColor.name.trim()) {
       toast.error('Color name is required');
@@ -410,7 +1219,8 @@ const AdminProducts = () => {
       category_id: formData.category_id,
       sku: formData.sku,
       stock: parseInt(formData.stock, 10) || 0,
-      images: formData.images.split(',').map(url => url.trim()).filter(Boolean),
+      images: (formData.images || []).filter(Boolean).slice(0, 5),
+      video: formData.video,
       is_on_sale: formData.is_on_sale,
       is_featured: formData.is_featured,
       is_bestseller: formData.is_bestseller,
@@ -621,19 +1431,240 @@ const AdminProducts = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="images">Default Image URLs (comma-separated)</Label>
-                    <Textarea
-                      id="images"
-                      name="images"
-                      value={formData.images}
-                      onChange={handleChange}
-                      placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
-                      className="mt-1"
-                      rows={2}
-                      data-testid="product-images-input"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Used when no color-specific images exist</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label>Default Product Images</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Upload up to 5 JPG, PNG, WEBP or GIF images, 30MB each. The first image is used as the primary image.
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {formData.images.filter(Boolean).length}/5 images
+                      </span>
+                    </div>
+
+                    <div
+                      className={`rounded-lg border border-dashed p-4 transition-colors ${
+                        isDraggingDefaultImage
+                          ? 'border-foreground bg-muted/50'
+                          : 'border-border'
+                      }`}
+                      onDragOver={handleDefaultImageDragOver}
+                      onDragLeave={handleDefaultImageDragLeave}
+                      onDrop={handleDefaultImageDrop}
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Drag and drop product image here</p>
+                          <p className="text-xs text-muted-foreground">
+                            Or click a slot below to upload an image
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {cropModalOpen && pendingDefaultImageUrl && (
+                      <div className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+                        <div>
+                          <h3 className="text-base font-semibold">Crop product image</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Adjust the crop for a 3:4 product image before uploading.
+                          </p>
+                        </div>
+
+                        <div className="relative h-[420px] overflow-hidden rounded-lg bg-black">
+                          <Cropper
+                            image={pendingDefaultImageUrl}
+                            crop={crop}
+                            zoom={zoom}
+                            aspect={3 / 4}
+                            onCropChange={setCrop}
+                            onZoomChange={setZoom}
+                            onCropComplete={onCropComplete}
+                            showGrid={true}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <Label htmlFor="default-image-zoom" className="min-w-[48px] text-sm">
+                            Zoom
+                          </Label>
+                          <input
+                            id="default-image-zoom"
+                            type="range"
+                            min="1"
+                            max="3"
+                            step="0.1"
+                            value={zoom}
+                            onChange={(e) => setZoom(Number(e.target.value))}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={closeDefaultImageCropModal}
+                            disabled={uploadingDefaultImage}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={handleCropAndUpload}
+                            disabled={uploadingDefaultImage}
+                          >
+                            {uploadingDefaultImage ? 'Uploading...' : 'Crop & Upload'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      {Array.from({ length: 5 }).map((_, imageIndex) => {
+                        const imageUrl = formData.images?.[imageIndex] || '';
+                        const imageCount = formData.images.filter(Boolean).length;
+
+                        return (
+                          <div key={`default-image-${imageIndex}`} className="space-y-2 rounded-lg border p-2">
+                            <div className="aspect-[3/4] overflow-hidden rounded-lg border bg-muted">
+                              {imageUrl ? (
+                                <img
+                                  src={imageUrl}
+                                  alt={`Product ${imageIndex + 1}`}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-muted-foreground">
+                                  <Image className="h-6 w-6 opacity-50" />
+                                  <span>Image {imageIndex + 1}</span>
+                                  <span>Up to 30MB</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <label htmlFor={`default-image-upload-${imageIndex}`}>
+                              <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
+                                {uploadingDefaultImage ? 'Uploading...' : imageUrl ? 'Replace' : 'Upload'}
+                              </div>
+                            </label>
+                            <Input
+                              id={`default-image-upload-${imageIndex}`}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              onChange={(e) => handleDefaultImageReplace(e, imageIndex)}
+                              className="hidden"
+                              disabled={uploadingDefaultImage}
+                            />
+
+                            {imageUrl ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={uploadingDefaultImage || imageIndex === 0}
+                                  onClick={() => moveDefaultImage(imageIndex, imageIndex - 1)}
+                                  title="Move image left"
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={uploadingDefaultImage || imageIndex >= imageCount - 1}
+                                  onClick={() => moveDefaultImage(imageIndex, imageIndex + 1)}
+                                  title="Move image right"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>                            
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="col-span-2"
+                                  disabled={uploadingDefaultImage}
+                                  onClick={() => handleDefaultImageRecrop(imageUrl, imageIndex)}
+                                >
+                                  Re-crop
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="col-span-2"
+                                  onClick={() => removeDefaultImage(imageIndex)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="space-y-3 border-t pt-4">
+                    <Label htmlFor="product-video-upload">Product Video (MP4, optional)</Label>
+
+                    <div className="rounded-lg border border-dashed p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Upload one product video</p>
+                          <p className="text-xs text-muted-foreground">
+                            Recommended: 9:16 vertical MP4 video, up to 100MB
+                          </p>
+                        </div>
+
+                        <label htmlFor="product-video-upload">
+                          <div className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                            {uploadingProductVideo ? 'Uploading...' : formData.video ? 'Replace Video' : 'Choose Video'}
+                          </div>
+                        </label>
+
+                        <Input
+                          id="product-video-upload"
+                          type="file"
+                          accept="video/mp4"
+                          onChange={handleProductVideoUpload}
+                          className="hidden"
+                          disabled={uploadingProductVideo}
+                        />
+                      </div>
+                    </div>
+
+                    {formData.video ? (
+                      <div className="space-y-3 rounded-lg border p-3">
+                        <div className="overflow-hidden rounded-lg border bg-black">
+                          <video
+                            src={formData.video}
+                            controls
+                            playsInline
+                            preload="metadata"
+                            className="h-[360px] w-full object-contain bg-black"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <label htmlFor="product-video-upload">
+                            <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
+                              {uploadingProductVideo ? 'Uploading...' : 'Replace Video'}
+                            </div>
+                          </label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={removeProductVideo}
+                            className="w-full sm:w-auto"
+                          >
+                            Remove Video
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
                     <div className="flex items-center gap-3">
@@ -758,6 +1789,64 @@ const AdminProducts = () => {
                   </div>
                   
                   {formData.has_color_options && (
+                    <>
+                      {colorCropModalOpen && pendingColorImageUrl && (
+                        <div ref={colorCropSectionRef} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+                          <div>
+                            <h3 className="text-base font-semibold">Crop color image</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Adjust the crop for a 3:4 color image before uploading.
+                            </p>
+                          </div>
+
+                          <div className="relative h-[420px] overflow-hidden rounded-lg bg-black">
+                            <Cropper
+                              image={pendingColorImageUrl}
+                              crop={colorCrop}
+                              zoom={colorZoom}
+                              aspect={3 / 4}
+                              onCropChange={setColorCrop}
+                              onZoomChange={setColorZoom}
+                              onCropComplete={onColorCropComplete}
+                              showGrid={true}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <Label htmlFor="color-image-zoom" className="min-w-[48px] text-sm">
+                              Zoom
+                            </Label>
+                            <input
+                              id="color-image-zoom"
+                              type="range"
+                              min="1"
+                              max="3"
+                              step="0.1"
+                              value={colorZoom}
+                              onChange={(e) => setColorZoom(Number(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={closeColorImageCropModal}
+                              disabled={uploadingColorImage}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleColorCropAndUpload}
+                              disabled={uploadingColorImage}
+                            >
+                              {uploadingColorImage ? 'Uploading...' : 'Crop & Upload'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     <div className="space-y-6">
                       {/* Existing Colors with Image Galleries */}
                       {formData.color_options.map((color, colorIndex) => {
@@ -886,7 +1975,25 @@ const AdminProducts = () => {
                               {[0, 1, 2, 3, 4].map((imageIndex) => {
                                 const imageUrl = color.images?.[imageIndex] || '';
                                 return (
-                                  <div key={imageIndex} className="space-y-1">
+                                    <div
+                                      key={imageIndex}
+                                      className="space-y-1"
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
+                                      onDrop={(e) =>{
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (uploadingColorImage) return;
+
+                                        const file = e.dataTransfer?.files?.[0];
+                                        if(!file) return
+
+                                        openColorImageCropper(file, colorIndex, imageIndex)
+                                      }}  
+                                    >  
+
                                     <div className="aspect-square bg-muted rounded-lg overflow-hidden border relative group">
                                       {imageUrl ? (
                                         <>
@@ -903,7 +2010,7 @@ const AdminProducts = () => {
                                                 onClick={() => moveColorImage(colorIndex, imageIndex, 'up')}
                                                 className="p-1 bg-white rounded"
                                               >
-                                                <ChevronUp className="h-3 w-3" />
+                                                <ChevronLeft className="h-3 w-3" />
                                               </button>
                                             )}
                                             {imageIndex < 4 && color.images?.[imageIndex + 1] && (
@@ -912,7 +2019,7 @@ const AdminProducts = () => {
                                                 onClick={() => moveColorImage(colorIndex, imageIndex, 'down')}
                                                 className="p-1 bg-white rounded"
                                               >
-                                                <ChevronDown className="h-3 w-3" />
+                                                <ChevronRight className="h-3 w-3" />
                                               </button>
                                             )}
                                           </div>
@@ -923,12 +2030,79 @@ const AdminProducts = () => {
                                         </div>
                                       )}
                                     </div>
-                                    <Input
-                                      value={imageUrl}
-                                      onChange={(e) => updateColorImage(colorIndex, imageIndex, e.target.value)}
-                                      placeholder={`Image ${imageIndex + 1}`}
-                                      className="text-xs h-7"
-                                    />
+                                    <div className="space-y-1">
+                                      <label htmlFor={`color-image-upload-${colorIndex}-${imageIndex}`}>
+                                        <div className="inline-flex h-7 w-full cursor-pointer items-center justify-center rounded-md border px-2 text-xs font-medium hover:bg-muted">
+                                          {uploadingColorImage ? 'Uploading...' : imageUrl ? 'Replace' : 'Upload / Drop'}
+                                        </div>
+                                      </label>
+                                      <Input
+                                        id={`color-image-upload-${colorIndex}-${imageIndex}`}
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,image/gif"
+                                        onChange={(e) => handleColorImageUpload(e, colorIndex, imageIndex)}
+                                        className="hidden"
+                                        disabled={uploadingColorImage}
+                                      />
+                                      {imageUrl ? (
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 text-xs"
+                                              disabled={uploadingColorImage || imageIndex === 0}
+                                              onClick={() => moveColorImage(colorIndex, imageIndex, 'up')}
+                                              title="Move image left"
+                                            >
+                                              <ChevronLeft className="h-3 w-3" />
+                                            </Button>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 text-xs"
+                                              disabled={uploadingColorImage || imageIndex >= ((color.images || []).filter(Boolean).length - 1)}
+                                              onClick={() => moveColorImage(colorIndex, imageIndex, 'down')}
+                                              title="Move image right"
+                                            >
+                                              <ChevronRight className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+                                        ) : null}  
+
+                                        {imageUrl ? (
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full h-7 text-xs"
+                                            disabled={uploadingColorImage}
+                                            onClick={() => handleExistingColorImageRecrop(imageUrl, colorIndex, imageIndex)}
+                                          >
+                                            {uploadingColorImage ? 'Uploading...' : 'Re-crop'}
+                                          </Button>
+                                        ) : null}
+
+                                        {imageUrl ? (  
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full h-7 text-xs text-destructive hover:text-destructive"
+                                            disabled={uploadingColorImage}
+                                            onClick={() => updateColorImage(colorIndex, imageIndex, '')}
+                                          >
+                                            Remove
+                                          </Button>
+                                        ) : null}
+
+                                        {imageUrl ? (  
+                                          <p className="text-[10px] text-muted-foreground">
+                                            Re-crop or replace this slot without typing a URL.
+                                          </p>
+                                      ) : null}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1017,20 +2191,165 @@ const AdminProducts = () => {
                         {/* Images for new color */}
                         <div>
                           <Label className="text-xs mb-2 block">Images (up to 5)</Label>
+                          {newColorCropModalOpen && pendingNewColorImageUrl && (
+                            <div ref={newColorCropSectionRef} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+                              <div>
+                                <h3 className="text-base font-semibold">Crop new color image</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  Adjust the crop for a 3:4 image before adding this color.
+                                </p>
+                              </div>
+
+                              <div className="relative h-[420px] overflow-hidden rounded-lg bg-black">
+                                <Cropper
+                                  image={pendingNewColorImageUrl}
+                                  crop={newColorCrop}
+                                  zoom={newColorZoom}
+                                  aspect={3 / 4}
+                                  onCropChange={setNewColorCrop}
+                                  onZoomChange={setNewColorZoom}
+                                  onCropComplete={onNewColorCropComplete}
+                                  showGrid={true}
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <Label htmlFor="new-color-image-zoom" className="min-w-[48px] text-sm">
+                                  Zoom
+                                </Label>
+                                <input
+                                  id="new-color-image-zoom"
+                                  type="range"
+                                  min="1"
+                                  max="3"
+                                  step="0.1"
+                                  value={newColorZoom}
+                                  onChange={(e) => setNewColorZoom(Number(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={closeNewColorImageCropModal}
+                                  disabled={uploadingColorImage}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  onClick={handleNewColorCropAndUpload}
+                                  disabled={uploadingColorImage}
+                                >
+                                  {uploadingColorImage ? 'Uploading...' : 'Crop & Upload'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                            {[0, 1, 2, 3, 4].map((i) => (
-                              <Input
-                                key={i}
-                                value={newColor.images[i] || ''}
-                                onChange={(e) => {
-                                  const newImages = [...newColor.images];
-                                  newImages[i] = e.target.value;
-                                  setNewColor({ ...newColor, images: newImages });
-                                }}
-                                placeholder={`Image ${i + 1}`}
-                                className="text-xs"
-                              />
-                            ))}
+                            {[0, 1, 2, 3, 4].map((imageIndex) => {
+                              const imageUrl = newColor.images[imageIndex] || '';
+
+                              return (
+                                <div key={imageIndex} className="space-y-2">
+                                  <div
+                                    className={`aspect-square overflow-hidden rounded-lg border bg-muted transition-colors ${
+                                      draggingNewColorImageIndex === imageIndex ? 'border-foreground bg-muted/70' : ''
+                                    }`}
+                                    onDragOver={(e) => handleNewColorImageDragOver(e, imageIndex)}
+                                    onDragLeave={handleNewColorImageDragLeave}
+                                    onDrop={(e) => handleNewColorImageDrop(e, imageIndex)}
+                                  >
+                                    {imageUrl ? (
+                                      <img
+                                        src={imageUrl}
+                                        alt={`New color image ${imageIndex + 1}`}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-xs text-muted-foreground">
+                                        <span>Image {imageIndex + 1}</span>
+                                        <span>Drop image here</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <label htmlFor={`new-color-image-upload-${imageIndex}`}>
+                                    <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-2 text-xs font-medium hover:bg-muted">
+                                      {uploadingColorImage ? 'Uploading...' : imageUrl ? 'Replace' : 'Upload / Drop'}
+                                    </div>
+                                  </label>
+                                  <Input
+                                    id={`new-color-image-upload-${imageIndex}`}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp,image/gif"
+                                    onChange={(e) => handleNewColorImageUpload(e, imageIndex)}
+                                    className="hidden"
+                                    disabled={uploadingColorImage}
+                                  />
+
+                                    {imageUrl ? (
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 text-xs"
+                                          disabled={uploadingColorImage || imageIndex === 0}
+                                          onClick={() => moveNewColorImage(imageIndex, imageIndex - 1)}
+                                          title="Move image left"
+                                        >
+                                          <ChevronLeft className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 text-xs"
+                                          disabled={uploadingColorImage || imageIndex >= ((newColor.images || []).filter(Boolean).length - 1)}
+                                          onClick={() => moveNewColorImage(imageIndex, imageIndex + 1)}
+                                          title="Move image right"
+                                        >
+                                          <ChevronRight className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ) : null}                                  
+
+                                  {imageUrl ? (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full"
+                                        disabled={uploadingColorImage}
+                                        onClick={() => handleNewColorImageRecrop(imageUrl, imageIndex)}
+                                      >
+                                        {uploadingColorImage ? 'Uploading...' : 'Re-crop'}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={() => {
+                                          const nextImages = [...newColor.images];
+                                          nextImages[imageIndex] = '';
+                                          setNewColor({ ...newColor, images: nextImages });
+                                        }}
+                                      >
+                                        Remove
+                                      </Button>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Re-crop by selecting the file again.
+                                      </p>
+                                    </>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                         
@@ -1046,6 +2365,7 @@ const AdminProducts = () => {
                         </Button>
                       </div>
                     </div>
+                    </>
                   )}
                 </TabsContent>
 
@@ -1505,7 +2825,7 @@ const AdminProducts = () => {
           </TableBody>
         </Table>
       </div>
-    </div>
+    </div>  
   );
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const ProductImageGallery = ({ images = [], productName = 'Product' }) => {
+export const ProductImageGallery = ({ media = [], productName = 'Product' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
@@ -11,10 +11,13 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
   // Minimum swipe distance
   const minSwipeDistance = 50;
 
-  // Ensure we have at least 5 images by duplicating if needed
-  const galleryImages = images.length >= 5 
-    ? images 
-    : [...images, ...images, ...images, ...images, ...images].slice(0, Math.max(5, images.length));
+  const galleryImages = (media || []).filter((item) => item?.url);
+
+  useEffect(() => {
+    if (currentIndex >= galleryImages.length) {
+      setCurrentIndex(0);
+    }
+  }, [currentIndex, galleryImages.length]);
 
   const slideVariants = {
     enter: (direction) => ({
@@ -103,43 +106,65 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
   }
 
   return (
-    <div className="space-y-3 px-2 md:space-y-4 md:px-6 xl:px-0" data-testid="product-image-gallery">
+    <div className="w-full min-w-0 space-y-3 px-2 md:space-y-4 md:px-6 xl:px-0" data-testid="product-image-gallery">
       {/* Main Image Carousel */}
       <div 
-        className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-[#F8F5F1] shadow-[0_8px_24px_rgba(0,0,0,0.05)] md:aspect-[4/5]"
+        className="relative w-full aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-[#F8F5F1] shadow-[0_8px_24px_rgba(0,0,0,0.05)] md:aspect-[4/5]"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.img
-            key={currentIndex}
-            src={galleryImages[currentIndex]}
-            alt={`${productName} - Image ${currentIndex + 1}`}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{
-              x: { type: "spring", stiffness: 300, damping: 30 },
-              opacity: { duration: 0.2 },
-              scale: { duration: 0.2 }
-            }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={1}
-            onDragEnd={(e, { offset, velocity }) => {
-              const swipe = swipePower(offset.x, velocity.x);
-              if (swipe < -swipeConfidenceThreshold) {
-                paginate(1);
-              } else if (swipe > swipeConfidenceThreshold) {
-                paginate(-1);
-              }
-            }}
-            className="absolute inset-0 h-full w-full object-cover cursor-grab active:cursor-grabbing"
-            data-testid="gallery-main-image"
-          />
+          {galleryImages[currentIndex]?.type === 'video' ? (
+            <motion.video
+              key={currentIndex}
+              src={galleryImages[currentIndex].url}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                x: { type: "spring", stiffness: 300, damping: 30 },
+                opacity: { duration: 0.2 },
+                scale: { duration: 0.2 }
+              }}
+              className="absolute inset-0 h-full w-full object-contain bg-black"
+              data-testid="gallery-main-video"
+              controls
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <motion.img
+              key={currentIndex}
+              src={galleryImages[currentIndex]?.url}
+              alt={`${productName} - Image ${currentIndex + 1}`}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                x: { type: "spring", stiffness: 300, damping: 30 },
+                opacity: { duration: 0.2 },
+                scale: { duration: 0.2 }
+              }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={1}
+              onDragEnd={(e, { offset, velocity }) => {
+                const swipe = swipePower(offset.x, velocity.x);
+                if (swipe < -swipeConfidenceThreshold) {
+                  paginate(1);
+                } else if (swipe > swipeConfidenceThreshold) {
+                  paginate(-1);
+                }
+              }}
+              className="absolute inset-0 h-full w-full object-cover cursor-grab active:cursor-grabbing"
+              data-testid="gallery-main-image"
+            />
+          )}
         </AnimatePresence>
 
         {/* Navigation Arrows */}
@@ -167,8 +192,8 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
       </div>
 
       {/* Thumbnail Strip */}
-      <div className="relative" data-testid="gallery-thumbnails">
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+      <div className="overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory" data-testid="gallery-thumbnails">
+        <div className="flex w-max min-w-full justify-center gap-3">
           {galleryImages.map((image, index) => (
             <motion.button
               key={index}
@@ -184,11 +209,26 @@ export const ProductImageGallery = ({ images = [], productName = 'Product' }) =>
               aria-label={`View image ${index + 1}`}
               aria-current={currentIndex === index ? 'true' : 'false'}
             >
-              <img
-                src={image}
-                alt={`${productName} thumbnail ${index + 1}`}
-                className="h-full w-full object-cover"
-              />
+              {image.type === 'video' ? (
+                <div className="relative h-full w-full bg-black">
+                  <video
+                    src={image.url}
+                    className="h-full w-full object-cover"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-[10px] font-medium">
+                    Video
+                  </div>
+                </div>
+              ) : (
+                <img
+                  src={image.url}
+                  alt={`${productName} thumbnail ${index + 1}`}
+                  className="h-full w-full object-cover"
+                />
+              )}
               {currentIndex === index && (
                 <motion.div
                   layoutId="thumbnail-indicator"

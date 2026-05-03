@@ -10,6 +10,7 @@ class ColorOption(BaseModel):
     hex_code_secondary: Optional[str] = None
     images: List[str] = Field(default_factory=list)
 
+
 class FlavorOption(BaseModel):
     id: str = ""
     name: str
@@ -40,6 +41,7 @@ class ProductCreate(BaseModel):
     sku: Optional[str] = ""
     stock: int = Field(0, ge=0)
     images: List[str] = Field(default_factory=list)
+    video: Optional[str] = ""
     # Variant options
     has_color_options: bool = False
     has_flavor_options: bool = False
@@ -83,6 +85,7 @@ class ProductUpdate(BaseModel):
     sku: Optional[str] = None
     stock: Optional[int] = Field(None, ge=0)
     images: Optional[List[str]] = None
+    video: Optional[str] = ""
     has_color_options: Optional[bool] = None
     has_flavor_options: Optional[bool] = None
     color_options: Optional[List[ColorOption]] = None
@@ -124,6 +127,7 @@ class ProductResponse(BaseModel):
     sku: str
     stock: int
     images: List[str]
+    video: Optional[str] = ""
     has_color_options: bool
     has_flavor_options: bool
     color_options: List[dict]
