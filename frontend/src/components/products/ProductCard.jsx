@@ -34,6 +34,13 @@ export const ProductCard = ({
   const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
   const isOutOfStock = effectiveStock <= 0;
 
+  const productCardImage =
+    (product.images || []).filter(Boolean)[0] ||
+    (product.color_options || [])
+      .flatMap((color) => color?.images || [])
+      .filter(Boolean)[0] ||
+    'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800';
+
   useEffect(() => {
     setIsWishlisted(initialIsWishlisted);
   }, [initialIsWishlisted, product.id]);
@@ -113,7 +120,7 @@ export const ProductCard = ({
       <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem] bg-[#F3EEE8]">
         
         <img
-          src={product.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800'}
+          src={productCardImage}
           alt={product.name}
           className="block h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
           loading="lazy"
