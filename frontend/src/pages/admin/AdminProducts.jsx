@@ -1785,13 +1785,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                             className="h-[360px] w-full object-contain bg-black"
                           />
                         </div>
-
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <label htmlFor="product-video-upload">
-                            <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
-                              {uploadingProductVideo ? 'Uploading...' : 'Replace Video'}
-                            </div>
-                          </label>
                           <Button
                             type="button"
                             variant="outline"
@@ -2289,12 +2283,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                 </div>
 
                                 <div className="flex flex-col gap-2 sm:flex-row">
-                                  <label htmlFor={`color-video-upload-${colorIndex}`}>
-                                    <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
-                                      {uploadingColorVideoIndex === colorIndex ? 'Uploading...' : 'Replace Video'}
-                                    </div>
-                                  </label>
-
+        
                                   <Button
                                     type="button"
                                     variant="outline"
@@ -2594,12 +2583,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                             </div>
 
                             <div className="flex flex-col gap-2 sm:flex-row">
-                              <label htmlFor="new-color-video-upload">
-                                <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
-                                  {uploadingNewColorVideo ? 'Uploading...' : 'Replace Video'}
-                                </div>
-                              </label>
-
+                              
                               <Button
                                 type="button"
                                 variant="outline"

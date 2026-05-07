@@ -39,6 +39,7 @@ ALLOWED_UPLOAD_FOLDERS = {
     "products/colors",
     "products/flavors",
     "products/videos",
+    "categories/images",
 }
 
 def _get_s3_client():
