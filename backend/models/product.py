@@ -9,7 +9,7 @@ class ColorOption(BaseModel):
     hex_code: str
     hex_code_secondary: Optional[str] = None
     images: List[str] = Field(default_factory=list)
-
+    video: Optional[str] = ""
 
 class FlavorOption(BaseModel):
     id: str = ""
@@ -45,7 +45,7 @@ class ProductCreate(BaseModel):
     # Variant options
     has_color_options: bool = False
     has_flavor_options: bool = False
-    color_options: List[ColorOption] = Field(default_factory=list)
+    color_options: Optional[List[ColorOption]] = None
     flavor_options: List[FlavorOption] = Field(default_factory=list)
     variants: List[ProductVariant] = Field(default_factory=list)
     # Status flags

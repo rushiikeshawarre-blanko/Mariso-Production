@@ -5,11 +5,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 export const ProductImageGallery = ({ media = [], productName = 'Product' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchEnd, setTouchEnd] = useState(null);
-
-  // Minimum swipe distance
-  const minSwipeDistance = 50;
 
   const galleryImages = (media || []).filter((item) => item?.url);
 
@@ -60,29 +55,6 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
     setCurrentIndex(index);
   };
 
-  // Touch handlers for mobile swipe
-  const onTouchStart = (e) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-    
-    if (isLeftSwipe) {
-      paginate(1);
-    } else if (isRightSwipe) {
-      paginate(-1);
-    }
-  };
-
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -110,9 +82,6 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
       {/* Main Image Carousel */}
       <div 
         className="relative w-full aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-[#F8F5F1] shadow-[0_8px_24px_rgba(0,0,0,0.05)] md:aspect-[4/5]"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
       >
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           {galleryImages[currentIndex]?.type === 'video' ? (

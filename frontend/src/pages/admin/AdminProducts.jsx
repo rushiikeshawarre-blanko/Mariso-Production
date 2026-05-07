@@ -18,9 +18,8 @@ import { Switch } from '../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
-import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, GripVertical, ChevronLeft, ChevronRight, Package, RefreshCw, Check, ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft, ChevronRight, Package, RefreshCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { image } from 'framer-motion/client';
 
 
 
@@ -61,6 +60,8 @@ const AdminProducts = () => {
   const [newColorCroppedAreaPixels, setNewColorCroppedAreaPixels] = useState(null);
   const [draggingNewColorImageIndex, setDraggingNewColorImageIndex] = useState(null);
   const [uploadingProductVideo, setUploadingProductVideo] = useState(false);
+  const [uploadingNewColorVideo, setUploadingNewColorVideo] = useState(false);
+  const [uploadingColorVideoIndex, setUploadingColorVideoIndex] = useState(null);
 
   const colorCropSectionRef = useRef(null);
   const newColorCropSectionRef = useRef(null);
@@ -94,7 +95,13 @@ const AdminProducts = () => {
   });
 
   // Temporary state for adding new color/flavor
-  const [newColor, setNewColor] = useState({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
+  const [newColor, setNewColor] = useState({ 
+    name: '',
+    hex_code: '#F5F0E8',
+    hex_code_secondary: '',
+    images: ['', '', '', '', ''],
+    video: ''
+   })
   const [newFlavor, setNewFlavor] = useState({ name: '', description: '' });
 
   useEffect(() => {
@@ -888,6 +895,115 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     }));
   };
 
+  const uploadColorVideoFile = async (file, colorIndex) => {
+    if (!file) return;
+
+    if (file.type !== 'video/mp4') {
+      toast.error('Please upload an MP4 video');
+      return;
+    }
+
+    const maxSizeBytes = 100 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Video size must be 100MB or less');
+      return;
+    }
+
+    try {
+      setUploadingColorVideoIndex(colorIndex);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/videos',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      updateColorOption(colorIndex, 'video', presigned.file_url);
+      toast.success('Color video uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading color video:', error);
+      toast.error('Failed to upload color video');
+    } finally {
+      setUploadingColorVideoIndex(null);
+    }
+  };
+
+  const handleColorVideoUpload = async (e, colorIndex) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    await uploadColorVideoFile(file, colorIndex);
+    e.target.value = '';
+  };
+
+  const removeColorVideo = (colorIndex) => {
+    updateColorOption(colorIndex, 'video', '');
+  };
+
+  const uploadNewColorVideoFile = async (file) => {
+    if (!file) return;
+
+    if (file.type !== 'video/mp4') {
+      toast.error('Please upload an MP4 video');
+      return;
+    }
+
+    const maxSizeBytes = 100 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast.error('Video size must be 100MB or less');
+      return;
+    }
+
+    try {
+      setUploadingNewColorVideo(true);
+
+      const presigned = await createPresignedUpload({
+        filename: file.name,
+        content_type: file.type,
+        folder: 'products/videos',
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        file,
+        presigned.content_type
+      );
+
+      setNewColor((prev) => ({
+        ...prev,
+        video: presigned.file_url,
+      }));
+
+      toast.success('New color video uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading new color video:', error);
+      toast.error('Failed to upload new color video');
+    } finally {
+      setUploadingNewColorVideo(false);
+    }
+  };
+
+  const handleNewColorVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    await uploadNewColorVideoFile(file);
+    e.target.value = '';
+  };
+
+  const removeNewColorVideo = () => {
+    setNewColor((prev) => ({
+      ...prev,
+      video: '',
+    }));
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -916,7 +1032,13 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       flavor_options: [],
       variants: []
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
+    setNewColor({
+      name: '',
+      hex_code: '#F5F0E8',
+      hex_code_secondary: '',
+      images: ['', '', '', '', ''],
+      video: ''
+     });
     setNewFlavor({ name: '', description: '' });
     setActiveTab('basic');
     setEditingColorIndex(null);
@@ -976,13 +1098,20 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       name: newColor.name,
       hex_code: newColor.hex_code,
       hex_code_secondary: newColor.hex_code_secondary || null,
-      images: colorImages
+      images: colorImages,
+      video: newColor.video || ''
     };
     setFormData({
       ...formData,
       color_options: [...formData.color_options, newColorOption]
     });
-    setNewColor({ name: '', hex_code: '#F5F0E8', hex_code_secondary: '', images: ['', '', '', '', ''] });
+    setNewColor({
+      name: '',
+      hex_code: '#F5F0E8',
+      hex_code_secondary: '',
+      images: ['', '', '', '', ''],
+      video: ''
+     });
     setEditingColorIndex(null);
     toast.success('Color option added');
   };
@@ -1207,7 +1336,8 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     // Clean up color images (remove empty strings)
     const cleanedColorOptions = formData.color_options.map(color => ({
       ...color,
-      images: (color.images || []).filter(url => url.trim() !== '')
+      images: (color.images || []).filter(url => url.trim() !== ''),
+      video: color.video || ''
     }));
     
     const productData = {
@@ -1443,6 +1573,14 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         {formData.images.filter(Boolean).length}/5 images
                       </span>
                     </div>
+                    {formData.has_color_options ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p className="font-medium">Color Options are enabled</p>
+                        <p className="mt-1 text-xs leading-relaxed">
+                          Default product images and video will be used as fallback media. Upload color-specific images and videos in the Colors tab for the main customer gallery.
+                        </p>
+                      </div>
+                    ) : null}
 
                     <div
                       className={`rounded-lg border border-dashed p-4 transition-colors ${
@@ -2108,6 +2246,67 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                               })}
                             </div>
                           </div>
+
+                          <div className="space-y-3 rounded-lg border border-dashed p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <Label className="text-sm">Video for {color.name} (optional)</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  Recommended: 9:16 vertical MP4 video, up to 100MB
+                                </p>
+                              </div>
+
+                              <label htmlFor={`color-video-upload-${colorIndex}`}>
+                                <div className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                                  {uploadingColorVideoIndex === colorIndex
+                                    ? 'Uploading...'
+                                    : color.video
+                                      ? 'Replace Video'
+                                      : 'Choose Video'}
+                                </div>
+                              </label>
+
+                              <Input
+                                id={`color-video-upload-${colorIndex}`}
+                                type="file"
+                                accept="video/mp4"
+                                onChange={(e) => handleColorVideoUpload(e, colorIndex)}
+                                className="hidden"
+                                disabled={uploadingColorVideoIndex !== null}
+                              />
+                            </div>
+
+                            {color.video ? (
+                              <div className="space-y-3 rounded-lg border p-3">
+                                <div className="overflow-hidden rounded-lg border bg-black">
+                                  <video
+                                    src={color.video}
+                                    controls
+                                    playsInline
+                                    preload="metadata"
+                                    className="h-[320px] w-full object-contain bg-black"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <label htmlFor={`color-video-upload-${colorIndex}`}>
+                                    <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
+                                      {uploadingColorVideoIndex === colorIndex ? 'Uploading...' : 'Replace Video'}
+                                    </div>
+                                  </label>
+
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => removeColorVideo(colorIndex)}
+                                    className="w-full sm:w-auto"
+                                  >
+                                    Remove Video
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       );
                       })}
@@ -2353,6 +2552,67 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                           </div>
                         </div>
                         
+                      <div className="space-y-3 rounded-lg border border-dashed p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <Label className="text-sm">New Color Video (optional)</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Recommended: 9:16 vertical MP4 video, up to 100MB
+                            </p>
+                          </div>
+
+                          <label htmlFor="new-color-video-upload">
+                            <div className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                              {uploadingNewColorVideo
+                                ? 'Uploading...'
+                                : newColor.video
+                                  ? 'Replace Video'
+                                  : 'Choose Video'}
+                            </div>
+                          </label>
+
+                          <Input
+                            id="new-color-video-upload"
+                            type="file"
+                            accept="video/mp4"
+                            onChange={handleNewColorVideoUpload}
+                            className="hidden"
+                            disabled={uploadingNewColorVideo}
+                          />
+                        </div>
+
+                        {newColor.video ? (
+                          <div className="space-y-3 rounded-lg border p-3">
+                            <div className="overflow-hidden rounded-lg border bg-black">
+                              <video
+                                src={newColor.video}
+                                controls
+                                playsInline
+                                preload="metadata"
+                                className="h-[320px] w-full object-contain bg-black"
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <label htmlFor="new-color-video-upload">
+                                <div className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted">
+                                  {uploadingNewColorVideo ? 'Uploading...' : 'Replace Video'}
+                                </div>
+                              </label>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={removeNewColorVideo}
+                                className="w-full sm:w-auto"
+                              >
+                                Remove Video
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
                         <Button
                           type="button"
                           variant="outline"
@@ -2706,15 +2966,25 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
               filteredProducts.map((product) => {
                 const variantSummary = getAvailableVariantSummary(product);
                 const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
+                const productThumbnail =
+                  (product.images || []).filter(Boolean)[0] ||
+                  (product.color_options || [])
+                    .filter((color) => color?.is_active !== false)
+                    .flatMap((color) => color?.images || [])
+                    .filter(Boolean)[0] ||
+                  'https://via.placeholder.com/40';
                 
                 return (
                   <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <img
-                          src={product.images?.[0] || 'https://via.placeholder.com/40'}
+                          src={productThumbnail}
                           alt={product.name}
                           className="w-10 h-12 object-cover rounded"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://via.placeholder.com/40';
+                          }}
                         />
                         <div>
                           <span className="font-medium block">{product.name}</span>

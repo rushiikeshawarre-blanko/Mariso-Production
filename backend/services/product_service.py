@@ -260,6 +260,7 @@ async def create_product(product: ProductCreate):
         "sku": product.sku or f"SKU-{product_id[:8].upper()}",
         "stock": product.stock,
         "images": product.images,
+        "video": product.video or "",
         "has_color_options": product.has_color_options,
         "has_flavor_options": product.has_flavor_options,
         "color_options": color_options,

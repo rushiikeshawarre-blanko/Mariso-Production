@@ -114,15 +114,18 @@ const ProductPage = () => {
         ].map((url) => ({ type: 'image', url }))
       : filteredImages;
 
-    if (product?.video) {
+    const selectedVideo = selectedColor?.video || product?.video || '';
+
+    if (selectedVideo) {
       return [
         ...fallbackImages,
-        { type: 'video', url: product.video },
+        { type: 'video', url: selectedVideo },
       ];
     }
 
     return fallbackImages;
-  }, [currentImages, product]);
+  }, [currentImages, product, selectedColor]);
+
 
   useEffect(() => {
     const fetchProduct = async () => {
