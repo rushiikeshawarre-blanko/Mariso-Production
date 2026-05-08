@@ -57,6 +57,22 @@ const CheckoutPage = () => {
     return getCheckoutDiscountSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
 
+  const getCheckoutItemImage = (item) => {
+    const selectedColor = (item.color_options || []).find(
+      (color) => color.id === item.selectedColorId
+    );
+
+    return (
+      (selectedColor?.images || []).filter(Boolean)[0] ||
+      (item.images || []).filter(Boolean)[0] ||
+      (item.color_options || [])
+        .filter((color) => color?.is_active !== false)
+        .flatMap((color) => color?.images || [])
+        .filter(Boolean)[0] ||
+      'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100'
+    );
+  };  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -83,7 +99,10 @@ const CheckoutPage = () => {
       const orderData = {
         items: items.map(item => ({
           product_id: item.id,
-          quantity: item.quantity
+          quantity: item.quantity,
+          variant_id: item.variantId ?? null,
+          color_id: item.selectedColorId ?? null,
+          flavor_id: item.selectedFlavorId ?? null,
         })),
         billing_name: formData.name,
         billing_phone: formData.phone,
@@ -358,9 +377,13 @@ const CheckoutPage = () => {
                     {items.map((item) => {
                       const price = getCheckoutEffectivePrice(item);
                       return (
-                        <div key={item.id} className="flex gap-4" data-testid={`checkout-item-${item.id}`}>
+                        <div
+                          key={`${item.id}-${item.variantId || item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`}
+                          className="flex gap-4"
+                          data-testid={`checkout-item-${item.id}`}
+                        >
                           <img
-                            src={item.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100'}
+                            src={getCheckoutItemImage(item)}
                             alt={item.name}
                             className="w-16 h-20 object-cover rounded-lg"
                           />

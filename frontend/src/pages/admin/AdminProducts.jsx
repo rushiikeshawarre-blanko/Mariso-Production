@@ -2776,12 +2776,15 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         </TableHeader>
                         <TableBody>
                           {formData.variants.map((variant, index) => {
-                            const colorOption = formData.color_options.find(c => c.id === variant.color_id);
+                            const colorOption = (formData.color_options || []).find((color) => color.id === variant.color_id);
+                            const flavorOption = (formData.flavor_options || []).find((flavor) => flavor.id === variant.flavor_id);
+                            const colorName = colorOption?.name || variant.color_name || '—';
+                            const flavorName = flavorOption?.name || variant.flavor_name || '—';
                             const hasDualColor = colorOption?.hex_code_secondary && colorOption?.hex_code_secondary !== colorOption?.hex_code;
                             return (
                             <TableRow key={variant.id} data-testid={`variant-row-${index}`}>
                               <TableCell>
-                                {variant.color_name ? (
+                                {colorName !== '—' ? (
                                   <div className="flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full border overflow-hidden">
                                       {hasDualColor ? (
@@ -2798,14 +2801,14 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                         />
                                       )}
                                     </div>
-                                    <span>{variant.color_name}</span>
+                                    <span>{colorName}</span>
                                   </div>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
                                 )}
                               </TableCell>
                               <TableCell>
-                                {variant.flavor_name || <span className="text-muted-foreground">—</span>}
+                                {flavorName !== '—' ? flavorName : <span className="text-muted-foreground">—</span>}
                               </TableCell>
                               <TableCell>
                                 <Input

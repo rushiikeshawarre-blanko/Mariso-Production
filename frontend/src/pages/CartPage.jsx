@@ -36,6 +36,24 @@ const CartPage = () => {
 
   const getCartStockKey = useCallback((item) => getCartItemKey(item), [getCartItemKey]);
 
+  const normalizeVariantId = (value) => value ?? null;
+
+  const getCartItemImage = (item) => {
+    const selectedColor = (item.color_options || []).find(
+      (color) => color.id === item.selectedColorId
+    );
+
+    return (
+      (selectedColor?.images || []).filter(Boolean)[0] ||
+      (item.images || []).filter(Boolean)[0] ||
+      (item.color_options || [])
+        .filter((color) => color?.is_active !== false)
+        .flatMap((color) => color?.images || [])
+        .filter(Boolean)[0] ||
+      'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=200'
+    );
+  };  
+
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
@@ -70,14 +88,19 @@ const CartPage = () => {
             return;
           }
 
-          if (item.selectedColorId || item.selectedFlavorId) {
+          if (item.variantId || item.selectedColorId || item.selectedFlavorId) {
             const variants = product.variants || [];
-            const variant = variants.find(
-              (v) =>
+            const variant = variants.find((v) => {
+              if (item.variantId) {
+                return v.is_active !== false && v.id === item.variantId;
+              }
+
+              return (
                 v.is_active !== false &&
-                v.color_id === item.selectedColorId &&
-                v.flavor_id === item.selectedFlavorId
-            );
+                normalizeVariantId(v.color_id) === normalizeVariantId(item.selectedColorId) &&
+                normalizeVariantId(v.flavor_id) === normalizeVariantId(item.selectedFlavorId)
+              );
+            });
 
             latestStockMap[getCartStockKey(item)] = variant ? (variant.stock || 0) : 0;
           } else {
@@ -196,7 +219,7 @@ const CartPage = () => {
                     {/* Image */}
                     <Link to={`/product/${item.id}`} className="flex-shrink-0">
                       <img
-                        src={item.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=200'}
+                        src={getCartItemImage(item)}
                         alt={item.name}
                         className="h-32 w-24 rounded-lg object-cover sm:h-36 sm:w-28 md:h-40 md:w-32"
                       />
