@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 
 export const ProductImageGallery = ({ media = [], productName = 'Product' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
 
   const galleryImages = (media || []).filter((item) => item?.url);
+
+  const getPreviousImageUrl = (index) => {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (galleryImages[i]?.type !== 'video' && galleryImages[i]?.url) {
+        return galleryImages[i].url;
+      }
+    }
+
+    return galleryImages.find((item) => item?.type !== 'video' && item?.url)?.url || '';
+  };
 
   useEffect(() => {
     if (currentIndex >= galleryImages.length) {
@@ -88,6 +98,7 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
             <motion.video
               key={currentIndex}
               src={galleryImages[currentIndex].url}
+              poster={getPreviousImageUrl(currentIndex)}
               custom={direction}
               variants={slideVariants}
               initial="enter"
@@ -155,21 +166,28 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
         </button>
 
         {/* Image Counter */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-medium shadow-lg z-10">
+        <div
+          className={`absolute left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-sm font-medium shadow-lg backdrop-blur-sm ${
+            galleryImages[currentIndex]?.type === 'video' ? 'bottom-12' : 'bottom-4'
+          }`}
+        >
           {currentIndex + 1} / {galleryImages.length}
         </div>
       </div>
 
       {/* Thumbnail Strip */}
-      <div className="overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory" data-testid="gallery-thumbnails">
-        <div className="flex w-max min-w-full justify-center gap-3">
+      <div
+        className="overflow-x-auto px-1 pt-2 pb-3 scrollbar-hide snap-x snap-mandatory md:pt-3"
+        data-testid="gallery-thumbnails"
+      >
+        <div className="flex w-max min-w-full justify-center gap-3 py-1">
           {galleryImages.map((image, index) => (
             <motion.button
               key={index}
               onClick={() => goToSlide(index)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`relative flex-shrink-0 w-14 h-[4.25rem] md:w-24 md:h-28 rounded-lg overflow-hidden snap-start transition-all duration-300 ${
+              className={`relative flex-shrink-0 w-14 h-[4.25rem] md:w-24 md:h-28 rounded-xl overflow-hidden snap-start transition-all duration-300 ${
                 currentIndex === index 
                   ? 'ring-2 ring-foreground ring-offset-2' 
                   : 'ring-1 ring-border hover:ring-foreground/50'
@@ -180,15 +198,31 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
             >
               {image.type === 'video' ? (
                 <div className="relative h-full w-full bg-black">
-                  <video
-                    src={image.url}
-                    className="h-full w-full object-cover"
-                    muted
-                    playsInline
-                    preload="metadata"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-[10px] font-medium">
-                    Video
+                  {getPreviousImageUrl(index) ? (
+                    <img
+                      src={getPreviousImageUrl(index)}
+                      alt={`${productName} video preview`}
+                      className="h-full w-full object-cover opacity-80"
+                    />
+                  ) : (
+                    <video
+                      src={image.url}
+                      className="h-full w-full object-cover opacity-80"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  )}
+
+                  <div className="absolute inset-0 bg-black/35" />
+
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center text-white">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-foreground shadow-sm">
+                      <Play className="ml-0.5 h-3 w-3 fill-current" strokeWidth={2} />
+                    </span>
+                    <span className="text-[8px] font-semibold uppercase leading-tight tracking-[0.16em] md:text-[9px]">
+                      View in Motion
+                    </span>
                   </div>
                 </div>
               ) : (
