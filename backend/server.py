@@ -12,6 +12,7 @@ from routes.seed import router as seed_router
 from routes.upload import router as upload_router
 from routes.auth import router as auth_router
 from routes.content import router as content_router
+from routes.payments import router as payments_router
 
 from core.config import (
     FRONTEND_URL
@@ -78,6 +79,7 @@ app.include_router(addresses_router)
 app.include_router(admins_router)
 app.include_router(wishlists_router)
 app.include_router(orders_router)
+app.include_router(payments_router)
 app.include_router(categories_router)
 app.include_router(products_router)
 app.include_router(api_router)
