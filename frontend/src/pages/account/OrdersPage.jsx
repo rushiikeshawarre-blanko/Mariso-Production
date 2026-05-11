@@ -4,6 +4,16 @@ import { getUserOrders } from '../../lib/api';
 import { Package, Eye } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 
+const ORDER_ITEM_IMAGE_FALLBACK =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" viewBox="0 0 80 100">
+      <rect width="80" height="100" rx="10" fill="#f3f0eb"/>
+      <text x="40" y="47" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#9c8f82">No image</text>
+      <text x="40" y="61" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#b5a89c">Mariso</text>
+    </svg>
+  `);
+
 const OrdersPage = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,9 +104,13 @@ const OrdersPage = () => {
             {order.items?.map((item, index) => (
               <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="flex items-center gap-3">
                 <img
-                  src={item.product_image || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100'}
-                  alt={item.product_name}
-                  className="w-16 h-20 object-cover rounded-lg"
+                  src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
+                  alt={item.product_name || 'Order item'}
+                  className="w-16 h-20 object-cover rounded-lg bg-muted"
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
+                  }}
                 />
                 <div>
                   <p className="font-medium text-sm">{item.product_name}</p>

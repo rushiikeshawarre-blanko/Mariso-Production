@@ -4,7 +4,7 @@ from models.order import OrderCreate, OrderStatusUpdate
 from core.database import db
 from core.constants import VALID_PAYMENT_METHODS, GIFT_PACKAGING_PRICE, MAX_LIMIT
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
-from email_service import send_order_status_email
+from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
 import logging
 from datetime import datetime, timezone
@@ -33,6 +33,8 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
         product_map[item.product_id] = product
         variant_image = None
         variant_sku = None
+        color_name = None
+        flavor_name = None
 
         variants = [variant for variant in product.get("variants", []) if variant.get("is_active", True)]
         has_variants = len(variants) > 0
@@ -79,6 +81,24 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
             if variant_images:
                 variant_image = variant_images[0]
 
+            color_name = selected_variant.get("color_name") or selected_variant.get("color")
+            flavor_name = selected_variant.get("flavor_name") or selected_variant.get("flavor")
+
+            if item.color_id:
+                for color_option in product.get("color_options", []):
+                    if color_option.get("id") == item.color_id:
+                        color_name = color_name or color_option.get("name")
+                        color_images = color_option.get("images", [])
+                        if not variant_image and color_images:
+                            variant_image = color_images[0]
+                        break
+
+            if item.flavor_id and not flavor_name:
+                for flavor_option in product.get("flavor_options", []):
+                    if flavor_option.get("id") == item.flavor_id:
+                        flavor_name = flavor_option.get("name")
+                        break
+
             variant_sku = selected_variant.get("sku")
         else:
             if item.variant_id:
@@ -98,7 +118,9 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
             "product_id": item.product_id,
             "variant_id": item.variant_id,
             "color_id": item.color_id,
+            "color_name": color_name or "",
             "flavor_id": item.flavor_id,
+            "flavor_name": flavor_name or "",
             "product_name": product["name"],
             "product_image": variant_image or (product["images"][0] if product.get("images") else ""),
             "original_price": product["price"],
@@ -158,7 +180,7 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
 
 async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items_with_details: List[dict], calculated_total: float) -> dict:
     final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
-    formatted_phone = format_phone(order.billing_phone)
+    formatted_phone = format_phone(order.billing_phone or "")
 
     order_doc = {
         "id": order_id,
@@ -181,15 +203,20 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
     created_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     created_order["user_name"] = user["name"]
     created_order["user_email"] = user["email"]
-    created_order["billing_phone"] = format_phone(created_order["billing_phone"])
+    created_order["billing_phone"] = format_phone(created_order.get("billing_phone") or "")
     return created_order
 
 
 async def _send_order_notifications(created_order: dict) -> None:
     try:
-        send_order_status_email(created_order)
+        send_order_placed_email(created_order)
     except Exception as e:
-        logger.error(f"Failed to send confirmed email: {e}")
+        logger.error(f"Failed to send order confirmation email: {e}")
+
+    try:
+        send_admin_new_order_alert(created_order)
+    except Exception as e:
+        logger.error(f"Failed to send admin order alert email: {e}")
 
     try:
         send_order_status_whatsapp(created_order)
@@ -223,7 +250,7 @@ async def get_user_orders(user_id: str, limit: int = 100):
     orders = await db.orders.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(limit)
 
     for order in orders:
-        order["billing_phone"] = format_phone(order.get("billing_phone", ""))
+        order["billing_phone"] = format_phone(order.get("billing_phone") or "")
 
     return serialize_mongo_value(orders)
 
@@ -240,7 +267,7 @@ async def get_order(order_id: str, user: dict):
     if not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to view this order")
     
-    order["billing_phone"] = format_phone(order.get("billing_phone", ""))
+    order["billing_phone"] = format_phone(order.get("billing_phone") or "")
     return serialize_mongo_value(order)
 
 async def get_all_orders(order_status: Optional[str] = None, limit: int = MAX_LIMIT):
@@ -260,7 +287,7 @@ async def get_all_orders(order_status: Optional[str] = None, limit: int = MAX_LI
         if user:
             order["user_name"] = user["name"]
             order["user_email"] = user["email"]
-        order["billing_phone"] = format_phone(order.get("billing_phone", ""))
+        order["billing_phone"] = format_phone(order.get("billing_phone") or "")
 
     return serialize_mongo_value(orders)
 
@@ -306,7 +333,7 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         order['user_name'] = user['name']
         order['user_email'] = user['email']
 
-    order["billing_phone"] = format_phone(order["billing_phone"])
+    order["billing_phone"] = format_phone(order.get("billing_phone") or "")
 
     if old_status != status_update.status:
         logger.info("DEBUG status changed, applying notification strategy")

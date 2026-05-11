@@ -7,6 +7,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Eye, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
+const ORDER_ITEM_IMAGE_FALLBACK =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" viewBox="0 0 80 100">
+      <rect width="80" height="100" rx="10" fill="#f3f0eb"/>
+      <text x="40" y="47" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#9c8f82">No image</text>
+      <text x="40" y="61" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#b5a89c">Mariso</text>
+    </svg>
+  `);
+
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,8 +133,8 @@ const AdminOrders = () => {
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{order.user_name || order.billing_name}</p>
-                      <p className="text-xs text-muted-foreground">{order.user_email || order.billing_email}</p>
+                      <p className="font-medium">{order.billing_name || order.user_name || 'Customer'}</p>
+                      <p className="text-xs text-muted-foreground">{order.billing_email || order.user_email}</p>
                     </div>
                   </TableCell>
                   <TableCell>{order.items?.length} items</TableCell>
@@ -216,9 +226,13 @@ const AdminOrders = () => {
                   {selectedOrder.items?.map((item, index) => (
                     <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                       <img
-                        src={item.product_image || 'https://via.placeholder.com/60'}
-                        alt={item.product_name}
-                        className="h-20 w-16 rounded object-cover"
+                        src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
+                        alt={item.product_name || 'Order item'}
+                        className="h-20 w-16 rounded bg-muted object-cover"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
+                        }}
                       />
                       <div className="flex-1">
                         <p className="font-medium">{item.product_name}</p>

@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
+
 import { getOrder } from "../../lib/api";
+
+const ORDER_ITEM_IMAGE_FALLBACK =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+      <rect width="100" height="100" rx="14" fill="#f3f0eb"/>
+      <text x="50" y="47" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#9c8f82">No image</text>
+      <text x="50" y="62" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#b5a89c">Mariso</text>
+    </svg>
+  `);
 
 const OrderDetailsPage = () => {
   const { id } = useParams();
@@ -71,6 +82,7 @@ const OrderDetailsPage = () => {
   }
 
   const subtotal = order.items?.reduce((sum, item) => sum + (item.line_total ?? item.price * item.quantity), 0) || 0;
+  const orderShortId = order.id?.slice(0, 8).toUpperCase();
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -83,7 +95,7 @@ const OrderDetailsPage = () => {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
             <h1 className="font-heading text-2xl text-foreground mb-2">Order Details</h1>
-            <p className="text-sm text-muted-foreground">Order ID: {order.id}</p>
+            <p className="text-sm text-muted-foreground">Order ID: {orderShortId}</p>
             <p className="text-sm text-muted-foreground">
               Placed on {new Date(order.created_at).toLocaleDateString("en-IN", {
                 day: "numeric",
@@ -91,14 +103,6 @@ const OrderDetailsPage = () => {
                 year: "numeric",
               })}
             </p>
-            {lastUpdated && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Auto-refreshing every 15 seconds • Last synced at {lastUpdated.toLocaleTimeString("en-IN", {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </p>
-            )}
           </div>
 
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-secondary text-foreground capitalize w-fit">
@@ -157,19 +161,23 @@ const OrderDetailsPage = () => {
               className="flex gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
             >
               <img
-                src={item.product_image || "https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100"}
-                alt={item.product_name}
-                className="w-20 h-20 object-cover rounded-xl border border-border"
+                src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
+                alt={item.product_name || "Order item"}
+                className="w-20 h-20 object-cover rounded-xl border border-border bg-muted"
+                onError={(event) => {
+                  event.currentTarget.onerror = null;
+                  event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
+                }}
               />
 
               <div className="flex-1">
                 <p className="font-medium text-foreground">{item.product_name}</p>
 
-                {(item.color_id || item.flavor_id) && (
+                {(item.color_name || item.color_id || item.flavor_name || item.flavor_id) && (
                   <p className="text-sm text-muted-foreground mt-1">
                     {[
-                      item.color_id ? `Color: ${item.color_id}` : null,
-                      item.flavor_id ? `Fragrance: ${item.flavor_id}` : null,
+                      item.color_name || item.color_id ? `Color: ${item.color_name || item.color_id}` : null,
+                      item.flavor_name || item.flavor_id ? `Fragrance: ${item.flavor_name || item.flavor_id}` : null,
                     ]
                       .filter(Boolean)
                       .join(" • ")}
