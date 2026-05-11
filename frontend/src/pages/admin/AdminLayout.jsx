@@ -238,7 +238,29 @@ const AdminLayout = () => {
     const [year, month] = monthStr.split('-');
     const date = new Date(Number(year), Number(month) - 1);
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  }
+  };
+
+  const isGenericCustomerName = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return !normalized || normalized === 'user';
+  };
+
+  const getOrderCustomerDisplayName = (order) => {
+    const userName = isGenericCustomerName(order.user_name) ? '' : order.user_name;
+
+    return (
+      order.billing_name ||
+      order.shipping_name ||
+      userName ||
+      order.customer_name ||
+      order.billing_email ||
+      order.user_email ||
+      order.billing_phone ||
+      order.shipping_phone ||
+      order.phone ||
+      'Guest Customer'
+    );
+  };
 
   // Dashboard Overview Component
   const DashboardOverview = () => {
@@ -460,7 +482,7 @@ const AdminLayout = () => {
                   {stats.recent_orders?.map((order) => (
                     <tr key={order.id} className="border-b border-border last:border-0">
                       <td className="py-3 px-4 font-medium">#{order.id.slice(0, 8).toUpperCase()}</td>
-                      <td className="py-3 px-4">{order.user_name || order.billing_name}</td>
+                      <td className="py-3 px-4">{getOrderCustomerDisplayName(order)}</td>
                       <td className="py-3 px-4">{order.items?.length} items</td>
                       <td className="py-3 px-4">₹{order.total_price?.toLocaleString()}</td>
                       <td className="py-3 px-4">
