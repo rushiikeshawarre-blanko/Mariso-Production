@@ -36,7 +36,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
         color_name = None
         flavor_name = None
 
-        variants = [variant for variant in product.get("variants", []) if variant.get("is_active", True)]
+        variants = product.get("variants", [])
         has_variants = len(variants) > 0
 
         selected_variant = get_selected_variant(
@@ -136,7 +136,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
 async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict[str, dict]) -> None:
     for item in items_with_details:
         product = product_map[item["product_id"]]
-        variants = [variant for variant in product.get("variants", []) if variant.get("is_active", True)]
+        variants = product.get("variants", [])
         has_variants = len(variants) > 0
 
         if has_variants:
@@ -150,12 +150,10 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
                             "stock": {"$gte": item["quantity"]},
                         }
                     },
-                    "stock": {"$gte": item["quantity"]},
                 },
                 {
                     "$inc": {
                         "variants.$.stock": -item["quantity"],
-                        "stock": -item["quantity"],
                     }
                 }
             )
