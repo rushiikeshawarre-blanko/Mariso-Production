@@ -18,6 +18,8 @@ import { Switch } from '../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import RichTextEditor from '../../components/ui/rich-text-editor';
+import { normalizeEditorHtml } from '../../lib/richContent';
 import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft, ChevronRight, Package, RefreshCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -1342,7 +1344,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     
     const productData = {
       name: formData.name,
-      description: formData.description,
+      description: normalizeEditorHtml(formData.description),
       short_description: formData.short_description,
       price: parseFloat(formData.price) || 0,
       discount_price: formData.is_on_sale && formData.discount_price ? parseFloat(formData.discount_price) : null,
@@ -1486,15 +1488,17 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                   </div>
                   <div>
                     <Label htmlFor="description">Full Description</Label>
-                    <Textarea
-                      id="description"
-                      name="description"
-                      value={formData.description}
-                      onChange={handleChange}
-                      rows={3}
-                      className="mt-1"
-                      data-testid="product-description-input"
-                    />
+                    <div className="mt-1">
+                      <RichTextEditor
+                        value={formData.description}
+                        onChange={(html) => setFormData((prev) => ({
+                          ...prev,
+                          description: html,
+                        }))}
+                        minHeightClassName="min-h-[180px]"
+                        testId="product-description-input"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                     <div>
@@ -1847,15 +1851,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                   <div className="pt-4 border-t space-y-4">
                     <h3 className="font-medium">Additional Details</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor="materials">Materials</Label>
-                        <Input
+                      <div className="md:col-span-2">
+                        <Label htmlFor="materials">Materials Used</Label>
+                        <Textarea
                           id="materials"
                           name="materials"
                           value={formData.materials}
                           onChange={handleChange}
-                          placeholder="e.g., 100% Natural Soy Wax"
-                          className="mt-1"
+                          placeholder="e.g., 100% Natural Soy Wax, Premium Fragrance Oils, Cotton Wick"
+                          rows={4}
+                          className="mt-1 min-h-[110px] resize-y"
                         />
                       </div>
                       <div>

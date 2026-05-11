@@ -5,10 +5,11 @@ import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, Flame, Ruler, Clock, Droplets, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
+import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getProduct, getProducts, addToWishlist } from '../lib/api';
+import { htmlToPlainText, sanitizeRichContent } from '../lib/richContent';
 import { toast } from 'sonner';
 
 const ProductPage = () => {
@@ -335,6 +336,7 @@ const ProductPage = () => {
   const discountPercent = originalPrice
     ? Math.round((1 - displayPrice / originalPrice) * 100)
     : 0;
+  const summaryDescription = product?.short_description || htmlToPlainText(product?.description || '');
 
   if (loading) {
     return (
@@ -455,10 +457,12 @@ const ProductPage = () => {
                 )}
               </div>
 
-              {/* Description */}
-              <p className="text-foreground/70 leading-8 max-w-xl" data-testid="product-description">
-                {product.description}
-              </p>
+              {/* Short Description */}
+              {summaryDescription && (
+                <p className="text-foreground/70 leading-8 max-w-xl" data-testid="product-description">
+                  {summaryDescription}
+                </p>
+              )}
 
               {/* Color Variants - Only show if product has color options */}
               {product.has_color_options && product.color_options?.length > 0 && (
@@ -666,37 +670,37 @@ const ProductPage = () => {
                     Product Details
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="space-y-4 text-sm text-muted-foreground">
-                      <p>{product.description}</p>
-                      
-                      <div className="grid grid-cols-2 gap-4 pt-4">
-                        {product.materials && (
-                          <div className="flex items-center gap-2">
-                            <Droplets className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                            <span>{product.materials}</span>
-                          </div>
-                        )}
-                        {product.burn_time && (
-                          <div className="flex items-center gap-2">
-                            <Flame className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                            <span>{product.burn_time}</span>
-                          </div>
-                        )}
-                        {product.dimensions && (
-                          <div className="flex items-center gap-2">
-                            <Ruler className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                            <span>{product.dimensions}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                          <span>Handcrafted</span>
-                        </div>
-                      </div>
+                    <div className="space-y-5 text-sm text-muted-foreground">
+                      {product.description && (
+                        <section>
+                          <div
+                            className="product-rich-text leading-7 [&_p]:my-3 [&_p]:leading-7 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-terracotta [&_a]:underline [&_strong]:font-semibold [&_strong]:text-foreground [&_b]:font-semibold [&_b]:text-foreground [&_em]:italic [&_i]:italic [&_u]:underline"
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichContent(product.description || '') }}
+                          />
+                        </section>
+                      )}
 
-                      <p className="pt-4 border-t border-border">
-                        Each Mariso candle container is designed to be reused as décor or storage once the candle has finished.
-                      </p>
+                      {product.materials && (
+                        <section className="border-t border-border pt-4">
+                          <h4 className="mb-2 text-sm font-semibold text-foreground">Materials Used</h4>
+                          <p className="leading-7 whitespace-pre-line">{product.materials}</p>
+                        </section>
+                      )}
+
+                      {product.dimensions && (
+                        <section className="border-t border-border pt-4">
+                          <h4 className="mb-2 text-sm font-semibold text-foreground">Dimensions</h4>
+                          <p className="leading-7">{product.dimensions}</p>
+                        </section>
+                      )}
+
+                      {product.burn_time && (
+                        <section className="border-t border-border pt-4">
+                          <h4 className="mb-2 text-sm font-semibold text-foreground">Burn Time</h4>
+                          <p className="leading-7">{product.burn_time}</p>
+                        </section>
+                      )}
+
                     </div>
                   </AccordionContent>
                 </AccordionItem>

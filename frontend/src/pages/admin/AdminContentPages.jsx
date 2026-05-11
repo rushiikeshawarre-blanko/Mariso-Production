@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   createContentPage,
   deleteContentPage,
   getAdminContentPages,
   updateContentPage,
 } from '../../lib/api';
+import RichTextEditor from '../../components/ui/rich-text-editor';
+import { htmlToPlainText, normalizeEditorHtml } from '../../lib/richContent';
 
 const initialFormState = {
   title: '',
@@ -25,21 +27,6 @@ const slugify = (value) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
 
-const normalizeEditorHtml = (html = '') => {
-  const trimmed = html.trim();
-  if (!trimmed) return '';
-  if (trimmed === '<br>' || trimmed === '<div><br></div>' || trimmed === '<p><br></p>') {
-    return '';
-  }
-  return trimmed;
-};
-
-const htmlToPlainText = (html = '') => {
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  return (container.textContent || container.innerText || '').trim();
-};
-
 const AdminContentPages = () => {
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +35,6 @@ const AdminContentPages = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingPage, setEditingPage] = useState(null);
   const [formData, setFormData] = useState(initialFormState);
-  const editorRef = useRef(null);
-  const selectionRangeRef = useRef(null);
 
   const fetchPages = async () => {
     setLoading(true);
@@ -68,14 +53,6 @@ const AdminContentPages = () => {
   useEffect(() => {
     fetchPages();
   }, []);
-
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const nextHtml = formData.content || '';
-    if (editorRef.current.innerHTML !== nextHtml) {
-      editorRef.current.innerHTML = nextHtml;
-    }
-  }, [formData.content]);
 
   const resetForm = () => {
     setEditingPage(null);
@@ -119,88 +96,11 @@ const AdminContentPages = () => {
     });
   };
 
-  const saveSelection = () => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-
-    const range = selection.getRangeAt(0);
-    if (!editorRef.current?.contains(range.commonAncestorContainer)) return;
-
-    selectionRangeRef.current = range.cloneRange();
-  };
-
-  const restoreSelection = () => {
-    const selection = window.getSelection();
-    const savedRange = selectionRangeRef.current;
-    if (!selection || !savedRange) return;
-
-    selection.removeAllRanges();
-    selection.addRange(savedRange);
-  };
-
-  const handleToolbarMouseDown = (e) => {
-    e.preventDefault();
-    saveSelection();
-  };
-
-  const escapeHtml = (value = '') =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
-  const insertListAtSelection = (listTag) => (e) => {
-    e.preventDefault();
-    if (!editorRef.current) return;
-
-    editorRef.current.focus();
-    restoreSelection();
-
-    const selection = window.getSelection();
-    const selectedText = selection?.toString() || '';
-    const lines = selectedText
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const items = lines.length > 0 ? lines : ['List item'];
-    const listHtml = `<${listTag}>${items
-      .map((item) => `<li>${escapeHtml(item)}</li>`)
-      .join('')}</${listTag}><p><br></p>`;
-
-    document.execCommand('insertHTML', false, listHtml);
-    saveSelection();
-    handleEditorInput();
-  };
-
-  const handleEditorInput = () => {
-    const html = normalizeEditorHtml(editorRef.current?.innerHTML || '');
+  const handleEditorChange = (html) => {
     setFormData((prev) => ({
       ...prev,
       content: html,
     }));
-  };
-
-  const applyEditorCommand = (command, value = null) => {
-    if (!editorRef.current) return;
-    editorRef.current.focus();
-    restoreSelection();
-    document.execCommand(command, false, value);
-    saveSelection();
-    handleEditorInput();
-  };
-
-  const handleAddLink = () => {
-    saveSelection();
-    const url = window.prompt('Enter the URL');
-    if (!url) return;
-    editorRef.current?.focus();
-    restoreSelection();
-    document.execCommand('createLink', false, url);
-    saveSelection();
-    handleEditorInput();
   };
 
   const validateForm = () => {
@@ -366,73 +266,11 @@ const AdminContentPages = () => {
 
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium">Content</label>
-            <div className="overflow-hidden rounded-md border bg-white">
-              <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('bold')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Bold
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('italic')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Italic
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('underline')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Underline
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={insertListAtSelection('ul')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Bullet List
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={insertListAtSelection('ol')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Numbered List
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={handleToolbarMouseDown}
-                  onClick={handleAddLink}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyEditorCommand('removeFormat')}
-                  className="rounded border px-2 py-1 text-xs font-semibold hover:bg-muted"
-                >
-                  Clear Format
-                </button>
-              </div>
-
-              <div
-                ref={editorRef}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={handleEditorInput}
-                onKeyUp={saveSelection}
-                onMouseUp={saveSelection}
-                onFocus={saveSelection}
-                className="min-h-[260px] w-full px-3 py-3 text-sm leading-7 outline-none [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_li]:my-1"
-                data-testid="content-page-rich-editor"
-                style={{ whiteSpace: 'pre-wrap' }}
-              />
-            </div>
+            <RichTextEditor
+              value={formData.content}
+              onChange={handleEditorChange}
+              testId="content-page-rich-editor"
+            />
             <p className="mt-2 text-xs text-muted-foreground">
               Select text and use the toolbar to format it. Content is saved with formatting.
             </p>

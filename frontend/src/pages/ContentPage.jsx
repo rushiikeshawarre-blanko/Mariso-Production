@@ -156,6 +156,18 @@ const ContentPage = () => {
           padding-left: 1.4rem;
         }
 
+        .content-page-rich-text ul {
+          list-style-type: disc;
+        }
+
+        .content-page-rich-text ol {
+          list-style-type: decimal;
+        }
+
+        .content-page-rich-text li {
+          display: list-item;
+        }
+
         .content-page-rich-text a {
           color: #8D6E63;
           text-decoration: underline;

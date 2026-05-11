@@ -276,7 +276,7 @@ const ShopPage = () => {
               <button
                 key={category.id}
                 onClick={() => handleCategoryChange(category.id)}
-                className={`block text-sm transition-colors ${
+                className={`block pl-3 text-sm transition-colors ${
                   selectedCategory === category.id
                     ? 'text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground'
