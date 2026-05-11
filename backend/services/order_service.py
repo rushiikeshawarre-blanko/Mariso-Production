@@ -2,7 +2,19 @@ from fastapi import HTTPException
 from typing import Optional, List, Dict
 from models.order import OrderCreate, OrderStatusUpdate
 from core.database import db
-from core.constants import VALID_PAYMENT_METHODS, GIFT_PACKAGING_PRICE, MAX_LIMIT
+from core.constants import (
+    FAILED_ORDER_STATUSES,
+    GIFT_PACKAGING_PRICE,
+    MAX_LIMIT,
+    ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_PENDING_PAYMENT,
+    PAID_ORDER_STATUSES,
+    PAYMENT_PROVIDER_MANUAL_LEGACY,
+    PAYMENT_STATUS_FAILED,
+    PAYMENT_STATUS_PAID,
+    PAYMENT_STATUS_PENDING,
+    VALID_PAYMENT_METHODS,
+)
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
@@ -13,11 +25,60 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _get_base_price(product: dict) -> float:
     price = product["price"]
     if product.get("is_on_sale") and product.get("discount_price"):
         price = product["discount_price"]
     return price
+
+
+def _infer_legacy_payment_status(order: dict) -> str:
+    status = order.get("status")
+    if status in PAID_ORDER_STATUSES:
+        return PAYMENT_STATUS_PAID
+    if status in FAILED_ORDER_STATUSES:
+        return PAYMENT_STATUS_FAILED
+    return PAYMENT_STATUS_PENDING
+
+
+def _infer_legacy_stock_deducted(order: dict) -> bool:
+    status = order.get("status")
+    if status in FAILED_ORDER_STATUSES or status == ORDER_STATUS_PENDING_PAYMENT:
+        return False
+    return True
+
+
+def _normalize_order_payment_defaults(order: dict) -> dict:
+    if not order:
+        return order
+
+    if not order.get("payment_provider"):
+        order["payment_provider"] = order.get("payment_method") or PAYMENT_PROVIDER_MANUAL_LEGACY
+
+    if not order.get("payment_status"):
+        order["payment_status"] = _infer_legacy_payment_status(order)
+
+    if "stock_deducted" not in order:
+        order["stock_deducted"] = _infer_legacy_stock_deducted(order)
+
+    order.setdefault("cashfree_order_id", None)
+    order.setdefault("cashfree_cf_order_id", None)
+    order.setdefault("cashfree_payment_session_id", None)
+    order.setdefault("cashfree_payment_id", None)
+    order.setdefault("cashfree_order_status", None)
+    order.setdefault("cashfree_payment_status", None)
+    order.setdefault("paid_at", None)
+    order.setdefault("stock_deducted_at", None)
+    order.setdefault("customer_email_sent_at", None)
+    order.setdefault("admin_email_sent_at", None)
+    order.setdefault("whatsapp_sent_at", None)
+    order.setdefault("payment_events", [])
+
+    return order
 
 
 async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, dict]]:
@@ -179,6 +240,7 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
 async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items_with_details: List[dict], calculated_total: float) -> dict:
     final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
     formatted_phone = format_phone(order.billing_phone or "")
+    created_at = _now_iso()
 
     order_doc = {
         "id": order_id,
@@ -191,10 +253,25 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "billing_city": order.billing_city,
         "billing_postal_code": order.billing_postal_code,
         "payment_method": order.payment_method,
+        "payment_provider": order.payment_method,
+        "payment_status": PAYMENT_STATUS_PAID,
+        "cashfree_order_id": None,
+        "cashfree_cf_order_id": None,
+        "cashfree_payment_session_id": None,
+        "cashfree_payment_id": None,
+        "cashfree_order_status": None,
+        "cashfree_payment_status": None,
+        "paid_at": created_at,
+        "stock_deducted": True,
+        "stock_deducted_at": created_at,
+        "customer_email_sent_at": None,
+        "admin_email_sent_at": None,
+        "whatsapp_sent_at": None,
+        "payment_events": [],
         "gift_packaging": order.gift_packaging,
         "total_price": final_total,
-        "status": "confirmed",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": ORDER_STATUS_CONFIRMED,
+        "created_at": created_at,
     }
     await db.orders.insert_one(order_doc)
 
@@ -205,7 +282,7 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
     return created_order
 
 
-async def _send_order_notifications(created_order: dict) -> None:
+async def _send_order_notifications(created_order: dict) -> dict:
     try:
         send_order_placed_email(created_order)
     except Exception as e:
@@ -220,6 +297,8 @@ async def _send_order_notifications(created_order: dict) -> None:
         send_order_status_whatsapp(created_order)
     except Exception as e:
         logger.error(f"Failed to send confirmed WhatsApp: {e}")
+
+    return {}
 
 
 async def create_order(order: OrderCreate, user: dict):
@@ -239,9 +318,16 @@ async def create_order(order: OrderCreate, user: dict):
 
     await _apply_stock_updates(items_with_details, product_map)
     created_order = await _create_order_doc(order_id, order, user, items_with_details, calculated_total)
-    await _send_order_notifications(created_order)
+    notification_fields = await _send_order_notifications(created_order)
 
-    return serialize_mongo_value(created_order)
+    if notification_fields:
+        await db.orders.update_one(
+            {"id": order_id},
+            {"$set": notification_fields}
+        )
+        created_order.update(notification_fields)
+
+    return serialize_mongo_value(_normalize_order_payment_defaults(created_order))
 
 async def get_user_orders(user_id: str, limit: int = 100):
     limit = min(limit, MAX_LIMIT)
@@ -249,6 +335,7 @@ async def get_user_orders(user_id: str, limit: int = 100):
 
     for order in orders:
         order["billing_phone"] = format_phone(order.get("billing_phone") or "")
+        _normalize_order_payment_defaults(order)
 
     return serialize_mongo_value(orders)
 
@@ -266,7 +353,7 @@ async def get_order(order_id: str, user: dict):
         raise HTTPException(status_code=403, detail="Not authorized to view this order")
     
     order["billing_phone"] = format_phone(order.get("billing_phone") or "")
-    return serialize_mongo_value(order)
+    return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
 async def get_all_orders(order_status: Optional[str] = None, limit: int = MAX_LIMIT):
     query = {}
@@ -286,6 +373,7 @@ async def get_all_orders(order_status: Optional[str] = None, limit: int = MAX_LI
             order["user_name"] = user["name"]
             order["user_email"] = user["email"]
         order["billing_phone"] = format_phone(order.get("billing_phone") or "")
+        _normalize_order_payment_defaults(order)
 
     return serialize_mongo_value(orders)
 
@@ -332,6 +420,7 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         order['user_email'] = user['email']
 
     order["billing_phone"] = format_phone(order.get("billing_phone") or "")
+    _normalize_order_payment_defaults(order)
 
     if old_status != status_update.status:
         logger.info("DEBUG status changed, applying notification strategy")

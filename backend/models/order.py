@@ -19,5 +19,22 @@ class OrderCreate(BaseModel):
     payment_method: str
     gift_packaging: bool = False
 
+class OrderPaymentFields(BaseModel):
+    payment_provider: Optional[str] = None
+    payment_status: Optional[str] = None
+    cashfree_order_id: Optional[str] = None
+    cashfree_cf_order_id: Optional[str] = None
+    cashfree_payment_session_id: Optional[str] = None
+    cashfree_payment_id: Optional[str] = None
+    cashfree_order_status: Optional[str] = None
+    cashfree_payment_status: Optional[str] = None
+    paid_at: Optional[str] = None
+    stock_deducted: bool = False
+    stock_deducted_at: Optional[str] = None
+    customer_email_sent_at: Optional[str] = None
+    admin_email_sent_at: Optional[str] = None
+    whatsapp_sent_at: Optional[str] = None
+    payment_events: List[dict] = Field(default_factory=list)
+
 class OrderStatusUpdate(BaseModel):
     status: str
