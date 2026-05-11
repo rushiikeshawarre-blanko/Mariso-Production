@@ -276,7 +276,7 @@ const ShopPage = () => {
               <button
                 key={category.id}
                 onClick={() => handleCategoryChange(category.id)}
-                className={`block pl-3 text-sm transition-colors ${
+                className={`block pl-3 whitespace-nowrap text-left text-sm transition-colors ${
                   selectedCategory === category.id
                     ? 'text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground'
@@ -290,12 +290,12 @@ const ShopPage = () => {
             groupedChildCategories.map((group) => (
               <div key={group.parent.id} className="space-y-2 pt-2 first:pt-0">
                 <p className="text-sm font-medium text-foreground">{group.parent.name}</p>
-                <div className="space-y-2 pl-3">
+                <div className="space-y-2">
                   {group.children.map((category) => (
                     <button
                       key={category.id}
                       onClick={() => handleCategoryChange(category.id)}
-                      className={`block text-sm transition-colors ${
+                      className={`block pl-3 whitespace-nowrap text-left text-sm transition-colors ${
                         selectedCategory === category.id
                           ? 'text-foreground font-medium'
                           : 'text-muted-foreground hover:text-foreground'
