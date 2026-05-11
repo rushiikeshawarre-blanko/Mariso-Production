@@ -5,7 +5,7 @@ import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Recycle, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
+import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Package, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getProduct, getProducts, addToWishlist } from '../lib/api';
@@ -337,6 +337,36 @@ const ProductPage = () => {
     ? Math.round((1 - displayPrice / originalPrice) * 100)
     : 0;
   const summaryDescription = product?.short_description || htmlToPlainText(product?.description || '');
+  const enabledBenefits = useMemo(() => {
+    if (!product) return [];
+
+    return [
+      {
+        enabled: product.show_free_shipping !== false,
+        icon: Truck,
+        title: 'Free Shipping',
+        subtitle: 'Over ₹1500',
+      },
+      {
+        enabled: product.show_returns !== false,
+        icon: RotateCcw,
+        title: '7-Day Returns',
+        subtitle: 'Easy returns',
+      },
+      {
+        enabled: product.show_reusable_container !== false,
+        icon: Package,
+        title: 'Reusable Container',
+        subtitle: 'Eco-friendly',
+      },
+      {
+        enabled: product.show_gift_packaging !== false,
+        icon: Gift,
+        title: 'Gift Packaging',
+        subtitle: 'Available',
+      },
+    ].filter((benefit) => benefit.enabled);
+  }, [product]);
 
   if (loading) {
     return (
@@ -643,25 +673,28 @@ const ProductPage = () => {
                 </Button>
               </div>
 
-              {/* Benefits */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-y border-border/70">
-                <div className="text-center">
-                  <Truck className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-[11px] text-foreground/55 leading-5">Free Shipping<br />Over ₹1500</p>
+              {enabledBenefits.length > 0 && (
+                <div
+                  className={`grid gap-4 py-6 border-y border-border/70 ${
+                    enabledBenefits.length === 1
+                      ? 'grid-cols-1'
+                      : enabledBenefits.length === 2
+                        ? 'grid-cols-2'
+                        : enabledBenefits.length === 3
+                          ? 'grid-cols-3'
+                          : 'grid-cols-2 sm:grid-cols-4'
+                  }`}
+                >
+                  {enabledBenefits.map(({ icon: Icon, title, subtitle }) => (
+                    <div key={title} className="text-center">
+                      <Icon className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
+                      <p className="text-[11px] text-foreground/55 leading-5">
+                        {title}<br />{subtitle}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center">
-                  <RotateCcw className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-[11px] text-foreground/55 leading-5">7-Day<br />Returns</p>
-                </div>
-                <div className="text-center">
-                  <Recycle className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-[11px] text-foreground/55 leading-5">Reusable<br />Container</p>
-                </div>
-                <div className="text-center">
-                  <Gift className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
-                  <p className="text-[11px] text-foreground/55 leading-5">Gift<br />Packaging</p>
-                </div>
-              </div>
+              )}
 
               {/* Product Details Accordion */}
               <Accordion type="single" collapsible defaultValue="details" className="w-full pt-2">

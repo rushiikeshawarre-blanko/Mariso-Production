@@ -84,6 +84,10 @@ const AdminProducts = () => {
     is_bestseller: false,
     is_new_arrival: false,
     is_active: true,
+    show_free_shipping: true,
+    show_returns: true,
+    show_reusable_container: true,
+    show_gift_packaging: true,
     care_instructions: '',
     shipping_info: '',
     materials: '',
@@ -1023,6 +1027,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       is_bestseller: false,
       is_new_arrival: false,
       is_active: true,
+      show_free_shipping: true,
+      show_returns: true,
+      show_reusable_container: true,
+      show_gift_packaging: true,
       care_instructions: '',
       shipping_info: '',
       materials: '',
@@ -1071,6 +1079,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       is_bestseller: product.is_bestseller || false,
       is_new_arrival: product.is_new_arrival || false,
       is_active: product.is_active !== false,
+      show_free_shipping: product.show_free_shipping !== false,
+      show_returns: product.show_returns !== false,
+      show_reusable_container: product.show_reusable_container !== false,
+      show_gift_packaging: product.show_gift_packaging !== false,
       care_instructions: product.care_instructions || '',
       shipping_info: product.shipping_info || '',
       materials: product.materials || '',
@@ -1358,6 +1370,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       is_bestseller: formData.is_bestseller,
       is_new_arrival: formData.is_new_arrival,
       is_active: formData.is_active,
+      show_free_shipping: formData.show_free_shipping,
+      show_returns: formData.show_returns,
+      show_reusable_container: formData.show_reusable_container,
+      show_gift_packaging: formData.show_gift_packaging,
       care_instructions: formData.care_instructions,
       shipping_info: formData.shipping_info,
       materials: formData.materials,
@@ -1844,6 +1860,34 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         onCheckedChange={(checked) => setFormData({ ...formData, is_new_arrival: checked })}
                       />
                       <Label>New Arrival</Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={formData.show_free_shipping}
+                        onCheckedChange={(checked) => setFormData({ ...formData, show_free_shipping: checked })}
+                      />
+                      <Label>Free Shipping</Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={formData.show_returns}
+                        onCheckedChange={(checked) => setFormData({ ...formData, show_returns: checked })}
+                      />
+                      <Label>7-Day Returns</Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={formData.show_reusable_container}
+                        onCheckedChange={(checked) => setFormData({ ...formData, show_reusable_container: checked })}
+                      />
+                      <Label>Reusable Container</Label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={formData.show_gift_packaging}
+                        onCheckedChange={(checked) => setFormData({ ...formData, show_gift_packaging: checked })}
+                      />
+                      <Label>Gift Packaging</Label>
                     </div>
                   </div>
                   

@@ -56,6 +56,11 @@ class ProductCreate(BaseModel):
     is_on_sale: bool = False
     sale_start: Optional[str] = None
     sale_end: Optional[str] = None
+    # Product benefits
+    show_free_shipping: bool = True
+    show_returns: bool = True
+    show_reusable_container: bool = True
+    show_gift_packaging: bool = True
     # Additional details
     care_instructions: Optional[str] = ""
     shipping_info: Optional[str] = ""
@@ -98,6 +103,10 @@ class ProductUpdate(BaseModel):
     is_on_sale: Optional[bool] = None
     sale_start: Optional[str] = None
     sale_end: Optional[str] = None
+    show_free_shipping: Optional[bool] = None
+    show_returns: Optional[bool] = None
+    show_reusable_container: Optional[bool] = None
+    show_gift_packaging: Optional[bool] = None
     care_instructions: Optional[str] = None
     shipping_info: Optional[str] = None
     materials: Optional[str] = None
@@ -140,6 +149,10 @@ class ProductResponse(BaseModel):
     is_on_sale: bool
     sale_start: Optional[str]
     sale_end: Optional[str]
+    show_free_shipping: bool = True
+    show_returns: bool = True
+    show_reusable_container: bool = True
+    show_gift_packaging: bool = True
     care_instructions: str
     shipping_info: str
     materials: str

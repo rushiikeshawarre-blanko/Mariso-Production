@@ -77,6 +77,10 @@ def ensure_product_defaults(product: dict) -> dict:
         'is_on_sale': False,
         'sale_start': None,
         'sale_end': None,
+        'show_free_shipping': True,
+        'show_returns': True,
+        'show_reusable_container': True,
+        'show_gift_packaging': True,
         'care_instructions': '',
         'shipping_info': '',
         'materials': '',
@@ -85,4 +89,3 @@ def ensure_product_defaults(product: dict) -> dict:
         'category_name': ''
     }
     return {**defaults, **product}
-
