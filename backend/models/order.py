@@ -19,6 +19,16 @@ class OrderCreate(BaseModel):
     payment_method: str
     gift_packaging: bool = False
 
+class CashfreeCheckoutCreate(BaseModel):
+    items: List[CartItem]
+    billing_name: str
+    billing_phone: str
+    billing_email: EmailStr
+    billing_address: str
+    billing_city: str
+    billing_postal_code: str
+    gift_packaging: bool = False
+
 class OrderPaymentFields(BaseModel):
     payment_provider: Optional[str] = None
     payment_status: Optional[str] = None
@@ -29,6 +39,10 @@ class OrderPaymentFields(BaseModel):
     cashfree_order_status: Optional[str] = None
     cashfree_payment_status: Optional[str] = None
     paid_at: Optional[str] = None
+    stock_reserved: bool = False
+    stock_reserved_at: Optional[str] = None
+    stock_reserved_until: Optional[str] = None
+    stock_released_at: Optional[str] = None
     stock_deducted: bool = False
     stock_deducted_at: Optional[str] = None
     customer_email_sent_at: Optional[str] = None

@@ -85,6 +85,19 @@ def _normalize_cashfree_order_response(data: dict) -> dict:
     }
 
 
+def _normalize_cashfree_get_order_response(data: dict) -> dict:
+    return {
+        "cashfree_order_id": data.get("order_id"),
+        "order_id": data.get("order_id"),
+        "cashfree_cf_order_id": data.get("cf_order_id"),
+        "cf_order_id": data.get("cf_order_id"),
+        "cashfree_order_status": data.get("order_status"),
+        "order_status": data.get("order_status"),
+        "cashfree_payment_status": data.get("payment_status"),
+        "payment_status": data.get("payment_status"),
+    }
+
+
 def _raise_cashfree_error(response: requests.Response) -> None:
     try:
         error_body = response.json()
@@ -149,3 +162,31 @@ def create_cashfree_order_session(
         raise HTTPException(status_code=502, detail="Cashfree response missing payment_session_id")
 
     return normalized
+
+
+def get_cashfree_order(order_id: str) -> dict:
+    idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mariso:cashfree:get-order:{order_id}"))
+    headers = _build_cashfree_headers(idempotency_key)
+
+    try:
+        response = requests.get(
+            f"{CASHFREE_BASE_URL}/orders/{order_id}",
+            headers=headers,
+            timeout=CASHFREE_TIMEOUT_SECONDS,
+        )
+    except requests.Timeout:
+        logger.warning("Cashfree get order timed out for order_id=%s", order_id)
+        raise HTTPException(status_code=504, detail="Cashfree get order timed out")
+    except requests.RequestException:
+        logger.exception("Cashfree get order request failed for order_id=%s", order_id)
+        raise HTTPException(status_code=502, detail="Cashfree get order request failed")
+
+    if response.status_code >= 400:
+        _raise_cashfree_error(response)
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
+
+    return _normalize_cashfree_get_order_response(data)

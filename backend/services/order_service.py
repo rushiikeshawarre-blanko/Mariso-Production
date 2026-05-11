@@ -1,15 +1,26 @@
 from fastapi import HTTPException
 from typing import Optional, List, Dict
-from models.order import OrderCreate, OrderStatusUpdate
+from models.order import CashfreeCheckoutCreate, OrderCreate, OrderStatusUpdate
 from core.database import db
+from core.config import STOCK_RESERVATION_MINUTES
 from core.constants import (
+    CASHFREE_ORDER_STATUS_ACTIVE,
+    CASHFREE_ORDER_STATUS_EXPIRED,
+    CASHFREE_ORDER_STATUS_PAID,
+    CASHFREE_ORDER_STATUS_TERMINATED,
+    CASHFREE_ORDER_STATUS_TERMINATION_REQUESTED,
     FAILED_ORDER_STATUSES,
     GIFT_PACKAGING_PRICE,
     MAX_LIMIT,
     ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_PAID_STOCK_ISSUE,
+    ORDER_STATUS_PAYMENT_EXPIRED,
+    ORDER_STATUS_PAYMENT_FAILED,
     ORDER_STATUS_PENDING_PAYMENT,
     PAID_ORDER_STATUSES,
+    PAYMENT_PROVIDER_CASHFREE,
     PAYMENT_PROVIDER_MANUAL_LEGACY,
+    PAYMENT_STATUS_EXPIRED,
     PAYMENT_STATUS_FAILED,
     PAYMENT_STATUS_PAID,
     PAYMENT_STATUS_PENDING,
@@ -19,7 +30,7 @@ from utils.helpers import format_phone, serialize_mongo_value, get_selected_vari
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -27,6 +38,49 @@ logger = logging.getLogger(__name__)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _payment_event(event_type: str, source: str = "system", **details) -> dict:
+    return {
+        "type": event_type,
+        "source": source,
+        "created_at": _now_iso(),
+        **details,
+    }
+
+
+def _unpaid_unconfirmed_order_filter(order_id: str) -> dict:
+    return {
+        "id": order_id,
+        "payment_status": {"$ne": PAYMENT_STATUS_PAID},
+        "stock_deducted": {"$ne": True},
+        "status": {"$ne": ORDER_STATUS_CONFIRMED},
+    }
+
+
+async def _fetch_normalized_order(order_id: str, fallback: Optional[dict] = None) -> dict:
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return _normalize_order_payment_defaults(order or fallback or {"id": order_id})
+
+
+def _is_paid_or_confirmed(order: dict) -> bool:
+    return (
+        order.get("payment_status") == PAYMENT_STATUS_PAID
+        or order.get("stock_deducted") is True
+        or order.get("status") == ORDER_STATUS_CONFIRMED
+    )
 
 
 def _get_base_price(product: dict) -> float:
@@ -40,6 +94,8 @@ def _infer_legacy_payment_status(order: dict) -> str:
     status = order.get("status")
     if status in PAID_ORDER_STATUSES:
         return PAYMENT_STATUS_PAID
+    if status == ORDER_STATUS_PAYMENT_EXPIRED:
+        return PAYMENT_STATUS_EXPIRED
     if status in FAILED_ORDER_STATUSES:
         return PAYMENT_STATUS_FAILED
     return PAYMENT_STATUS_PENDING
@@ -47,7 +103,7 @@ def _infer_legacy_payment_status(order: dict) -> str:
 
 def _infer_legacy_stock_deducted(order: dict) -> bool:
     status = order.get("status")
-    if status in FAILED_ORDER_STATUSES or status == ORDER_STATUS_PENDING_PAYMENT:
+    if status in FAILED_ORDER_STATUSES or status in {ORDER_STATUS_PENDING_PAYMENT, ORDER_STATUS_PAID_STOCK_ISSUE}:
         return False
     return True
 
@@ -72,6 +128,10 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("cashfree_order_status", None)
     order.setdefault("cashfree_payment_status", None)
     order.setdefault("paid_at", None)
+    order.setdefault("stock_reserved", False)
+    order.setdefault("stock_reserved_at", None)
+    order.setdefault("stock_reserved_until", None)
+    order.setdefault("stock_released_at", None)
     order.setdefault("stock_deducted_at", None)
     order.setdefault("customer_email_sent_at", None)
     order.setdefault("admin_email_sent_at", None)
@@ -237,6 +297,312 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
                 )
 
 
+async def _build_product_map_for_order_items(items: List[dict]) -> Dict[str, dict]:
+    product_ids = list({item.get("product_id") for item in items if item.get("product_id")})
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids) or 1)
+    return {product["id"]: product for product in products}
+
+
+async def _rollback_stock_reservations(applied_items: List[dict]) -> None:
+    for item in reversed(applied_items):
+        if item.get("variant_id"):
+            await db.products.update_one(
+                {"id": item["product_id"], "variants.id": item["variant_id"]},
+                {
+                    "$inc": {
+                        "variants.$.stock": item["quantity"],
+                        "variants.$.reserved_stock": -item["quantity"],
+                    }
+                }
+            )
+        else:
+            await db.products.update_one(
+                {"id": item["product_id"]},
+                {
+                    "$inc": {
+                        "stock": item["quantity"],
+                        "reserved_stock": -item["quantity"],
+                    }
+                }
+            )
+
+
+async def reserve_stock_for_order_items(items: List[dict], product_map: Dict[str, dict]) -> None:
+    applied_items = []
+
+    for item in items:
+        product = product_map[item["product_id"]]
+        variants = product.get("variants", [])
+        has_variants = len(variants) > 0
+
+        if has_variants:
+            result = await db.products.update_one(
+                {
+                    "id": item["product_id"],
+                    "variants": {
+                        "$elemMatch": {
+                            "id": item["variant_id"],
+                            "is_active": True,
+                            "stock": {"$gte": item["quantity"]},
+                        }
+                    },
+                },
+                {
+                    "$inc": {
+                        "variants.$.stock": -item["quantity"],
+                        "variants.$.reserved_stock": item["quantity"],
+                    }
+                }
+            )
+        else:
+            result = await db.products.update_one(
+                {"id": item["product_id"], "stock": {"$gte": item["quantity"]}},
+                {
+                    "$inc": {
+                        "stock": -item["quantity"],
+                        "reserved_stock": item["quantity"],
+                    }
+                }
+            )
+
+        if result.modified_count == 0:
+            await _rollback_stock_reservations(applied_items)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock to reserve product {product['name']}"
+            )
+
+        applied_items.append(item)
+
+
+async def _rollback_reserved_stock_move(item: dict, reserved_delta: int, stock_delta: int) -> bool:
+    quantity = item.get("quantity", 0)
+    if quantity <= 0:
+        return True
+
+    if item.get("variant_id"):
+        result = await db.products.update_one(
+            {"id": item["product_id"], "variants.id": item["variant_id"]},
+            {
+                "$inc": {
+                    "variants.$.reserved_stock": -reserved_delta * quantity,
+                    "variants.$.stock": -stock_delta * quantity,
+                }
+            }
+        )
+    else:
+        result = await db.products.update_one(
+            {"id": item["product_id"]},
+            {
+                "$inc": {
+                    "reserved_stock": -reserved_delta * quantity,
+                    "stock": -stock_delta * quantity,
+                }
+            }
+        )
+
+    return result.modified_count > 0
+
+
+async def _move_reserved_stock(order: dict, reserved_delta: int, stock_delta: int) -> None:
+    applied_items = []
+
+    for item in order.get("items", []):
+        quantity = item.get("quantity", 0)
+        if quantity <= 0:
+            continue
+
+        try:
+            if item.get("variant_id"):
+                query = {
+                    "id": item["product_id"],
+                    "variants": {
+                        "$elemMatch": {
+                            "id": item["variant_id"],
+                        }
+                    },
+                }
+                if reserved_delta < 0:
+                    query["variants"]["$elemMatch"]["reserved_stock"] = {"$gte": quantity}
+
+                result = await db.products.update_one(
+                    query,
+                    {
+                        "$inc": {
+                            "variants.$.reserved_stock": reserved_delta * quantity,
+                            "variants.$.stock": stock_delta * quantity,
+                        }
+                    }
+                )
+            else:
+                query = {"id": item["product_id"]}
+                if reserved_delta < 0:
+                    query["reserved_stock"] = {"$gte": quantity}
+
+                result = await db.products.update_one(
+                    query,
+                    {
+                        "$inc": {
+                            "reserved_stock": reserved_delta * quantity,
+                            "stock": stock_delta * quantity,
+                        }
+                    }
+                )
+
+            if result.modified_count == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Reserved stock movement failed for product {item.get('product_name') or item.get('product_id')}"
+                )
+
+            applied_items.append(item)
+        except Exception:
+            rollback_failed = False
+            for applied_item in reversed(applied_items):
+                try:
+                    rolled_back = await _rollback_reserved_stock_move(applied_item, reserved_delta, stock_delta)
+                    if not rolled_back:
+                        logger.error(
+                            "Reserved stock rollback did not modify product_id=%s variant_id=%s order_id=%s",
+                            applied_item.get("product_id"),
+                            applied_item.get("variant_id"),
+                            order.get("id"),
+                        )
+                except Exception as rollback_error:
+                    logger.error(
+                        "Reserved stock rollback failed for product_id=%s variant_id=%s order_id=%s: %s",
+                        applied_item.get("product_id"),
+                        applied_item.get("variant_id"),
+                        order.get("id"),
+                        rollback_error,
+                    )
+                    rollback_failed = True
+            if rollback_failed:
+                logger.error("Re-raising original reserved stock movement error after rollback failure")
+            raise
+
+
+async def release_reserved_stock(order: dict, source: str = "system") -> dict:
+    order_id = order.get("id")
+    if not order_id or not order.get("stock_reserved"):
+        return order
+
+    now = _now_iso()
+    claim_result = await db.orders.update_one(
+        {
+            **_unpaid_unconfirmed_order_filter(order_id),
+            "stock_reserved": True,
+            "stock_reservation_transition": {"$exists": False},
+        },
+        {
+            "$set": {
+                "stock_reservation_transition": "releasing",
+                "updated_at": now,
+            }
+        }
+    )
+
+    if claim_result.modified_count == 0:
+        return await _fetch_normalized_order(order_id, order)
+
+    try:
+        await _move_reserved_stock(order, reserved_delta=-1, stock_delta=1)
+    except Exception:
+        await db.orders.update_one(
+            {"id": order_id, "stock_reservation_transition": "releasing"},
+            {
+                "$unset": {"stock_reservation_transition": ""},
+                "$set": {"updated_at": _now_iso()},
+                "$push": {
+                    "payment_events": _payment_event("stock_reservation_release_failed", source)
+                },
+            }
+        )
+        raise
+
+    released_at = _now_iso()
+    await db.orders.update_one(
+        {"id": order_id, "stock_reservation_transition": "releasing"},
+        {
+            "$set": {
+                "stock_reserved": False,
+                "stock_released_at": released_at,
+                "updated_at": released_at,
+            },
+            "$unset": {"stock_reservation_transition": ""},
+            "$push": {
+                "payment_events": _payment_event("stock_reservation_released", source)
+            },
+        }
+    )
+
+    return await _fetch_normalized_order(order_id, order)
+
+
+async def confirm_reserved_stock(order: dict, source: str = "system") -> tuple[dict, bool]:
+    order_id = order.get("id")
+    if not order_id:
+        return order, False
+    if order.get("stock_deducted"):
+        return order, True
+    if not order.get("stock_reserved"):
+        return order, False
+
+    now = _now_iso()
+    claim_result = await db.orders.update_one(
+        {
+            "id": order_id,
+            "stock_reserved": True,
+            "stock_deducted": {"$ne": True},
+            "stock_reservation_transition": {"$exists": False},
+        },
+        {
+            "$set": {
+                "stock_reservation_transition": "confirming",
+                "updated_at": now,
+            }
+        }
+    )
+
+    if claim_result.modified_count == 0:
+        normalized = await _fetch_normalized_order(order_id, order)
+        return normalized, bool(normalized.get("stock_deducted"))
+
+    try:
+        await _move_reserved_stock(order, reserved_delta=-1, stock_delta=0)
+    except Exception:
+        await db.orders.update_one(
+            {"id": order_id, "stock_reservation_transition": "confirming"},
+            {
+                "$unset": {"stock_reservation_transition": ""},
+                "$set": {"updated_at": _now_iso()},
+                "$push": {
+                    "payment_events": _payment_event("stock_reservation_confirm_failed", source)
+                },
+            }
+        )
+        raise
+
+    deducted_at = _now_iso()
+    await db.orders.update_one(
+        {"id": order_id, "stock_reservation_transition": "confirming"},
+        {
+            "$set": {
+                "stock_reserved": False,
+                "stock_deducted": True,
+                "stock_deducted_at": deducted_at,
+                "updated_at": deducted_at,
+            },
+            "$unset": {"stock_reservation_transition": ""},
+            "$push": {
+                "payment_events": _payment_event("stock_reservation_confirmed", source)
+            },
+        }
+    )
+
+    return await _fetch_normalized_order(order_id, order), True
+
+
 async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items_with_details: List[dict], calculated_total: float) -> dict:
     final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
     formatted_phone = format_phone(order.billing_phone or "")
@@ -328,6 +694,457 @@ async def create_order(order: OrderCreate, user: dict):
         created_order.update(notification_fields)
 
     return serialize_mongo_value(_normalize_order_payment_defaults(created_order))
+
+
+async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, user: dict):
+    order_id = str(uuid.uuid4())
+
+    if not order_payload.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
+    items_with_details, product_map = await _build_order_items(order_payload)
+    calculated_total = sum(item["line_total"] for item in items_with_details)
+    if not items_with_details:
+        raise HTTPException(status_code=400, detail="No valid items in order")
+
+    await reserve_stock_for_order_items(items_with_details, product_map)
+
+    now_dt = datetime.now(timezone.utc)
+    created_at = now_dt.isoformat()
+    reserved_until = (now_dt + timedelta(minutes=STOCK_RESERVATION_MINUTES)).isoformat()
+    final_total = calculated_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+    formatted_phone = format_phone(order_payload.billing_phone or "")
+
+    order_doc = {
+        "id": order_id,
+        "user_id": user["id"],
+        "items": items_with_details,
+        "billing_name": order_payload.billing_name,
+        "billing_phone": formatted_phone,
+        "billing_email": order_payload.billing_email,
+        "billing_address": order_payload.billing_address,
+        "billing_city": order_payload.billing_city,
+        "billing_postal_code": order_payload.billing_postal_code,
+        "payment_method": PAYMENT_PROVIDER_CASHFREE,
+        "payment_provider": PAYMENT_PROVIDER_CASHFREE,
+        "payment_status": PAYMENT_STATUS_PENDING,
+        "cashfree_order_id": None,
+        "cashfree_cf_order_id": None,
+        "cashfree_payment_session_id": None,
+        "cashfree_payment_id": None,
+        "cashfree_order_status": None,
+        "cashfree_payment_status": None,
+        "paid_at": None,
+        "stock_reserved": True,
+        "stock_reserved_at": created_at,
+        "stock_reserved_until": reserved_until,
+        "stock_released_at": None,
+        "stock_deducted": False,
+        "stock_deducted_at": None,
+        "customer_email_sent_at": None,
+        "admin_email_sent_at": None,
+        "whatsapp_sent_at": None,
+        "payment_events": [
+            _payment_event(
+                "stock_reserved",
+                "create_session",
+                stock_reserved_until=reserved_until,
+            )
+        ],
+        "gift_packaging": order_payload.gift_packaging,
+        "total_price": final_total,
+        "status": ORDER_STATUS_PENDING_PAYMENT,
+        "created_at": created_at,
+    }
+    try:
+        await db.orders.insert_one(order_doc)
+    except Exception:
+        await _rollback_stock_reservations(items_with_details)
+        raise
+
+    created_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    created_order["user_name"] = user["name"]
+    created_order["user_email"] = user["email"]
+    created_order["billing_phone"] = format_phone(created_order.get("billing_phone") or "")
+    return serialize_mongo_value(_normalize_order_payment_defaults(created_order))
+
+
+async def attach_cashfree_session(order_id: str, cashfree_data: dict):
+    now = _now_iso()
+    update_fields = {
+        "cashfree_order_id": cashfree_data.get("cashfree_order_id") or cashfree_data.get("order_id"),
+        "cashfree_cf_order_id": cashfree_data.get("cashfree_cf_order_id") or cashfree_data.get("cf_order_id"),
+        "cashfree_payment_session_id": cashfree_data.get("payment_session_id"),
+        "cashfree_order_status": cashfree_data.get("cashfree_order_status") or cashfree_data.get("order_status"),
+        "updated_at": now,
+    }
+    await db.orders.update_one(
+        {"id": order_id},
+        {
+            "$set": update_fields,
+            "$push": {
+                "payment_events": _payment_event(
+                    "cashfree_session_attached",
+                    "create_session",
+                    cashfree_order_status=update_fields["cashfree_order_status"],
+                    cashfree_cf_order_id=update_fields["cashfree_cf_order_id"],
+                )
+            },
+        }
+    )
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+
+def _is_reservation_valid(order: dict) -> bool:
+    if not order.get("stock_reserved"):
+        return False
+    reserved_until = _parse_iso_datetime(order.get("stock_reserved_until"))
+    if not reserved_until:
+        return False
+    return reserved_until >= datetime.now(timezone.utc)
+
+
+def _is_local_reservation_expired(order: dict) -> bool:
+    if order.get("status") != ORDER_STATUS_PENDING_PAYMENT:
+        return False
+    if not order.get("stock_reserved"):
+        return False
+    reserved_until = _parse_iso_datetime(order.get("stock_reserved_until"))
+    if not reserved_until:
+        return False
+    return reserved_until < datetime.now(timezone.utc)
+
+
+async def _expire_local_reservation(order: dict, metadata_update: dict, source: str) -> dict:
+    order_id = order["id"]
+    if _is_paid_or_confirmed(order):
+        return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+    order = await release_reserved_stock(order, source)
+    if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
+        return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+    now = _now_iso()
+    result = await db.orders.update_one(
+        _unpaid_unconfirmed_order_filter(order_id),
+        {
+            "$set": {
+                **metadata_update,
+                "payment_status": PAYMENT_STATUS_EXPIRED,
+                "status": ORDER_STATUS_PAYMENT_EXPIRED,
+                "stock_reserved": False,
+                "stock_released_at": order.get("stock_released_at") or now,
+                "updated_at": now,
+            },
+            "$push": {
+                "payment_events": _payment_event(
+                    "local_reservation_expired",
+                    source,
+                    stock_reserved_until=order.get("stock_reserved_until"),
+                )
+            },
+        }
+    )
+    if result.modified_count == 0:
+        current_order = await _fetch_normalized_order(order_id, order)
+        return serialize_mongo_value(current_order)
+
+    expired_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(expired_order))
+
+
+async def _mark_paid_stock_issue(order: dict, cashfree_data: dict, source: str) -> dict:
+    # Do not release reserved stock in the PAID stock issue path. Payment succeeded,
+    # so this must be handled by admin/manual reconciliation instead of the generic
+    # failed/expired release flow.
+
+    now = _now_iso()
+    result = await db.orders.update_one(
+        {
+            "id": order["id"],
+            "payment_status": {"$ne": PAYMENT_STATUS_PAID},
+            "stock_deducted": {"$ne": True},
+            "status": {"$ne": ORDER_STATUS_CONFIRMED},
+        },
+        {
+            "$set": {
+                "payment_status": PAYMENT_STATUS_PAID,
+                "status": ORDER_STATUS_PAID_STOCK_ISSUE,
+                "cashfree_order_status": cashfree_data.get("cashfree_order_status") or cashfree_data.get("order_status"),
+                "cashfree_payment_status": cashfree_data.get("cashfree_payment_status"),
+                "paid_at": order.get("paid_at") or now,
+                "stock_deducted": False,
+                "updated_at": now,
+            },
+            "$push": {
+                "payment_events": _payment_event(
+                    "paid_stock_issue",
+                    source,
+                    cashfree_order_status=cashfree_data.get("cashfree_order_status") or cashfree_data.get("order_status"),
+                )
+            },
+        }
+    )
+    if result.modified_count == 0:
+        updated_order = await _fetch_normalized_order(order["id"], order)
+        return serialize_mongo_value(updated_order)
+
+    updated_order = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+
+
+async def _send_paid_cashfree_notifications_once(order_id: str, source: str) -> None:
+    result = await db.orders.update_one(
+        {
+            "id": order_id,
+            "payment_status": PAYMENT_STATUS_PAID,
+            "status": ORDER_STATUS_CONFIRMED,
+            "payment_events.type": {"$ne": "paid_notifications_attempted"},
+        },
+        {
+            "$push": {
+                "payment_events": _payment_event("paid_notifications_attempted", source)
+            }
+        }
+    )
+    if result.modified_count == 0:
+        return
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return
+
+    try:
+        send_order_placed_email(order)
+    except Exception as e:
+        logger.error(f"Failed to send Cashfree paid order confirmation email: {e}")
+
+    try:
+        send_admin_new_order_alert(order)
+    except Exception as e:
+        logger.error(f"Failed to send Cashfree paid admin order alert email: {e}")
+
+    try:
+        send_order_status_whatsapp(order)
+    except Exception as e:
+        logger.error(f"Failed to send Cashfree paid WhatsApp: {e}")
+
+
+async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, source: str = "status"):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = _normalize_order_payment_defaults(order)
+    cashfree_order_status = cashfree_data.get("cashfree_order_status") or cashfree_data.get("order_status")
+    cashfree_payment_status = cashfree_data.get("cashfree_payment_status")
+
+    metadata_update = {
+        "cashfree_order_id": cashfree_data.get("cashfree_order_id") or cashfree_data.get("order_id") or order.get("cashfree_order_id"),
+        "cashfree_cf_order_id": cashfree_data.get("cashfree_cf_order_id") or cashfree_data.get("cf_order_id") or order.get("cashfree_cf_order_id"),
+        "cashfree_order_status": cashfree_order_status,
+        "cashfree_payment_status": cashfree_payment_status,
+        "updated_at": _now_iso(),
+    }
+
+    if cashfree_order_status == CASHFREE_ORDER_STATUS_PAID:
+        if order.get("payment_status") == PAYMENT_STATUS_PAID and order.get("stock_deducted"):
+            await db.orders.update_one(
+                {
+                    "id": order_id,
+                    "payment_status": PAYMENT_STATUS_PAID,
+                    "stock_deducted": True,
+                    "status": ORDER_STATUS_CONFIRMED,
+                },
+                {
+                    "$set": metadata_update,
+                    "$push": {
+                        "payment_events": _payment_event("cashfree_paid_noop", source)
+                    },
+                }
+            )
+            current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            await _send_paid_cashfree_notifications_once(order_id, source)
+            return serialize_mongo_value(_normalize_order_payment_defaults(current_order))
+
+        if not _is_reservation_valid(order):
+            current_order = await _fetch_normalized_order(order_id, order)
+            if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _send_paid_cashfree_notifications_once(order_id, source)
+                return serialize_mongo_value(current_order)
+            if current_order.get("stock_reservation_transition"):
+                return serialize_mongo_value(current_order)
+            return await _mark_paid_stock_issue(current_order, cashfree_data, source)
+
+        order, confirmed = await confirm_reserved_stock(order, source)
+        if not confirmed:
+            current_order = await _fetch_normalized_order(order_id, order)
+            if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _send_paid_cashfree_notifications_once(order_id, source)
+                return serialize_mongo_value(current_order)
+            if current_order.get("stock_reservation_transition"):
+                return serialize_mongo_value(current_order)
+            return await _mark_paid_stock_issue(current_order, cashfree_data, source)
+
+        now = _now_iso()
+        result = await db.orders.update_one(
+            {
+                "id": order_id,
+                "stock_deducted": True,
+                "status": {"$ne": ORDER_STATUS_CONFIRMED},
+            },
+            {
+                "$set": {
+                    **metadata_update,
+                    "payment_status": PAYMENT_STATUS_PAID,
+                    "status": ORDER_STATUS_CONFIRMED,
+                    "paid_at": order.get("paid_at") or now,
+                },
+                "$push": {
+                    "payment_events": _payment_event(
+                        "cashfree_payment_paid",
+                        source,
+                        cashfree_order_status=cashfree_order_status,
+                    )
+                },
+            }
+        )
+        if result.modified_count == 0:
+            current_order = await _fetch_normalized_order(order_id, order)
+            if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _send_paid_cashfree_notifications_once(order_id, source)
+                return serialize_mongo_value(current_order)
+            return await _mark_paid_stock_issue(current_order, cashfree_data, source)
+
+        await _send_paid_cashfree_notifications_once(order_id, source)
+    elif cashfree_order_status == CASHFREE_ORDER_STATUS_EXPIRED:
+        if _is_paid_or_confirmed(order):
+            return serialize_mongo_value(order)
+        order = await release_reserved_stock(order, source)
+        if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
+            return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+        result = await db.orders.update_one(
+            _unpaid_unconfirmed_order_filter(order_id),
+            {
+                "$set": {
+                    **metadata_update,
+                    "payment_status": PAYMENT_STATUS_EXPIRED,
+                    "status": ORDER_STATUS_PAYMENT_EXPIRED,
+                },
+                "$push": {
+                    "payment_events": _payment_event("cashfree_payment_expired", source)
+                },
+            }
+        )
+        if result.modified_count == 0:
+            current_order = await _fetch_normalized_order(order_id, order)
+            return serialize_mongo_value(current_order)
+    elif cashfree_order_status == CASHFREE_ORDER_STATUS_TERMINATED:
+        if _is_paid_or_confirmed(order):
+            return serialize_mongo_value(order)
+        order = await release_reserved_stock(order, source)
+        if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
+            return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+        result = await db.orders.update_one(
+            _unpaid_unconfirmed_order_filter(order_id),
+            {
+                "$set": {
+                    **metadata_update,
+                    "payment_status": PAYMENT_STATUS_FAILED,
+                    "status": ORDER_STATUS_PAYMENT_FAILED,
+                },
+                "$push": {
+                    "payment_events": _payment_event("cashfree_payment_failed", source)
+                },
+            }
+        )
+        if result.modified_count == 0:
+            current_order = await _fetch_normalized_order(order_id, order)
+            return serialize_mongo_value(current_order)
+    elif cashfree_order_status in {CASHFREE_ORDER_STATUS_ACTIVE, CASHFREE_ORDER_STATUS_TERMINATION_REQUESTED}:
+        if not _is_paid_or_confirmed(order) and _is_local_reservation_expired(order):
+            return await _expire_local_reservation(order, metadata_update, source)
+
+        result = await db.orders.update_one(
+            _unpaid_unconfirmed_order_filter(order_id),
+            {
+                "$set": {
+                    **metadata_update,
+                    "payment_status": PAYMENT_STATUS_PENDING,
+                    "status": ORDER_STATUS_PENDING_PAYMENT,
+                },
+                "$push": {
+                    "payment_events": _payment_event(
+                        "cashfree_payment_pending",
+                        source,
+                        cashfree_order_status=cashfree_order_status,
+                    )
+                },
+            }
+        )
+        if result.modified_count == 0:
+            current_order = await _fetch_normalized_order(order_id, order)
+            return serialize_mongo_value(current_order)
+    else:
+        await db.orders.update_one(
+            {"id": order_id},
+            {
+                "$set": metadata_update,
+                "$push": {
+                    "payment_events": _payment_event(
+                        "cashfree_payment_status_unknown",
+                        source,
+                        cashfree_order_status=cashfree_order_status,
+                    )
+                },
+            }
+        )
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+
+
+async def mark_cashfree_order_failed(order_id: str, reason: str, source: str = "create_session"):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = _normalize_order_payment_defaults(order)
+    if _is_paid_or_confirmed(order):
+        return serialize_mongo_value(order)
+
+    if order.get("stock_reserved"):
+        order = await release_reserved_stock(order, source)
+        if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
+            return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+    now = _now_iso()
+    result = await db.orders.update_one(
+        _unpaid_unconfirmed_order_filter(order_id),
+        {
+            "$set": {
+                "payment_status": PAYMENT_STATUS_FAILED,
+                "status": ORDER_STATUS_PAYMENT_FAILED,
+                "updated_at": now,
+            },
+            "$push": {
+                "payment_events": _payment_event(
+                    "cashfree_order_failed",
+                    source,
+                    reason=reason,
+                )
+            },
+        }
+    )
+    if result.modified_count == 0:
+        current_order = await _fetch_normalized_order(order_id, order)
+        return serialize_mongo_value(current_order)
+
+    failed_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(failed_order))
 
 async def get_user_orders(user_id: str, limit: int = 100):
     limit = min(limit, MAX_LIMIT)

@@ -54,6 +54,11 @@ CASHFREE_CLIENT_SECRET = os.environ.get("CASHFREE_CLIENT_SECRET", "").strip()
 CASHFREE_RETURN_URL = os.environ.get("CASHFREE_RETURN_URL", "").strip()
 CASHFREE_WEBHOOK_URL = os.environ.get("CASHFREE_WEBHOOK_URL", "").strip()
 
+try:
+    STOCK_RESERVATION_MINUTES = int(os.environ.get("STOCK_RESERVATION_MINUTES", "10").strip())
+except ValueError:
+    STOCK_RESERVATION_MINUTES = 10
+
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "").strip()
 
