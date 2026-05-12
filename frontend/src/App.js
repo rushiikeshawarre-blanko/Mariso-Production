@@ -11,6 +11,7 @@ import ProductPage from "./pages/ProductPage";
 import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
+import PaymentReturnPage from "./pages/PaymentReturnPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AccountPage from "./pages/AccountPage";
@@ -134,6 +135,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <OrderSuccessPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payment/cashfree/return"
+        element={
+          <ProtectedRoute>
+            <PaymentReturnPage />
           </ProtectedRoute>
         }
       />

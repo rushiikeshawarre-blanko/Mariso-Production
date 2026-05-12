@@ -4,21 +4,21 @@ import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createOrder } from '../lib/api';
+import { createCashfreeSession } from '../lib/api';
+import { loadCashfree } from '../lib/cashfree';
 import { toast } from 'sonner';
-import { CreditCard, Smartphone, Building2, Banknote, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star } from 'lucide-react';
+import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
 
 const CheckoutPage = () => {
   const location = useLocation();
   const { giftPackaging = false, giftNote = '' } = location.state || {};
-  const { items, clearCart } = useCart();
+  const { items } = useCart();
   const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('upi');
+  const paymentMessage = new URLSearchParams(location.search).get('payment');
   
   const GIFT_PACKAGING_PRICE = 149;
 
@@ -73,6 +73,13 @@ const CheckoutPage = () => {
     );
   };  
 
+  const paymentMessageText = {
+    expired: 'Payment session expired. Your items are still in your cart. Please try again.',
+    failed: 'Payment failed or was cancelled. Your items are still in your cart. Please try again.',
+    pending: 'Payment is still pending. You can retry checkout or check your order status.',
+    cancelled: 'Payment was cancelled. Your items are still in your cart.',
+  }[paymentMessage];
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -96,7 +103,7 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      const orderData = {
+      const checkoutPayload = {
         items: items.map(item => ({
           product_id: item.id,
           quantity: item.quantity,
@@ -110,16 +117,24 @@ const CheckoutPage = () => {
         billing_address: formData.address,
         billing_city: formData.city,
         billing_postal_code: formData.postalCode,
-        payment_method: paymentMethod,
-        total_price: getFinalTotal()
+        gift_packaging: giftPackaging
       };
 
-      const order = await createOrder(orderData);
-      clearCart();
-      navigate(`/order-success/${order.id}`);
+      const session = await createCashfreeSession(checkoutPayload);
+      if (!session?.payment_session_id || !session?.order_id) {
+        throw new Error('Payment session could not be created');
+      }
+
+      sessionStorage.setItem('pending_cashfree_order_id', session.order_id);
+
+      const cashfree = await loadCashfree();
+      await cashfree.checkout({
+        paymentSessionId: session.payment_session_id,
+        redirectTarget: '_self'
+      });
     } catch (error) {
-      console.error('Error creating order:', error);
-      toast.error('Failed to place order. Please try again.');
+      console.error('Error starting Cashfree checkout:', error);
+      toast.error('Unable to start secure payment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -155,6 +170,12 @@ const CheckoutPage = () => {
           </button>
 
           <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-12">Checkout</h1>
+
+          {paymentMessageText && (
+            <div className="mb-8 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+              <p className="text-sm text-yellow-900">{paymentMessageText}</p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -258,60 +279,19 @@ const CheckoutPage = () => {
 
                 {/* Payment Method */}
                 <div className="bg-white rounded-xl p-8 card-shadow">
-                  <h2 className="font-heading text-xl mb-6">Payment Method</h2>
-                  <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
-                    <label 
-                      className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
-                        paymentMethod === 'upi' ? 'border-foreground bg-muted/30' : 'border-border hover:border-foreground/30'
-                      }`}
-                    >
-                      <RadioGroupItem value="upi" id="upi" data-testid="payment-upi" />
-                      <Smartphone className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-                      <div>
-                        <p className="font-medium">UPI</p>
-                        <p className="text-sm text-muted-foreground">Pay using any UPI app</p>
-                      </div>
-                    </label>
-
-                    <label 
-                      className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
-                        paymentMethod === 'card' ? 'border-foreground bg-muted/30' : 'border-border hover:border-foreground/30'
-                      }`}
-                    >
-                      <RadioGroupItem value="card" id="card" data-testid="payment-card" />
-                      <CreditCard className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-                      <div>
-                        <p className="font-medium">Credit / Debit Card</p>
-                        <p className="text-sm text-muted-foreground">Visa, Mastercard, RuPay</p>
-                      </div>
-                    </label>
-
-                    <label 
-                      className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
-                        paymentMethod === 'netbanking' ? 'border-foreground bg-muted/30' : 'border-border hover:border-foreground/30'
-                      }`}
-                    >
-                      <RadioGroupItem value="netbanking" id="netbanking" data-testid="payment-netbanking" />
-                      <Building2 className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-                      <div>
-                        <p className="font-medium">Net Banking</p>
-                        <p className="text-sm text-muted-foreground">All major banks supported</p>
-                      </div>
-                    </label>
-
-                    <label 
-                      className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
-                        paymentMethod === 'cod' ? 'border-foreground bg-muted/30' : 'border-border hover:border-foreground/30'
-                      }`}
-                    >
-                      <RadioGroupItem value="cod" id="cod" data-testid="payment-cod" />
-                      <Banknote className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-                      <div>
-                        <p className="font-medium">Cash on Delivery</p>
-                        <p className="text-sm text-muted-foreground">Pay when you receive</p>
-                      </div>
-                    </label>
-                  </RadioGroup>
+                  <div className="flex items-center gap-2 mb-6">
+                    <ShieldCheck className="h-5 w-5 text-[#8B9D83]" strokeWidth={1.5} />
+                    <h2 className="font-heading text-xl">Secure Online Payment</h2>
+                  </div>
+                  <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-muted/20">
+                    <CreditCard className="h-5 w-5 text-muted-foreground mt-0.5" strokeWidth={1.5} />
+                    <div>
+                      <p className="font-medium">Pay securely with Cashfree</p>
+                      <p className="text-sm text-muted-foreground">
+                        Choose UPI, cards, net banking, or wallets on the secure payment page.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Why Choose Mariso */}
@@ -454,7 +434,7 @@ const CheckoutPage = () => {
                     disabled={loading}
                     data-testid="place-order-button"
                   >
-                    {loading ? 'Processing...' : 'Place Order'}
+                    {loading ? 'Opening secure payment...' : 'Proceed to Secure Payment'}
                   </Button>
 
                   <div className="flex items-center justify-center gap-2 mt-4 text-xs text-muted-foreground">

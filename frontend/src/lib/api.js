@@ -244,6 +244,36 @@ export const createOrder = async (orderData) => {
   }
 };
 
+export const createCashfreeSession = async (checkoutData) => {
+  try {
+    const response = await axiosInstance.post(`/payments/cashfree/create-session`, checkoutData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating Cashfree session:', error);
+    throw error;
+  }
+};
+
+export const verifyCashfreePayment = async (orderId) => {
+  try {
+    const response = await axiosInstance.post(`/payments/cashfree/verify`, { order_id: orderId });
+    return response.data;
+  } catch (error) {
+    console.error('Error verifying Cashfree payment:', error);
+    throw error;
+  }
+};
+
+export const getCashfreePaymentStatus = async (orderId) => {
+  try {
+    const response = await axiosInstance.get(`/payments/cashfree/orders/${orderId}/status`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching Cashfree payment status:', error);
+    throw error;
+  }
+};
+
 export const getUserOrders = async () => {
   try {
     const response = await axiosInstance.get(`/orders`);

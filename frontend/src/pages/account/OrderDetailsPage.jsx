@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
-import { getOrder } from "../../lib/api";
+import { getCashfreePaymentStatus, getOrder } from "../../lib/api";
+import { Button } from "../../components/ui/button";
 
 const ORDER_ITEM_IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
@@ -19,6 +21,8 @@ const OrderDetailsPage = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [checkingPaymentStatus, setCheckingPaymentStatus] = useState(false);
+  const [paymentStatusError, setPaymentStatusError] = useState('');
 
   const statusSteps = ["pending", "confirmed", "packed", "shipped", "delivered"];
 
@@ -26,6 +30,16 @@ const OrderDetailsPage = () => {
     const index = statusSteps.indexOf(status);
     return index >= 0 ? index : 0;
   };
+
+  const isPendingCashfreeOrder = (currentOrder) => {
+    const isCashfree = currentOrder?.payment_method === 'cashfree' || currentOrder?.payment_provider === 'cashfree';
+    const isPendingPayment = currentOrder?.status === 'pending_payment' || currentOrder?.payment_status === 'pending';
+    return isCashfree && isPendingPayment;
+  };
+
+  const formatStatus = (status) => (
+    status ? status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Pending'
+  );
 
   const fetchOrder = useCallback(async (showLoader = false) => {
     if (!id) return;
@@ -60,6 +74,30 @@ const OrderDetailsPage = () => {
 
     return () => clearInterval(interval);
   }, [id, fetchOrder]);
+
+  const handleCheckPaymentStatus = async () => {
+    if (!order?.id) return;
+
+    setCheckingPaymentStatus(true);
+    setPaymentStatusError('');
+
+    try {
+      const result = await getCashfreePaymentStatus(order.id);
+      setOrder((currentOrder) => ({
+        ...currentOrder,
+        ...result,
+        id: result.order_id || currentOrder.id,
+      }));
+      setLastUpdated(new Date());
+      toast.success('Payment status updated');
+    } catch (error) {
+      console.error("Error checking Cashfree payment status:", error);
+      setPaymentStatusError('Unable to refresh payment status. Please try again.');
+      toast.error('Unable to refresh payment status');
+    } finally {
+      setCheckingPaymentStatus(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -105,14 +143,37 @@ const OrderDetailsPage = () => {
             </p>
           </div>
 
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-secondary text-foreground capitalize w-fit">
-            {order.status}
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-secondary text-foreground w-fit">
+            {formatStatus(order.status)}
           </span>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-border p-6 mb-6">
         <h2 className="font-heading text-xl mb-4">Order Status</h2>
+
+        {isPendingCashfreeOrder(order) && (
+          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <p className="text-sm text-yellow-900 mb-3">
+              Payment is pending. If you completed payment or the session expired, check the latest status.
+            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCheckPaymentStatus}
+                disabled={checkingPaymentStatus}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${checkingPaymentStatus ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+                {checkingPaymentStatus ? 'Checking...' : 'Check Payment Status'}
+              </Button>
+              {paymentStatusError && (
+                <p className="text-xs text-destructive">{paymentStatusError}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           {statusSteps.map((step, index) => {
@@ -231,6 +292,13 @@ const OrderDetailsPage = () => {
               <span className="text-muted-foreground">Payment Method</span>
               <span className="uppercase">{order.payment_method}</span>
             </div>
+
+            {order.payment_status && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Payment Status</span>
+                <span>{formatStatus(order.payment_status)}</span>
+              </div>
+            )}
 
             <div className="border-t border-border pt-3 flex justify-between font-medium text-base">
               <span>Total</span>

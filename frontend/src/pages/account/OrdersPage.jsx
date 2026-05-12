@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getUserOrders } from '../../lib/api';
-import { Package, Eye } from 'lucide-react';
+import { getCashfreePaymentStatus, getUserOrders } from '../../lib/api';
+import { Package, Eye, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { toast } from 'sonner';
 
 const ORDER_ITEM_IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
@@ -17,6 +18,8 @@ const ORDER_ITEM_IMAGE_FALLBACK =
 const OrdersPage = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [checkingOrderId, setCheckingOrderId] = useState(null);
+  const [statusMessages, setStatusMessages] = useState({});
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -35,12 +38,53 @@ const OrdersPage = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
+      case 'pending_payment':
+      case 'payment_expired':
+      case 'payment_failed':
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'confirmed': return 'bg-blue-100 text-blue-800';
       case 'packed': return 'bg-purple-100 text-purple-800';
       case 'shipped': return 'bg-indigo-100 text-indigo-800';
       case 'delivered': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const isPendingCashfreeOrder = (order) => {
+    const isCashfree = order.payment_method === 'cashfree' || order.payment_provider === 'cashfree';
+    const isPendingPayment = order.status === 'pending_payment' || order.payment_status === 'pending';
+    return isCashfree && isPendingPayment;
+  };
+
+  const formatStatus = (status) => (
+    status ? status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Pending'
+  );
+
+  const handleCheckPaymentStatus = async (orderId) => {
+    setCheckingOrderId(orderId);
+    setStatusMessages((current) => ({ ...current, [orderId]: '' }));
+
+    try {
+      const result = await getCashfreePaymentStatus(orderId);
+      setOrders((currentOrders) => currentOrders.map((order) => (
+        order.id === orderId
+          ? { ...order, ...result, id: result.order_id || order.id }
+          : order
+      )));
+      setStatusMessages((current) => ({
+        ...current,
+        [orderId]: `Payment status updated to ${formatStatus(result.status)}.`
+      }));
+      toast.success('Payment status updated');
+    } catch (error) {
+      console.error('Error checking Cashfree payment status:', error);
+      setStatusMessages((current) => ({
+        ...current,
+        [orderId]: 'Unable to refresh payment status. Please try again.'
+      }));
+      toast.error('Unable to refresh payment status');
+    } finally {
+      setCheckingOrderId(null);
     }
   };
 
@@ -89,7 +133,7 @@ const OrdersPage = () => {
             </div>
             <div className="flex items-center gap-4">
               <span className={`text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(order.status)}`}>
-                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                {formatStatus(order.status)}
               </span>
               <Button asChild variant="outline" size="sm">
                 <Link to={`/account/orders/${order.id}`} data-testid={`view-order-${order.id}`}>
@@ -119,6 +163,29 @@ const OrdersPage = () => {
               </div>
             ))}
           </div>
+
+          {isPendingCashfreeOrder(order) && (
+            <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+              <p className="text-sm text-yellow-900 mb-3">
+                Payment is pending. If you completed payment or the session expired, check the latest status.
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCheckPaymentStatus(order.id)}
+                  disabled={checkingOrderId === order.id}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${checkingOrderId === order.id ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+                  {checkingOrderId === order.id ? 'Checking...' : 'Check Payment Status'}
+                </Button>
+                {statusMessages[order.id] && (
+                  <p className="text-xs text-muted-foreground">{statusMessages[order.id]}</p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-between items-center pt-4 border-t border-border">
             <div className="text-sm text-muted-foreground">
