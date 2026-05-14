@@ -46,6 +46,13 @@ root.render(
         redirect_uri: window.location.origin,
         ...(auth0Audience ? { audience: auth0Audience } : {}),
       }}
+      onRedirectCallback={(appState) => {
+        window.history.replaceState(
+          {},
+          document.title,
+          appState?.returnTo || window.location.pathname,
+        );
+      }}
     >
       <App />
     </Auth0Provider>

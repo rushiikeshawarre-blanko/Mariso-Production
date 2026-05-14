@@ -51,12 +51,18 @@ const PaymentReturnPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { clearCart } = useCart();
-  const orderId = searchParams.get('order_id');
+  const queryOrderId = searchParams.get('order_id');
+  const fallbackOrderId = sessionStorage.getItem('pending_cashfree_order_id');
+  const orderId = queryOrderId || fallbackOrderId;
   const hasVerifiedRef = useRef(false);
   const [loading, setLoading] = useState(Boolean(orderId));
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
-  const [error, setError] = useState(orderId ? '' : 'Missing payment order ID.');
+  const [error, setError] = useState(
+    orderId
+      ? ''
+      : 'Payment could not be linked to an order. Please check your orders or contact support if payment was deducted.'
+  );
 
   const handlePaymentResult = useCallback((result) => {
     setPaymentResult(result);
