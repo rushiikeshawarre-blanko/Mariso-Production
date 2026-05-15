@@ -1,4 +1,7 @@
 from typing import Optional
+import base64
+import hashlib
+import hmac
 import logging
 import uuid
 
@@ -12,12 +15,48 @@ from core.config import (
     CASHFREE_CLIENT_SECRET,
     CASHFREE_ENABLED,
     CASHFREE_RETURN_URL,
+    CASHFREE_WEBHOOK_SECRET,
     CASHFREE_WEBHOOK_URL,
 )
 
 logger = logging.getLogger(__name__)
 
 CASHFREE_TIMEOUT_SECONDS = 15
+
+
+def _get_header(headers: dict, name: str) -> Optional[str]:
+    if hasattr(headers, "get"):
+        value = headers.get(name) or headers.get(name.lower()) or headers.get(name.upper())
+        if value:
+            return value
+    for key, value in dict(headers).items():
+        if key.lower() == name.lower():
+            return value
+    return None
+
+
+def _get_cashfree_webhook_secret() -> str:
+    return CASHFREE_WEBHOOK_SECRET or CASHFREE_CLIENT_SECRET
+
+
+def _log_cashfree_webhook_signature_failure(
+    raw_body: bytes,
+    headers: dict,
+    secret: str,
+    signature: Optional[str],
+    timestamp: Optional[str],
+) -> None:
+    logger.warning(
+        "Cashfree webhook signature verification failed: "
+        "signature_present=%s timestamp_present=%s webhook_version=%s "
+        "webhook_attempt=%s raw_body_length=%s webhook_secret_length=%s",
+        bool(signature),
+        bool(timestamp),
+        _get_header(headers, "x-webhook-version"),
+        _get_header(headers, "x-webhook-attempt"),
+        len(raw_body),
+        len(secret),
+    )
 
 
 def _build_cashfree_headers(idempotency_key: str) -> dict:
@@ -33,6 +72,50 @@ def _build_cashfree_headers(idempotency_key: str) -> dict:
         "x-client-id": CASHFREE_CLIENT_ID,
         "x-client-secret": CASHFREE_CLIENT_SECRET,
         "x-idempotency-key": idempotency_key,
+    }
+
+
+def verify_cashfree_webhook_signature(raw_body: bytes, headers: dict) -> bool:
+    secret = _get_cashfree_webhook_secret()
+    signature = _get_header(headers, "x-webhook-signature")
+    timestamp = _get_header(headers, "x-webhook-timestamp")
+
+    if not secret or not signature or not timestamp:
+        _log_cashfree_webhook_signature_failure(raw_body, headers, secret, signature, timestamp)
+        return False
+
+    message = timestamp.encode("utf-8") + raw_body
+    digest = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest()
+    computed_signature = base64.b64encode(digest).decode("utf-8")
+    verified = hmac.compare_digest(computed_signature, signature)
+    if not verified:
+        _log_cashfree_webhook_signature_failure(
+            raw_body,
+            headers,
+            secret,
+            signature,
+            timestamp,
+        )
+    return verified
+
+
+def normalize_cashfree_webhook_payload(payload: dict, headers: dict) -> dict:
+    if not isinstance(payload, dict):
+        payload = {}
+
+    data = payload.get("data") or {}
+    order = data.get("order") or {}
+    payment = data.get("payment") or {}
+
+    return {
+        "event_type": payload.get("type"),
+        "order_id": order.get("order_id"),
+        "cf_payment_id": payment.get("cf_payment_id"),
+        "payment_status": payment.get("payment_status"),
+        "event_time": payload.get("event_time"),
+        "webhook_version": _get_header(headers, "x-webhook-version"),
+        "webhook_attempt": _get_header(headers, "x-webhook-attempt"),
+        "idempotency_key": _get_header(headers, "x-idempotency-key"),
     }
 
 

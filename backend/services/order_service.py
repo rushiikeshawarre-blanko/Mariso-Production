@@ -61,6 +61,59 @@ def _payment_event(event_type: str, source: str = "system", **details) -> dict:
     }
 
 
+async def record_cashfree_webhook_event(
+    order_id: str,
+    event_type: Optional[str],
+    payment_status: Optional[str],
+    cf_payment_id: Optional[str],
+    idempotency_key: Optional[str],
+    info: Optional[dict] = None,
+) -> Optional[dict]:
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return None
+
+    duplicate = False
+    for event in order.get("payment_events", []):
+        if idempotency_key and event.get("webhook_idempotency_key") == idempotency_key:
+            duplicate = True
+            break
+        if (
+            cf_payment_id
+            and event.get("cf_payment_id") == cf_payment_id
+            and event.get("webhook_type") == event_type
+        ):
+            duplicate = True
+            break
+
+    event_info = info or {}
+    await db.orders.update_one(
+        {"id": order_id},
+        {
+            "$push": {
+                "payment_events": _payment_event(
+                    "cashfree_webhook_duplicate" if duplicate else "cashfree_webhook_received",
+                    "webhook",
+                    webhook_type=event_type,
+                    payment_status=payment_status,
+                    cf_payment_id=cf_payment_id,
+                    webhook_idempotency_key=idempotency_key,
+                    webhook_event_time=event_info.get("event_time"),
+                    webhook_version=event_info.get("webhook_version"),
+                    webhook_attempt=event_info.get("webhook_attempt"),
+                    duplicate=duplicate,
+                )
+            },
+            "$set": {"updated_at": _now_iso()},
+        }
+    )
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    normalized_order = _normalize_order_payment_defaults(updated_order)
+    normalized_order["cashfree_webhook_duplicate"] = duplicate
+    return serialize_mongo_value(normalized_order)
+
+
 def _unpaid_unconfirmed_order_filter(order_id: str) -> dict:
     return {
         "id": order_id,

@@ -51,6 +51,7 @@ CASHFREE_BASE_URL = os.environ.get("CASHFREE_BASE_URL", "https://sandbox.cashfre
 CASHFREE_API_VERSION = os.environ.get("CASHFREE_API_VERSION", "2025-01-01").strip()
 CASHFREE_CLIENT_ID = os.environ.get("CASHFREE_CLIENT_ID", "").strip()
 CASHFREE_CLIENT_SECRET = os.environ.get("CASHFREE_CLIENT_SECRET", "").strip()
+CASHFREE_WEBHOOK_SECRET = os.environ.get("CASHFREE_WEBHOOK_SECRET", "").strip()
 CASHFREE_RETURN_URL = os.environ.get("CASHFREE_RETURN_URL", "").strip()
 CASHFREE_WEBHOOK_URL = os.environ.get("CASHFREE_WEBHOOK_URL", "").strip()
 

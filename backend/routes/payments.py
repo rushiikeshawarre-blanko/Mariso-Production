@@ -1,18 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from core.auth import get_current_user
 from models.order import CashfreeCheckoutCreate
-from services.cashfree_service import create_cashfree_order_session, get_cashfree_order
+from services.cashfree_service import (
+    create_cashfree_order_session,
+    get_cashfree_order,
+    normalize_cashfree_webhook_payload,
+    verify_cashfree_webhook_signature,
+)
 from services.order_service import (
     attach_cashfree_session,
     create_pending_cashfree_order,
     finalize_paid_cashfree_order,
     get_order,
     mark_cashfree_order_failed,
+    record_cashfree_webhook_event,
 )
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+CASHFREE_PAYMENT_SUCCESS_WEBHOOK = "PAYMENT_SUCCESS_WEBHOOK"
+CASHFREE_PAYMENT_FAILED_WEBHOOK = "PAYMENT_FAILED_WEBHOOK"
+CASHFREE_PAYMENT_USER_DROPPED_WEBHOOK = "PAYMENT_USER_DROPPED_WEBHOOK"
+CASHFREE_PAYMENT_STATUS_SUCCESS = "SUCCESS"
 
 
 class CashfreeVerifyRequest(BaseModel):
@@ -33,6 +46,56 @@ def _payment_result(order: dict) -> dict:
         "stock_reserved_until": order.get("stock_reserved_until"),
         "stock_deducted": order.get("stock_deducted"),
     }
+
+
+@router.post("/cashfree/webhook", response_model=dict)
+async def cashfree_webhook_route(request: Request):
+    raw_body = await request.body()
+    if not verify_cashfree_webhook_signature(raw_body, request.headers):
+        raise HTTPException(status_code=401, detail="Invalid Cashfree webhook signature")
+
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid Cashfree webhook payload")
+
+    webhook = normalize_cashfree_webhook_payload(payload, request.headers)
+    order_id = webhook.get("order_id")
+    event_type = webhook.get("event_type")
+    payment_status = webhook.get("payment_status")
+
+    if not order_id:
+        return {"ok": True, "status": "ignored"}
+
+    order = await record_cashfree_webhook_event(
+        order_id=order_id,
+        event_type=event_type,
+        payment_status=payment_status,
+        cf_payment_id=webhook.get("cf_payment_id"),
+        idempotency_key=webhook.get("idempotency_key"),
+        info=webhook,
+    )
+
+    if not order:
+        return {"ok": True, "status": "ignored"}
+
+    is_duplicate = order.get("cashfree_webhook_duplicate") is True
+
+    if (
+        event_type == CASHFREE_PAYMENT_SUCCESS_WEBHOOK
+        and payment_status == CASHFREE_PAYMENT_STATUS_SUCCESS
+    ):
+        cashfree_data = get_cashfree_order(order_id)
+        await finalize_paid_cashfree_order(order_id, cashfree_data, source="webhook")
+        return {"ok": True, "status": "duplicate" if is_duplicate else "processed"}
+
+    if event_type in {
+        CASHFREE_PAYMENT_FAILED_WEBHOOK,
+        CASHFREE_PAYMENT_USER_DROPPED_WEBHOOK,
+    }:
+        return {"ok": True, "status": "duplicate" if is_duplicate else "ignored"}
+
+    return {"ok": True, "status": "duplicate" if is_duplicate else "ignored"}
 
 
 @router.post("/cashfree/create-session", response_model=dict)
