@@ -17,6 +17,66 @@ const ORDER_ITEM_IMAGE_FALLBACK =
     </svg>
   `);
 
+const ORDER_STATUS_LABELS = {
+  pending_payment: 'Payment Pending',
+  payment_expired: 'Payment Expired',
+  payment_failed: 'Payment Failed',
+  paid_stock_issue: 'Paid - Manual Review',
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  packed: 'Packed',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+
+const PAYMENT_STATUS_LABELS = {
+  paid: 'Paid',
+  pending: 'Payment Pending',
+  failed: 'Payment Failed',
+  expired: 'Payment Expired',
+  refunded: 'Refunded',
+};
+
+const STATUS_FILTERS = [
+  { value: 'pending_payment', label: 'Payment Pending' },
+  { value: 'payment_expired', label: 'Payment Expired' },
+  { value: 'payment_failed', label: 'Payment Failed' },
+  { value: 'paid_stock_issue', label: 'Paid - Manual Review' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'packed', label: 'Packed' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || 'Unknown Status';
+const getPaymentStatusLabel = (status) => PAYMENT_STATUS_LABELS[status] || 'Payment Unknown';
+
+const formatPaymentProvider = (value) => {
+  if (!value) return 'Not specified';
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'cashfree') return 'Cashfree';
+  if (normalized === 'cod') return 'COD';
+  return String(value).trim();
+};
+
+
+const formatAdminValue = (value) => {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  if (value === null || value === undefined || value === '') return 'Not available';
+  return String(value);
+};
+
+const formatAdminDate = (value) => {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return date.toLocaleString();
+};
+
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +115,50 @@ const AdminOrders = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
+      case 'pending_payment': return 'bg-amber-100 text-amber-900 border border-amber-200';
+      case 'payment_expired': return 'bg-orange-100 text-orange-900 border border-orange-200';
+      case 'payment_failed': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'paid_stock_issue': return 'bg-rose-100 text-rose-900 border border-rose-200';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'confirmed': return 'bg-blue-100 text-blue-800';
       case 'packed': return 'bg-purple-100 text-purple-800';
       case 'shipped': return 'bg-indigo-100 text-indigo-800';
       case 'delivered': return 'bg-green-100 text-green-800';
+      case 'cancelled': return 'bg-stone-200 text-stone-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const getPaymentStatusColor = (status) => {
+    switch (status) {
+      case 'paid': return 'bg-green-100 text-green-800 border border-green-200';
+      case 'pending': return 'bg-amber-100 text-amber-900 border border-amber-200';
+      case 'failed': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'expired': return 'bg-orange-100 text-orange-900 border border-orange-200';
+      case 'refunded': return 'bg-sky-100 text-sky-800 border border-sky-200';
+      default: return 'bg-gray-100 text-gray-800 border border-gray-200';
+    }
+  };
+
+  const getPaymentProviderText = (order) => {
+    const provider = order.payment_provider || order.payment_method;
+    const method = order.payment_method;
+    const formattedProvider = formatPaymentProvider(provider);
+    const formattedMethod = formatPaymentProvider(method);
+
+    if (provider && method && String(provider).trim().toLowerCase() !== String(method).trim().toLowerCase()) {
+      return `${formattedProvider} / ${formattedMethod}`;
+    }
+
+    return formattedProvider;
+  };
+
+  const getOrderRowClass = (order) => {
+    if (order.status === 'paid_stock_issue') return 'bg-rose-50/70';
+    if (order.payment_status === 'pending' || order.status === 'pending_payment') return 'bg-amber-50/60';
+    if (order.payment_status === 'failed' || order.status === 'payment_failed') return 'bg-red-50/50';
+    if (order.payment_status === 'expired' || order.status === 'payment_expired') return 'bg-orange-50/50';
+    return '';
   };
 
   const allowedTransitions = {
@@ -88,11 +185,11 @@ const AdminOrders = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Orders</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="packed">Packed</SelectItem>
-              <SelectItem value="shipped">Shipped</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
+              {STATUS_FILTERS.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -127,7 +224,7 @@ const AdminOrders = () => {
               </TableRow>
             ) : (
               orders.map((order) => (
-                <TableRow key={order.id} data-testid={`order-row-${order.id}`}>
+                <TableRow key={order.id} className={getOrderRowClass(order)} data-testid={`order-row-${order.id}`}>
                   <TableCell className="font-medium">
                     #{order.id.slice(0, 8).toUpperCase()}
                   </TableCell>
@@ -139,22 +236,31 @@ const AdminOrders = () => {
                   </TableCell>
                   <TableCell>{order.items?.length} items</TableCell>
                   <TableCell className="font-medium">₹{order.total_price?.toLocaleString()}</TableCell>
-                  <TableCell className="uppercase text-xs">{order.payment_method}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1.5">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPaymentStatusColor(order.payment_status)}`}>
+                        {getPaymentStatusLabel(order.payment_status)}
+                      </span>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {getPaymentProviderText(order)}
+                      </p>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Select
                       value={order.status}
                       onValueChange={(value) => handleStatusChange(order.id, value)}
                     >
-                      <SelectTrigger className={`w-[120px] h-8 text-xs ${getStatusColor(order.status)}`}>
+                      <SelectTrigger className={`h-8 w-[170px] text-xs ${getStatusColor(order.status)}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={order.status}>
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          {getOrderStatusLabel(order.status)}
                         </SelectItem>
                         {allowedTransitions[order.status]?.map((status) => (
                           <SelectItem key={status} value={status}>
-                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                            {getOrderStatusLabel(status)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -198,9 +304,15 @@ const AdminOrders = () => {
               <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                 <span className="text-muted-foreground">Status</span>
                 <span className={`text-sm px-3 py-1 rounded-full font-medium ${getStatusColor(selectedOrder.status)}`}>
-                  {selectedOrder.status.charAt(0).toUpperCase() + selectedOrder.status.slice(1)}
+                  {getOrderStatusLabel(selectedOrder.status)}
                 </span>
               </div>
+
+              {selectedOrder.status === 'paid_stock_issue' && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-900">
+                  Payment received, but stock could not be safely confirmed. Please review manually before packing or shipping.
+                </div>
+              )}
 
               {/* Customer Info */}
               <div className="p-4 bg-muted/30 rounded-lg">
@@ -255,7 +367,60 @@ const AdminOrders = () => {
               {/* Payment Method */}
               <div className="flex flex-col items-start justify-between gap-1 text-sm sm:flex-row sm:items-center">
                 <span className="text-muted-foreground">Payment Method</span>
-                <span className="capitalize">{selectedOrder.payment_method}</span>
+                <span>{formatPaymentProvider(selectedOrder.payment_method)}</span>
+              </div>
+
+              {/* Payment Details */}
+              <div className="rounded-lg bg-muted/30 p-4">
+                <h4 className="font-medium mb-3">Payment Details</h4>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">Payment Provider</p>
+                    <p className="font-medium">{selectedOrder.payment_provider ? formatPaymentProvider(selectedOrder.payment_provider) : formatAdminValue(selectedOrder.payment_provider)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Payment Method</p>
+                    <p className="font-medium">{selectedOrder.payment_method ? formatPaymentProvider(selectedOrder.payment_method) : formatAdminValue(selectedOrder.payment_method)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Payment Status</p>
+                    <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPaymentStatusColor(selectedOrder.payment_status)}`}>
+                      {getPaymentStatusLabel(selectedOrder.payment_status)}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Cashfree Order Status</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.cashfree_order_status)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Cashfree Order ID</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.cashfree_order_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Cashfree CF Order ID</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.cashfree_cf_order_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Cashfree Payment ID</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.cashfree_payment_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Paid At</p>
+                    <p className="font-medium">{formatAdminDate(selectedOrder.paid_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Stock Reserved</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.stock_reserved)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Stock Reserved Until</p>
+                    <p className="font-medium">{formatAdminDate(selectedOrder.stock_reserved_until)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Stock Deducted</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.stock_deducted)}</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
