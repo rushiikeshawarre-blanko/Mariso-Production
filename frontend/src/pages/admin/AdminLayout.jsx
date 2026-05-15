@@ -30,10 +30,90 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
+const ORDER_STATUS_LABELS = {
+  pending_payment: 'Payment Pending',
+  payment_expired: 'Payment Expired',
+  payment_failed: 'Payment Failed',
+  paid_stock_issue: 'Paid - Manual Review',
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  packed: 'Packed',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+
+const PAYMENT_STATUS_LABELS = {
+  paid: 'Paid',
+  pending: 'Payment Pending',
+  failed: 'Payment Failed',
+  expired: 'Payment Expired',
+  refunded: 'Refunded',
+};
+
+const PAYMENT_PROVIDER_LABELS = {
+  cashfree: 'Cashfree',
+  cod: 'COD',
+  upi: 'UPI',
+  card: 'Card',
+  netbanking: 'Netbanking',
+  manual_legacy: 'Legacy',
+};
+
+const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || 'Unknown Status';
+
+const getPaymentStatusLabel = (status) => PAYMENT_STATUS_LABELS[status] || 'Payment Unknown';
+
+const getPaymentProviderLabel = (provider) => PAYMENT_PROVIDER_LABELS[provider] || provider || 'Not available';
+
+const getStatusDotColor = (status) => {
+  if (status === 'delivered') return 'bg-green-500';
+  if (status === 'shipped') return 'bg-indigo-500';
+  if (status === 'packed') return 'bg-purple-500';
+  if (status === 'confirmed') return 'bg-blue-500';
+  if (status === 'paid_stock_issue') return 'bg-rose-500';
+  if (status === 'payment_failed') return 'bg-red-500';
+  if (status === 'payment_expired') return 'bg-orange-500';
+  return 'bg-yellow-500';
+};
+
+
+const getPaymentStatusClass = (status) => {
+  if (status === 'paid') return 'bg-green-100 text-green-800';
+  if (status === 'pending') return 'bg-amber-100 text-amber-900';
+  if (status === 'failed') return 'bg-red-100 text-red-800';
+  if (status === 'expired') return 'bg-orange-100 text-orange-900';
+  if (status === 'refunded') return 'bg-sky-100 text-sky-800';
+  return 'bg-gray-100 text-gray-800';
+};
+
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString()}`;
+
+const formatDisplayDate = (date) => date.toLocaleDateString('en-IN', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const getStartOfWeek = (date) => {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const getQuarterLabel = (date) => {
+  const quarter = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${quarter} ${date.getFullYear()}`;
+};
+
 
 const AdminLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const isDashboardPage = location.pathname === '/admin';
   const [exportLoading, setExportLoading] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { user, isAuthenticated, loginWithRedirect, logout: auth0Logout } = useAuth0();
@@ -82,7 +162,7 @@ const AdminLayout = () => {
   }, [period]);
 
   const fetchStats = useCallback(async () => {
-    if (location.pathname !== '/admin') return;
+    if (!isDashboardPage) return;
 
     if (period === 'custom' && (!appliedCustomRange.start || !appliedCustomRange.end)) {
       return;
@@ -114,7 +194,7 @@ const AdminLayout = () => {
     } finally {
       setStatsLoading(false);
     }
-  }, [location.pathname, period, selectedMonth, appliedCustomRange.start, appliedCustomRange.end]);
+  }, [isDashboardPage, period, selectedMonth, appliedCustomRange.start, appliedCustomRange.end]);
 
   useEffect(() => {
     if (!isAuthenticated || !isAdmin) return;
@@ -211,6 +291,45 @@ const AdminLayout = () => {
     return 'Weekly Revenue';
   };
 
+  const getPeriodTitle = () => {
+    if (period === 'monthly') return 'Monthly';
+    if (period === 'quarterly') return 'Quarterly';
+    if (period === 'yearly') return 'Yearly';
+    if (period === 'custom') return 'Custom Range';
+    return 'Weekly';
+  };
+
+  const getPeriodRangeLabel = () => {
+    if (period === 'custom') {
+      if (!appliedCustomRange.start || !appliedCustomRange.end) return 'Select a date range';
+      return `${formatDisplayDate(new Date(appliedCustomRange.start))} – ${formatDisplayDate(new Date(appliedCustomRange.end))}`;
+    }
+
+    if (period === 'monthly') {
+      if (!selectedMonth) return 'Select month';
+      const [year, month] = selectedMonth.split('-');
+      return new Date(Number(year), Number(month) - 1).toLocaleDateString('en-IN', {
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+
+    const today = new Date();
+
+    if (period === 'quarterly') {
+      return getQuarterLabel(today);
+    }
+
+    if (period === 'yearly') {
+      return `${today.getFullYear()}`;
+    }
+
+    const weekStart = getStartOfWeek(today);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    return `${formatDisplayDate(weekStart)} – ${formatDisplayDate(weekEnd)}`;
+  };
+
   const formatChartLabel = (value) => {
     if (!value) return '';
 
@@ -289,7 +408,15 @@ const AdminLayout = () => {
       revenue: point.revenue || 0,
     }));
     const hasPeriodData = chartData.length > 0;
-    const isZeroPeriod = (stats.period_orders ?? 0) === 0;
+    const isZeroPeriod = (stats.period_paid_orders ?? stats.period_orders ?? 0) === 0;
+    const totalPaidOrders = stats.total_paid_orders ?? stats.total_orders ?? 0;
+    const periodPaidOrders = stats.period_paid_orders ?? stats.period_orders ?? 0;
+    const totalOperationalOrders = stats.total_operational_orders ?? stats.total_orders ?? 0;
+    const periodOperationalOrders = stats.period_operational_orders ?? stats.period_orders ?? 0;
+    const periodTitle = getPeriodTitle();
+    const periodRangeLabel = getPeriodRangeLabel();
+    const periodRevenue = stats.period_revenue ?? 0;
+    const totalRevenue = stats.total_revenue ?? 0;
 
     return (
       <div className="space-y-6" data-testid="admin-dashboard">
@@ -298,15 +425,16 @@ const AdminLayout = () => {
           <div className="bg-white rounded-xl p-6 card-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
+                <p className="text-sm text-muted-foreground">{periodTitle} Revenue</p>
                 <p className="text-3xl font-heading mt-1" data-testid="total-revenue">
-                  ₹{stats.total_revenue?.toLocaleString()}
+                  {formatCurrency(periodRevenue)}
                 </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.14em] text-foreground/45">
-                  {period === 'monthly'
-                    ? `${formatMonthLabel(selectedMonth)}: ₹${(stats.period_revenue ?? 0).toLocaleString()}`
-                    : `${getRevenueTitle()}: ₹${(stats.period_revenue ?? 0).toLocaleString()}`
-                  }
+                <p className="mt-2 text-xs font-medium text-foreground/45">
+                  {periodRangeLabel}
+                </p>
+                <p className="mt-3 text-xs font-medium text-foreground/45">Total Revenue</p>
+                <p className="mt-0.5 text-sm font-medium text-foreground/60">
+                  {formatCurrency(totalRevenue)}
                 </p>
               </div>
               <div className="w-12 h-12 bg-terracotta/10 rounded-full flex items-center justify-center">
@@ -318,12 +446,16 @@ const AdminLayout = () => {
           <div className="bg-white rounded-xl p-6 card-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Orders</p>
+                <p className="text-sm text-muted-foreground">{periodTitle} Paid Orders</p>
                 <p className="text-3xl font-heading mt-1" data-testid="total-orders">
-                  {stats.total_orders}
+                  {periodPaidOrders}
                 </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.14em] text-foreground/45">
-                  {period === 'custom' ? 'Custom Range' : period}: {stats.period_orders ?? 0}
+                <p className="mt-2 text-xs font-medium text-foreground/45">
+                  {periodRangeLabel}
+                </p>
+                <p className="mt-3 text-xs font-medium text-foreground/45">Total Paid Orders</p>
+                <p className="mt-0.5 text-sm font-medium text-foreground/60">
+                  {totalPaidOrders} <span className="text-xs text-foreground/40">· Period orders: {periodOperationalOrders}</span>
                 </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -368,15 +500,11 @@ const AdminLayout = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-heading text-lg">{getRevenueTitle()}</h3>
               <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">
-                {period === 'custom' && appliedCustomRange.start && appliedCustomRange.end
-                  ? `${appliedCustomRange.start} → ${appliedCustomRange.end}`
-                  : period === 'monthly' && selectedMonth
-                    ? formatMonthLabel(selectedMonth)
-                    : period}
+                {periodRangeLabel}
               </span>
             </div>
 
-            <div className="h-64 min-w-0">
+            <div className="h-64 min-h-[256px] min-w-[280px]">
               {!hasPeriodData || isZeroPeriod ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-[#FAF7F3] px-6 text-center">
                   <div className="max-w-md">
@@ -391,7 +519,7 @@ const AdminLayout = () => {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%" minWidth={280}>
-                  <AreaChart data={chartData}>
+                  <AreaChart data={chartData} width={560} height={256}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E6E1DC" />
                     <XAxis dataKey="date" stroke="#57534E" fontSize={12} />
                     <YAxis stroke="#57534E" fontSize={12} />
@@ -432,14 +560,8 @@ const AdminLayout = () => {
                 Object.entries(stats.orders_by_status || {}).map(([status, count]) => (
                   <div key={status} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className={`w-3 h-3 rounded-full ${
-                        status === 'delivered' ? 'bg-green-500' :
-                        status === 'shipped' ? 'bg-indigo-500' :
-                        status === 'packed' ? 'bg-purple-500' :
-                        status === 'confirmed' ? 'bg-blue-500' :
-                        'bg-yellow-500'
-                      }`} />
-                      <span className="capitalize">{status}</span>
+                      <span className={`w-3 h-3 rounded-full ${getStatusDotColor(status)}`} />
+                      <span>{getOrderStatusLabel(status)}</span>
                     </div>
                     <span className="font-medium">{count}</span>
                   </div>
@@ -468,13 +590,14 @@ const AdminLayout = () => {
                 </div>
               </div>
             ) : (
-              <table className="min-w-[760px] w-full">
+              <table className="min-w-[920px] w-full">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Order ID</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Customer</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Items</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Total</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Payment</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
                   </tr>
                 </thead>
@@ -486,8 +609,21 @@ const AdminLayout = () => {
                       <td className="py-3 px-4">{order.items?.length} items</td>
                       <td className="py-3 px-4">₹{order.total_price?.toLocaleString()}</td>
                       <td className="py-3 px-4">
+                        <div className="space-y-1.5">
+                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getPaymentStatusClass(order.payment_status)}`}>
+                            {getPaymentStatusLabel(order.payment_status)}
+                          </span>
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {getPaymentProviderLabel(order.payment_provider || order.payment_method)}
+                            {order.payment_method && order.payment_method !== order.payment_provider
+                              ? ` / ${getPaymentProviderLabel(order.payment_method)}`
+                              : ''}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
                         <span className={`text-xs px-2 py-1 rounded-full status-${order.status}`}>
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          {getOrderStatusLabel(order.status)}
                         </span>
                       </td>
                     </tr>
@@ -639,13 +775,107 @@ const AdminLayout = () => {
               </h1>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
+            {isDashboardPage && (
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
+                    <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">View</span>
+                    <select
+                      value={period}
+                      onChange={(e) => setPeriod(e.target.value)}
+                      className="bg-transparent outline-none text-foreground font-medium cursor-pointer"
+                    >
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="yearly">Yearly</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+
+                </div>
+
+                {period === 'custom' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="date"
+                      value={customRange.start}
+                      onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
+                      className="border border-border/60 rounded-lg px-2 py-1 text-sm bg-white"
+                    />
+                    <span className="text-muted-foreground text-xs">to</span>
+                    <input
+                      type="date"
+                      value={customRange.end}
+                      onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
+                      className="border border-border/60 rounded-lg px-2 py-1 text-sm bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedCustomRange({
+                          start: customRange.start,
+                          end: customRange.end,
+                        });
+                      }}
+                      disabled={
+                        !customRange.start ||
+                        !customRange.end ||
+                        statsLoading ||
+                        (appliedCustomRange.start === customRange.start &&
+                          appliedCustomRange.end === customRange.end)
+                      }
+                      className="rounded-full border border-border/60 bg-white px-4 py-2 text-sm font-medium text-foreground transition hover:bg-white/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Apply Range
+                    </button>
+                  </div>
+                )}
+
+                {period === 'monthly' && (
+                  <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)] whitespace-nowrap">
+                    <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">Month</span>
+                    <input
+                      type="month"
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      max={currentMonth}
+                      title="Future months are not available yet"
+                      className="bg-transparent outline-none text-foreground font-medium cursor-pointer"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={
+                    exportLoading ||
+                    (period === 'monthly' && !selectedMonth) ||
+                    (period === 'custom' &&
+                      (!appliedCustomRange.start || !appliedCustomRange.end))
+                  }
+                  className="flex items-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exportLoading ? 'Exporting...' : 'Export Data'}
+                </button>
+
+                <div className="hidden md:flex items-center gap-2 rounded-full border border-border/60 bg-white/80 px-4 py-2 text-sm text-foreground/70 shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
+                  Admin Active
+                </div>
+              </div>
+            )}
+          </div>
+
+          {isDashboardPage && (
+            <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border/60 bg-white p-4 shadow-[0_8px_24px_rgba(0,0,0,0.04)] lg:hidden">
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm">
                 <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">View</span>
                 <select
                   value={period}
                   onChange={(e) => setPeriod(e.target.value)}
-                  className="bg-transparent outline-none text-foreground font-medium cursor-pointer"
+                  className="min-w-0 flex-1 bg-transparent outline-none text-foreground font-medium cursor-pointer"
                 >
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
@@ -655,20 +885,20 @@ const AdminLayout = () => {
                 </select>
               </div>
 
+              <p className="px-4 text-[11px] text-foreground/45">{getPeriodRangeLabel()}</p>
               {period === 'custom' && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-col gap-2">
                   <input
                     type="date"
                     value={customRange.start}
                     onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
-                    className="border border-border/60 rounded-lg px-2 py-1 text-sm bg-white"
+                    className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
                   />
-                  <span className="text-muted-foreground text-xs">to</span>
                   <input
                     type="date"
                     value={customRange.end}
                     onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
-                    className="border border-border/60 rounded-lg px-2 py-1 text-sm bg-white"
+                    className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
                   />
                   <button
                     type="button"
@@ -693,125 +923,39 @@ const AdminLayout = () => {
               )}
 
               {period === 'monthly' && (
-                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-white px-4 py-2 text-sm shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
-                  <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">Month</span>
-                  <input
-                    type="month"
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    max={currentMonth}
-                    title="Future months are not available yet"
-                    className="bg-transparent outline-none text-foreground font-medium cursor-pointer"
-                  />
-                </div>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  max={currentMonth}
+                  title="Future months are not available yet"
+                  className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1] text-foreground font-medium"
+                />
               )}
 
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={
-                  exportLoading ||
-                  (period === 'monthly' && !selectedMonth) ||
-                  (period === 'custom' &&
-                    (!appliedCustomRange.start || !appliedCustomRange.end))
-                }
-                className="flex items-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {exportLoading ? 'Exporting...' : 'Export Data'}
-              </button>
-
-              <div className="hidden md:flex items-center gap-2 rounded-full border border-border/60 bg-white/80 px-4 py-2 text-sm text-foreground/70 shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
-                Admin Active
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border/60 bg-white p-4 shadow-[0_8px_24px_rgba(0,0,0,0.04)] lg:hidden">
-            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm">
-              <span className="text-xs uppercase tracking-[0.16em] text-foreground/45">View</span>
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent outline-none text-foreground font-medium cursor-pointer"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="yearly">Yearly</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
-
-            {period === 'custom' && (
-              <div className="flex flex-col gap-2">
-                <input
-                  type="date"
-                  value={customRange.start}
-                  onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
-                  className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
-                />
-                <input
-                  type="date"
-                  value={customRange.end}
-                  onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
-                  className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1]"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                   type="button"
-                  onClick={() => {
-                    setAppliedCustomRange({
-                      start: customRange.start,
-                      end: customRange.end,
-                    });
-                  }}
+                  onClick={handleExport}
                   disabled={
-                    !customRange.start ||
-                    !customRange.end ||
-                    statsLoading ||
-                    (appliedCustomRange.start === customRange.start &&
-                      appliedCustomRange.end === customRange.end)
+                    exportLoading ||
+                    (period === 'monthly' && !selectedMonth) ||
+                    (period === 'custom' &&
+                      (!appliedCustomRange.start || !appliedCustomRange.end))
                   }
-                  className="rounded-full border border-border/60 bg-white px-4 py-2 text-sm font-medium text-foreground transition hover:bg-white/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply Range
+                  {exportLoading ? 'Exporting...' : 'Export Data'}
                 </button>
-              </div>
-            )}
-
-            {period === 'monthly' && (
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                max={currentMonth}
-                title="Future months are not available yet"
-                className="border border-border/60 rounded-lg px-3 py-2 text-sm bg-[#F8F5F1] text-foreground font-medium"
-              />
-            )}
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={
-                  exportLoading ||
-                  (period === 'monthly' && !selectedMonth) ||
-                  (period === 'custom' &&
-                    (!appliedCustomRange.start || !appliedCustomRange.end))
-                }
-                className="flex items-center justify-center gap-2 rounded-full bg-foreground text-primary-foreground px-5 py-2 text-sm font-medium shadow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {exportLoading ? 'Exporting...' : 'Export Data'}
-              </button>
-              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm text-foreground/70">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
-                Admin Active
+                <div className="inline-flex items-center justify-center gap-2 rounded-full border border-border/60 bg-[#F8F5F1] px-4 py-2 text-sm text-foreground/70">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
+                  Admin Active
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {location.pathname === '/admin' ? <DashboardOverview /> : <Outlet />}
+          {isDashboardPage ? <DashboardOverview /> : <Outlet />}
         </div>
       </main>
 

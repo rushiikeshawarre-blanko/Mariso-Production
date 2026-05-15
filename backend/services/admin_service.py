@@ -8,7 +8,22 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 from io import BytesIO
-from core.constants import MAX_LIMIT
+from core.constants import (
+    MAX_LIMIT,
+    ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_DELIVERED,
+    ORDER_STATUS_PACKED,
+    ORDER_STATUS_SHIPPED,
+    PAYMENT_STATUS_PAID,
+)
+
+
+LEGACY_REVENUE_STATUSES = [
+    ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_PACKED,
+    ORDER_STATUS_SHIPPED,
+    ORDER_STATUS_DELIVERED,
+]
 
 
 # Helper functions for dashboard-style date filtering (Excel export & dashboard)
@@ -104,6 +119,44 @@ def build_order_period_filter(
         }
     }
 
+
+def build_revenue_order_filter() -> dict:
+    return {
+        "$or": [
+            {"payment_status": PAYMENT_STATUS_PAID},
+            {
+                "payment_status": None,
+                "status": {"$in": LEGACY_REVENUE_STATUSES},
+            },
+        ]
+    }
+
+
+def combine_filters(*filters: dict) -> dict:
+    active_filters = [filter_item for filter_item in filters if filter_item]
+    if not active_filters:
+        return {}
+    if len(active_filters) == 1:
+        return active_filters[0]
+    return {"$and": active_filters}
+
+
+def is_revenue_eligible_order(order: dict) -> bool:
+    if order.get("payment_status") == PAYMENT_STATUS_PAID:
+        return True
+    if order.get("payment_status") in (None, "") and order.get("status") in LEGACY_REVENUE_STATUSES:
+        return True
+    return False
+
+
+def normalize_admin_payment_fields(order: dict) -> dict:
+    if not order.get("payment_provider"):
+        order["payment_provider"] = order.get("payment_method") or "manual_legacy"
+    if not order.get("payment_status") and is_revenue_eligible_order(order):
+        order["payment_status"] = PAYMENT_STATUS_PAID
+    return order
+
+
 async def get_dashboard_stats_service(
     period: str = "weekly",
     start_date: Optional[str] = None,
@@ -112,22 +165,27 @@ async def get_dashboard_stats_service(
 ):
     period = (period or "weekly").lower().strip()
     match_filter = build_order_period_filter(period, start_date, end_date, month)
+    revenue_filter = build_revenue_order_filter()
+    period_revenue_filter = combine_filters(match_filter, revenue_filter)
 
     overall_revenue_pipeline = [
+        {"$match": revenue_filter},
         {"$group": {"_id": None, "total": {"$sum": "$total_price"}}}
     ]
     overall_revenue_result = await db.orders.aggregate(overall_revenue_pipeline).to_list(1)
     total_revenue = overall_revenue_result[0]["total"] if overall_revenue_result else 0
 
-    period_revenue_pipeline = []
-    if match_filter:
-        period_revenue_pipeline.append({"$match": match_filter})
-    period_revenue_pipeline.append({"$group": {"_id": None, "total": {"$sum": "$total_price"}}})
+    period_revenue_pipeline = [
+        {"$match": period_revenue_filter},
+        {"$group": {"_id": None, "total": {"$sum": "$total_price"}}},
+    ]
     period_revenue_result = await db.orders.aggregate(period_revenue_pipeline).to_list(1)
     period_revenue = period_revenue_result[0]["total"] if period_revenue_result else 0
 
-    total_orders = await db.orders.count_documents({})
-    period_orders = await db.orders.count_documents(match_filter or {})
+    total_paid_orders = await db.orders.count_documents(revenue_filter)
+    period_paid_orders = await db.orders.count_documents(period_revenue_filter)
+    total_operational_orders = await db.orders.count_documents({})
+    period_operational_orders = await db.orders.count_documents(match_filter or {})
     total_products = await db.products.count_documents({})
     total_customers = await db.users.count_documents({"role": "user"})
 
@@ -152,15 +210,14 @@ async def get_dashboard_stats_service(
         if user:
             order["user_name"] = user.get("name", "")
             order["user_email"] = user.get("email", "")
+        normalize_admin_payment_fields(order)
 
     if period == "yearly":
         group_id = {"$substr": ["$created_at", 0, 7]}
     else:
         group_id = {"$substr": ["$created_at", 0, 10]}
 
-    period_pipeline = []
-    if match_filter:
-        period_pipeline.append({"$match": match_filter})
+    period_pipeline = [{"$match": period_revenue_filter}]
     period_pipeline.extend([
         {
             "$group": {
@@ -181,11 +238,15 @@ async def get_dashboard_stats_service(
         "range_start": start_dt.isoformat() if start_dt else None,
         "range_end": end_dt.isoformat() if end_dt else None,
         "total_revenue": total_revenue,
-        "total_orders": total_orders,
+        "total_orders": total_paid_orders,
+        "total_paid_orders": total_paid_orders,
+        "total_operational_orders": total_operational_orders,
         "total_products": total_products,
         "total_customers": total_customers,
         "period_revenue": period_revenue,
-        "period_orders": period_orders,
+        "period_orders": period_paid_orders,
+        "period_paid_orders": period_paid_orders,
+        "period_operational_orders": period_operational_orders,
         "orders_by_status": orders_by_status,
         "recent_orders": recent_orders,
         "period_stats": period_stats,
@@ -227,7 +288,10 @@ async def export_orders_excel_service(
         "Coupon Code",
         "Final Order Value",
         "Payment Method",
+        "Payment Provider",
         "Payment Status",
+        "Revenue Eligible",
+        "Revenue Amount",
         "Order Status",
         "Delivery Date",
         "Delivery Time",
@@ -245,6 +309,7 @@ async def export_orders_excel_service(
 
     row_num = 2
     for order in orders:
+        normalize_admin_payment_fields(order)
         created_at = order.get("created_at", "")
         order_date = ""
         order_time = ""
@@ -262,6 +327,9 @@ async def export_orders_excel_service(
         coupon_code = order.get("coupon_code", "")
         delivery_charges = order.get("delivery_charges", 0)
         payment_status = order.get("payment_status", "")
+        payment_provider = order.get("payment_provider", "")
+        revenue_eligible = is_revenue_eligible_order(order)
+        revenue_amount = order.get("total_price", 0) if revenue_eligible else 0
         delivery_date = order.get("delivery_date", "")
         delivery_time = order.get("delivery_time", "")
 
@@ -298,7 +366,10 @@ async def export_orders_excel_service(
                 coupon_code,
                 order.get("total_price", 0),
                 order.get("payment_method", ""),
+                payment_provider,
                 payment_status,
+                "Yes" if revenue_eligible else "No",
+                revenue_amount,
                 order.get("status", ""),
                 delivery_date,
                 delivery_time,
@@ -312,7 +383,7 @@ async def export_orders_excel_service(
     column_widths = {
         1: 16, 2: 14, 3: 12, 4: 24, 5: 18, 6: 28, 7: 34, 8: 18, 9: 12,
         10: 28, 11: 22, 12: 10, 13: 14, 14: 18, 15: 16, 16: 16, 17: 16,
-        18: 18, 19: 16, 20: 16, 21: 16, 22: 14, 23: 14,
+        18: 18, 19: 16, 20: 18, 21: 16, 22: 16, 23: 16, 24: 16, 25: 14, 26: 14,
     }
     for col_index, width in column_widths.items():
         sheet.column_dimensions[get_column_letter(col_index)].width = width
