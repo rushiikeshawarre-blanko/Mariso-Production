@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Heart, ShoppingBag } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -7,6 +7,17 @@ import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { addToWishlist, removeFromWishlist } from '../../lib/api';
 
+
+const hasActiveOptions = (options) => Array.isArray(options) && options.some((option) => option?.is_active !== false);
+
+const requiresProductOptions = (product) => {
+  const hasActiveVariants = Array.isArray(product.variants) && product.variants.some((variant) => variant?.is_active !== false);
+  const hasColorOptions = Boolean(product.has_color_options && hasActiveOptions(product.color_options));
+  const hasFlavorOptions = Boolean(product.has_flavor_options && hasActiveOptions(product.flavor_options));
+  const hasFragranceOptions = hasActiveOptions(product.fragrance_options);
+
+  return hasActiveVariants || hasColorOptions || hasFlavorOptions || hasFragranceOptions;
+};
 
 export const ProductCard = ({
   product,
@@ -16,6 +27,7 @@ export const ProductCard = ({
 }) => {
   const { addItem } = useCart();
   const { isAuthenticated, loginWithRedirect } = useAuth0();
+  const navigate = useNavigate();
 
   const [isWishlisted, setIsWishlisted] = useState(initialIsWishlisted);
   const [isWishlistAnimating, setIsWishlistAnimating] = useState(false);
@@ -26,11 +38,13 @@ export const ProductCard = ({
   const originalPrice = product.is_on_sale && product.discount_price ? product.price : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
 
-  const totalVariantStock = Array.isArray(product.variants)
-    ? product.variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0)
-    : 0;
+  const activeVariants = Array.isArray(product.variants)
+    ? product.variants.filter((variant) => variant?.is_active !== false)
+    : [];
+  const totalVariantStock = activeVariants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0);
 
-  const hasVariants = Array.isArray(product.variants) && product.variants.length > 0;
+  const hasVariants = activeVariants.length > 0;
+  const shouldChooseOptions = requiresProductOptions(product);
   const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
   const isOutOfStock = effectiveStock <= 0;
 
@@ -48,6 +62,12 @@ export const ProductCard = ({
   const handleAddToCart = (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (shouldChooseOptions) {
+      navigate(`/product/${product.id}`);
+      return;
+    }
+
     addItem(product);
     toast.success('Added to cart', {
       description: product.name
@@ -154,7 +174,7 @@ export const ProductCard = ({
           <button
             onClick={handleAddToCart}
             className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
-            title="Quick Add to Cart"
+            title={shouldChooseOptions ? 'Choose Options' : 'Quick Add to Cart'}
             data-testid={`${testIdPrefix}-quick-cart-icon-${product.id}`}
           >
             <ShoppingBag className="h-4 w-4" strokeWidth={1.5} />
@@ -170,7 +190,7 @@ export const ProductCard = ({
             data-testid={`${testIdPrefix}-add-to-cart`}
           >
             <ShoppingBag className="h-4 w-4 mr-2" strokeWidth={1.5} />
-            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+            {isOutOfStock ? 'Out of Stock' : shouldChooseOptions ? 'Choose Options' : 'Add to Cart'}
           </Button>
         </div>
       </div>
