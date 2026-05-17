@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 
 from core.constants import MAX_LIMIT, PAYMENT_STATUS_PAID
 from core.database import db
-from models.coupon import CouponCreate, CouponUpdate, CouponValidationRequest
+from models.coupon import AvailableCouponsRequest, CouponCreate, CouponUpdate, CouponValidationRequest
 
 
 def _now_iso() -> str:
@@ -37,6 +37,11 @@ def _coupon_snapshot(coupon: dict) -> dict:
         "code": coupon["code"],
         "coupon_type": coupon.get("coupon_type", "general"),
         "description": coupon.get("description", ""),
+        "visibility": coupon.get("visibility", "private"),
+        "display_title": coupon.get("display_title", ""),
+        "display_description": coupon.get("display_description", ""),
+        "show_on_cart": coupon.get("show_on_cart", True),
+        "show_on_checkout": coupon.get("show_on_checkout", True),
         "discount_type": coupon["discount_type"],
         "discount_value": coupon["discount_value"],
         "max_discount_amount": coupon.get("max_discount_amount"),
@@ -60,6 +65,10 @@ def _validate_coupon_dates(start_date: Optional[str], end_date: Optional[str]) -
 
 
 def _validate_effective_coupon(coupon: dict) -> None:
+    visibility = coupon.get("visibility", "private")
+    if visibility not in {"public", "private", "influencer"}:
+        raise HTTPException(status_code=400, detail="Invalid visibility")
+
     discount_type = coupon.get("discount_type")
     discount_value = coupon.get("discount_value")
     if discount_type == "percentage":
@@ -182,6 +191,10 @@ def _calculate_subtotals(coupon: dict, items: list) -> tuple[float, float]:
     return _round_money(cart_subtotal), _round_money(eligible_subtotal)
 
 
+def _format_money(value: float) -> str:
+    return f"₹{_round_money(value):,.2f}"
+
+
 async def _customer_usage_count(coupon_id: str, request: CouponValidationRequest) -> int:
     identifiers = []
     if request.user_id:
@@ -217,32 +230,28 @@ async def _customer_usage_count(coupon_id: str, request: CouponValidationRequest
     })
 
 
-async def validate_coupon(request: CouponValidationRequest) -> dict:
-    coupon = await db.coupons.find_one({"code": request.code, "deleted_at": {"$exists": False}}, {"_id": 0})
-    if not coupon:
-        return {"valid": False, "message": "Coupon not found"}
-
+async def _evaluate_coupon(coupon: dict, request: CouponValidationRequest, *, locked_minimum: bool = False) -> dict:
     now = datetime.now(timezone.utc)
     start = _parse_iso_datetime(coupon.get("start_date"))
     end = _parse_iso_datetime(coupon.get("end_date"))
 
     if not coupon.get("is_active", True):
-        return {"valid": False, "message": "Coupon is inactive"}
+        return {"valid": False, "message": "Coupon is inactive", "hide_from_available": True}
     if start and now < start:
-        return {"valid": False, "message": "Coupon is not active yet"}
+        return {"valid": False, "message": "Coupon is not active yet", "hide_from_available": True}
     if end and now > end:
-        return {"valid": False, "message": "Coupon has expired"}
+        return {"valid": False, "message": "Coupon has expired", "hide_from_available": True}
 
     usage_limit_total = coupon.get("usage_limit_total")
     used_count = coupon.get("used_count", 0)
     if usage_limit_total is not None and used_count >= usage_limit_total:
-        return {"valid": False, "message": "Coupon usage limit reached"}
+        return {"valid": False, "message": "Coupon usage limit reached", "hide_from_available": True}
 
     usage_limit_per_customer = coupon.get("usage_limit_per_customer")
     if usage_limit_per_customer is not None:
         customer_used_count = await _customer_usage_count(coupon["id"], request)
         if customer_used_count >= usage_limit_per_customer:
-            return {"valid": False, "message": "Coupon usage limit reached for this customer"}
+            return {"valid": False, "message": "Coupon usage limit reached for this customer", "hide_from_available": True}
 
     cart_subtotal, eligible_subtotal = _calculate_subtotals(coupon, request.items)
     if eligible_subtotal <= 0:
@@ -250,9 +259,17 @@ async def validate_coupon(request: CouponValidationRequest) -> dict:
 
     minimum_order_amount = coupon.get("minimum_order_amount") or 0
     if eligible_subtotal < minimum_order_amount:
+        shortfall = _round_money(minimum_order_amount - eligible_subtotal)
+        message = (
+            f"Add {_format_money(shortfall)} more to unlock this coupon"
+            if locked_minimum
+            else f"Minimum eligible amount for this coupon is {minimum_order_amount}"
+        )
         return {
             "valid": False,
-            "message": f"Minimum eligible amount for this coupon is {minimum_order_amount}",
+            "message": message,
+            "eligible_subtotal": eligible_subtotal,
+            "cart_subtotal": cart_subtotal,
         }
 
     if coupon["discount_type"] == "percentage":
@@ -277,6 +294,55 @@ async def validate_coupon(request: CouponValidationRequest) -> dict:
         "message": "Coupon applied successfully",
         "coupon_snapshot": _coupon_snapshot(coupon),
     }
+
+
+async def validate_coupon(request: CouponValidationRequest) -> dict:
+    coupon = await db.coupons.find_one({"code": request.code, "deleted_at": {"$exists": False}}, {"_id": 0})
+    if not coupon:
+        return {"valid": False, "message": "Coupon not found"}
+
+    return await _evaluate_coupon(coupon, request)
+
+
+async def get_available_coupons(request: AvailableCouponsRequest) -> List[dict]:
+    surface_field = "show_on_cart" if request.surface == "cart" else "show_on_checkout"
+    query = {
+        "deleted_at": {"$exists": False},
+        "is_active": True,
+        "visibility": "public",
+        "$or": [{surface_field: True}, {surface_field: {"$exists": False}}],
+    }
+    coupons = await db.coupons.find(query, {"_id": 0}).sort("created_at", -1).to_list(MAX_LIMIT)
+    available = []
+
+    for coupon in coupons:
+        validation_request = CouponValidationRequest(
+            code=coupon["code"],
+            items=request.items,
+            user_id=request.user_id,
+            email=request.email,
+            phone=request.phone,
+        )
+        result = await _evaluate_coupon(coupon, validation_request, locked_minimum=True)
+        if result.get("hide_from_available"):
+            continue
+
+        available.append({
+            "code": coupon["code"],
+            "coupon_id": coupon["id"],
+            "display_title": coupon.get("display_title") or coupon.get("description") or coupon["code"],
+            "display_description": coupon.get("display_description") or coupon.get("description", ""),
+            "discount_type": coupon["discount_type"],
+            "discount_value": coupon["discount_value"],
+            "discount_amount": result.get("discount_amount"),
+            "eligible_subtotal": result.get("eligible_subtotal"),
+            "cart_subtotal": result.get("cart_subtotal"),
+            "final_total": result.get("final_total"),
+            "is_applicable": bool(result.get("valid")),
+            "message": "Coupon available" if result.get("valid") else result.get("message", "Coupon unavailable"),
+        })
+
+    return available
 
 
 async def increment_coupon_usage(coupon_id: Optional[str] = None, coupon_code: Optional[str] = None) -> bool:

@@ -21,4 +21,6 @@ async def create_indexes(db):
     await db.coupons.create_index("id", unique=True)
     await db.coupons.create_index("code", unique=True)
     await db.coupons.create_index("is_active")
+    await db.coupons.create_index("visibility")
+    await db.coupons.create_index([("visibility", 1), ("is_active", 1)])
     await db.coupons.create_index([("start_date", 1), ("end_date", 1)])

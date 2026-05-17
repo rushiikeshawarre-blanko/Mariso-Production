@@ -284,6 +284,16 @@ export const validateCoupon = async (couponData) => {
   }
 };
 
+export const getAvailableCoupons = async (couponData) => {
+  try {
+    const response = await axiosInstance.post(`/coupons/available`, couponData);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching available coupons:', error);
+    throw error;
+  }
+};
+
 export const getUserOrders = async () => {
   try {
     const response = await axiosInstance.get(`/orders`);

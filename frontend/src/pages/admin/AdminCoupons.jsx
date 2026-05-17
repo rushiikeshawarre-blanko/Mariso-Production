@@ -21,6 +21,11 @@ const initialFormState = {
   code: '',
   coupon_type: 'general',
   description: '',
+  visibility: 'private',
+  display_title: '',
+  display_description: '',
+  show_on_cart: true,
+  show_on_checkout: true,
   discount_type: 'percentage',
   discount_value: '',
   max_discount_amount: '',
@@ -42,6 +47,12 @@ const COUPON_TYPE_LABELS = {
   influencer: 'Influencer',
   personal: 'Personal',
   recovery: 'Recovery',
+};
+
+const VISIBILITY_LABELS = {
+  public: 'Public',
+  private: 'Private',
+  influencer: 'Influencer',
 };
 
 const APPLIES_TO_LABELS = {
@@ -175,6 +186,11 @@ const AdminCoupons = () => {
       code: coupon.code || '',
       coupon_type: coupon.coupon_type || 'general',
       description: coupon.description || '',
+      visibility: coupon.visibility || 'private',
+      display_title: coupon.display_title || '',
+      display_description: coupon.display_description || '',
+      show_on_cart: coupon.show_on_cart !== false,
+      show_on_checkout: coupon.show_on_checkout !== false,
       discount_type: coupon.discount_type || 'percentage',
       discount_value: coupon.discount_value ?? '',
       max_discount_amount: coupon.max_discount_amount ?? '',
@@ -262,6 +278,11 @@ const AdminCoupons = () => {
     code: formData.code.trim().toUpperCase(),
     coupon_type: formData.coupon_type,
     description: formData.description.trim(),
+    visibility: formData.visibility,
+    display_title: formData.display_title.trim(),
+    display_description: formData.display_description.trim(),
+    show_on_cart: formData.show_on_cart,
+    show_on_checkout: formData.show_on_checkout,
     discount_type: formData.discount_type,
     discount_value: Number(formData.discount_value),
     max_discount_amount: formData.discount_type === 'percentage'
@@ -346,6 +367,8 @@ const AdminCoupons = () => {
       coupon.code?.toLowerCase().includes(query) ||
       coupon.description?.toLowerCase().includes(query) ||
       coupon.coupon_type?.toLowerCase().includes(query) ||
+      coupon.visibility?.toLowerCase().includes(query) ||
+      coupon.display_title?.toLowerCase().includes(query) ||
       coupon.influencer_name?.toLowerCase().includes(query) ||
       coupon.influencer_handle?.toLowerCase().includes(query)
     );
@@ -443,6 +466,69 @@ const AdminCoupons = () => {
                   placeholder="Short internal description"
                   className="mt-1"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <Label htmlFor="visibility">Visibility</Label>
+                  <select
+                    id="visibility"
+                    name="visibility"
+                    value={formData.visibility}
+                    onChange={handleChange}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="private">Private</option>
+                    <option value="public">Public</option>
+                    <option value="influencer">Influencer</option>
+                  </select>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm font-medium md:self-end">
+                  <input
+                    type="checkbox"
+                    name="show_on_cart"
+                    checked={formData.show_on_cart}
+                    onChange={handleChange}
+                  />
+                  Show on Cart
+                </label>
+
+                <label className="flex items-center gap-2 text-sm font-medium md:self-end">
+                  <input
+                    type="checkbox"
+                    name="show_on_checkout"
+                    checked={formData.show_on_checkout}
+                    onChange={handleChange}
+                  />
+                  Show on Checkout
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="display_title">Display Title</Label>
+                  <Input
+                    id="display_title"
+                    name="display_title"
+                    value={formData.display_title}
+                    onChange={handleChange}
+                    placeholder="10% off on all products"
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="display_description">Display Description</Label>
+                  <Input
+                    id="display_description"
+                    name="display_description"
+                    value={formData.display_description}
+                    onChange={handleChange}
+                    placeholder="Valid above ₹999"
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -705,11 +791,12 @@ const AdminCoupons = () => {
         ) : null}
 
         <div className="overflow-x-auto">
-          <Table className="min-w-[1120px]">
+          <Table className="min-w-[1220px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Visibility</TableHead>
                 <TableHead>Discount</TableHead>
                 <TableHead>Applies To</TableHead>
                 <TableHead>Validity</TableHead>
@@ -722,11 +809,11 @@ const AdminCoupons = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center">Loading coupons...</TableCell>
+                  <TableCell colSpan={10} className="py-8 text-center">Loading coupons...</TableCell>
                 </TableRow>
               ) : filteredCoupons.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <BadgePercent className="h-8 w-8 text-muted-foreground/60" />
                       <span>No coupons found.</span>
@@ -746,6 +833,11 @@ const AdminCoupons = () => {
                       ) : null}
                     </TableCell>
                     <TableCell>{COUPON_TYPE_LABELS[coupon.coupon_type] || coupon.coupon_type}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
+                        {VISIBILITY_LABELS[coupon.visibility || 'private'] || coupon.visibility}
+                      </span>
+                    </TableCell>
                     <TableCell className="font-medium">{getDiscountLabel(coupon)}</TableCell>
                     <TableCell>{APPLIES_TO_LABELS[coupon.applies_to] || coupon.applies_to}</TableCell>
                     <TableCell>
