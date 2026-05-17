@@ -14,7 +14,8 @@ import {
 } from '../components/ui/dialog';
 import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { getProducts } from '../lib/api';
+import { getAvailableCoupons, getProducts } from '../lib/api';
+import { formatINR } from '../lib/currency';
 
 const CartPage = () => {
   const { items, removeItem, updateQuantity, getCartCount } = useCart();
@@ -24,6 +25,9 @@ const CartPage = () => {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [stockMap, setStockMap] = useState({});
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [availableCouponsLoading, setAvailableCouponsLoading] = useState(false);
+  const [availableCouponsError, setAvailableCouponsError] = useState('');
 
   const GIFT_PACKAGING_PRICE = 149;
 
@@ -37,6 +41,19 @@ const CartPage = () => {
   const getCartStockKey = useCallback((item) => getCartItemKey(item), [getCartItemKey]);
 
   const normalizeVariantId = (value) => value ?? null;
+
+  const cartSignature = items
+    .map((item) => [
+      item.id,
+      item.variantId || '',
+      item.selectedColorId || '',
+      item.selectedFlavorId || '',
+      item.quantity,
+      item.is_on_sale && (item.sale_price || item.discount_price)
+        ? (item.sale_price || item.discount_price)
+        : item.price,
+    ].join(':'))
+    .join('|');
 
   const getCartItemImage = (item) => {
     const selectedColor = (item.color_options || []).find(
@@ -120,6 +137,56 @@ const CartPage = () => {
       setStockMap({});
     }
   }, [items, getCartStockKey]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const fetchAvailableCoupons = async () => {
+      if (items.length === 0) {
+        setAvailableCoupons([]);
+        return;
+      }
+
+      setAvailableCouponsLoading(true);
+      setAvailableCouponsError('');
+
+      try {
+        const couponItems = items.map((item) => ({
+          product_id: item.product_id || item.id || item.product?.id || '',
+          category_id: item.category_id || item.categoryId || item.product?.category_id || '',
+          quantity: item.quantity,
+          price: item.is_on_sale && (item.sale_price || item.discount_price)
+            ? (item.sale_price || item.discount_price)
+            : item.price,
+        }));
+
+        const result = await getAvailableCoupons({
+          items: couponItems,
+          surface: 'cart',
+        });
+
+        if (isCurrent) {
+          setAvailableCoupons(Array.isArray(result) ? result : result?.coupons || []);
+        }
+      } catch (error) {
+        console.error('Error fetching available coupons:', error);
+        if (isCurrent) {
+          setAvailableCoupons([]);
+          setAvailableCouponsError('Available offers could not be loaded.');
+        }
+      } finally {
+        if (isCurrent) {
+          setAvailableCouponsLoading(false);
+        }
+      }
+    };
+
+    fetchAvailableCoupons();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [cartSignature, items]);
 
   const getItemEffectivePrice = (item) => {
     return item.is_on_sale && (item.sale_price || item.discount_price)
@@ -409,6 +476,55 @@ const CartPage = () => {
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Including taxes</p>
                 </div>
+
+                {(availableCouponsLoading || availableCoupons.length > 0 || availableCouponsError) && (
+                  <div className="mb-8 border-t border-border pt-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                      <h3 className="text-sm font-medium">Available Offers</h3>
+                    </div>
+
+                    {availableCouponsLoading ? (
+                      <p className="text-sm text-muted-foreground">Checking offers...</p>
+                    ) : availableCouponsError ? (
+                      <p className="text-sm text-muted-foreground">{availableCouponsError}</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {availableCoupons.map((offer) => (
+                          <div
+                            key={offer.coupon_id || offer.code}
+                            className="rounded-lg border border-border bg-muted/20 p-3"
+                            data-testid={`cart-available-coupon-${offer.code}`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium">
+                                {offer.display_title || offer.code}
+                              </p>
+                              <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs text-[#52624C]">
+                                {offer.code}
+                              </span>
+                            </div>
+                            {offer.display_description ? (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {offer.display_description}
+                              </p>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className={`text-xs ${offer.is_applicable ? 'text-[#52624C]' : 'text-muted-foreground'}`}>
+                                {offer.message}
+                              </p>
+                              {offer.is_applicable && offer.discount_amount ? (
+                                <span className="text-xs font-medium text-[#52624C]">
+                                  Save {formatINR(offer.discount_amount)}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <Button 
                   onClick={() => setCheckoutDialogOpen(true)}
