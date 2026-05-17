@@ -274,6 +274,16 @@ export const getCashfreePaymentStatus = async (orderId) => {
   }
 };
 
+export const validateCoupon = async (couponData) => {
+  try {
+    const response = await axiosInstance.post(`/coupons/validate`, couponData);
+    return response.data;
+  } catch (error) {
+    console.error('Error validating coupon:', error);
+    throw error;
+  }
+};
+
 export const getUserOrders = async () => {
   try {
     const response = await axiosInstance.get(`/orders`);
