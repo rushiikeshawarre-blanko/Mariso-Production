@@ -217,10 +217,10 @@ const CheckoutPage = () => {
         billing_address: formData.address,
         billing_city: formData.city,
         billing_postal_code: formData.postalCode,
-        gift_packaging: giftPackaging
+        gift_packaging: giftPackaging,
+        coupon_code: appliedCoupon?.code || undefined,
       };
 
-      // TODO Phase 4: send coupon_code to Cashfree create-session and let backend recalculate final amount.
       const session = await createCashfreeSession(checkoutPayload);
       if (!session?.payment_session_id || !session?.order_id) {
         throw new Error('Payment session could not be created');
@@ -235,7 +235,17 @@ const CheckoutPage = () => {
       });
     } catch (error) {
       console.error('Error starting Cashfree checkout:', error);
-      toast.error('Unable to start secure payment. Please try again.');
+      const detail = error?.response?.data?.detail;
+      const message = typeof detail === 'string'
+        ? detail
+        : detail?.message || 'Unable to start secure payment. Please try again.';
+
+      if (appliedCoupon && message.toLowerCase().includes('coupon')) {
+        setCouponError(`${message} Remove or reapply the coupon.`);
+        toast.error(message);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -606,7 +616,7 @@ const CheckoutPage = () => {
                     </div>
                     {appliedCoupon && (
                       <p className="mt-2 text-xs text-muted-foreground">
-                        Coupon discount is a checkout preview. Payment amount is unchanged until final backend integration.
+                        Your secure payment total will include this coupon discount.
                       </p>
                     )}
                   </div>

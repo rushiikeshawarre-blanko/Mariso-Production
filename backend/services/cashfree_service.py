@@ -212,7 +212,7 @@ def create_cashfree_order_session(
     headers = _build_cashfree_headers(idempotency_key)
     payload = _build_cashfree_order_payload(
         order_id=order_id,
-        order_amount=order_amount,
+        order_amount=round(float(order_amount or 0), 2),
         customer_name=customer_name,
         customer_email=customer_email,
         customer_phone=customer_phone,

@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from typing import Optional, List, Dict
 from models.order import CashfreeCheckoutCreate, OrderCreate, OrderStatusUpdate
+from models.coupon import CouponValidationItem, CouponValidationRequest, normalize_coupon_code
 from core.database import db
 from core.config import STOCK_RESERVATION_MINUTES
 from core.constants import (
@@ -27,6 +28,7 @@ from core.constants import (
     VALID_PAYMENT_METHODS,
 )
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
+from services.coupon_service import increment_coupon_usage, validate_coupon
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
 import logging
@@ -59,6 +61,10 @@ def _payment_event(event_type: str, source: str = "system", **details) -> dict:
         "created_at": _now_iso(),
         **details,
     }
+
+
+def _round_money(value: float) -> float:
+    return round(max(float(value or 0), 0), 2)
 
 
 async def record_cashfree_webhook_event(
@@ -189,6 +195,14 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("customer_email_sent_at", None)
     order.setdefault("admin_email_sent_at", None)
     order.setdefault("whatsapp_sent_at", None)
+    order.setdefault("coupon_code", None)
+    order.setdefault("coupon_id", None)
+    order.setdefault("coupon_discount_amount", 0)
+    order.setdefault("eligible_subtotal", None)
+    order.setdefault("subtotal_before_discount", order.get("total_price"))
+    order.setdefault("total_after_discount", order.get("total_price"))
+    order.setdefault("coupon_snapshot", None)
+    order.setdefault("coupon_usage_recorded", False)
     order.setdefault("payment_events", [])
 
     return order
@@ -290,6 +304,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
 
         items_with_details.append({
             "product_id": item.product_id,
+            "category_id": product.get("category_id", ""),
             "variant_id": item.variant_id,
             "color_id": item.color_id,
             "color_name": color_name or "",
@@ -305,6 +320,70 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
         })
 
     return items_with_details, product_map
+
+
+async def _calculate_coupon_adjustment(
+    order_payload: CashfreeCheckoutCreate,
+    user: dict,
+    items_with_details: List[dict],
+    calculated_total: float,
+) -> dict:
+    base_amounts = {
+        "coupon_code": None,
+        "coupon_id": None,
+        "coupon_discount_amount": 0,
+        "eligible_subtotal": None,
+        "subtotal_before_discount": _round_money(calculated_total),
+        "total_after_discount": _round_money(
+            calculated_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+        ),
+        "coupon_snapshot": None,
+    }
+
+    coupon_code = (order_payload.coupon_code or "").strip()
+    if not coupon_code:
+        return base_amounts
+
+    validation_items = [
+        CouponValidationItem(
+            product_id=item["product_id"],
+            category_id=item.get("category_id") or "",
+            quantity=item["quantity"],
+            price=item["price"],
+        )
+        for item in items_with_details
+    ]
+
+    validation = await validate_coupon(
+        CouponValidationRequest(
+            code=normalize_coupon_code(coupon_code),
+            items=validation_items,
+            user_id=user.get("id"),
+            email=order_payload.billing_email,
+            phone=order_payload.billing_phone,
+        )
+    )
+
+    if not validation.get("valid"):
+        raise HTTPException(
+            status_code=400,
+            detail="Coupon is no longer valid. Please remove it and try again.",
+        )
+
+    discounted_items_total = _round_money(validation.get("final_total", calculated_total))
+    final_payable = _round_money(
+        discounted_items_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+    )
+
+    return {
+        "coupon_code": validation.get("code"),
+        "coupon_id": validation.get("coupon_id"),
+        "coupon_discount_amount": _round_money(validation.get("discount_amount", 0)),
+        "eligible_subtotal": _round_money(validation.get("eligible_subtotal", 0)),
+        "subtotal_before_discount": _round_money(validation.get("cart_subtotal", calculated_total)),
+        "total_after_discount": final_payable,
+        "coupon_snapshot": validation.get("coupon_snapshot"),
+    }
 
 
 async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict[str, dict]) -> None:
@@ -760,12 +839,19 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
     if not items_with_details:
         raise HTTPException(status_code=400, detail="No valid items in order")
 
+    coupon_amounts = await _calculate_coupon_adjustment(
+        order_payload,
+        user,
+        items_with_details,
+        calculated_total,
+    )
+
     await reserve_stock_for_order_items(items_with_details, product_map)
 
     now_dt = datetime.now(timezone.utc)
     created_at = now_dt.isoformat()
     reserved_until = (now_dt + timedelta(minutes=STOCK_RESERVATION_MINUTES)).isoformat()
-    final_total = calculated_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+    final_total = coupon_amounts["total_after_discount"]
     formatted_phone = format_phone(order_payload.billing_phone or "")
 
     order_doc = {
@@ -805,6 +891,14 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
             )
         ],
         "gift_packaging": order_payload.gift_packaging,
+        "coupon_code": coupon_amounts["coupon_code"],
+        "coupon_id": coupon_amounts["coupon_id"],
+        "coupon_discount_amount": coupon_amounts["coupon_discount_amount"],
+        "eligible_subtotal": coupon_amounts["eligible_subtotal"],
+        "subtotal_before_discount": coupon_amounts["subtotal_before_discount"],
+        "total_after_discount": coupon_amounts["total_after_discount"],
+        "coupon_snapshot": coupon_amounts["coupon_snapshot"],
+        "coupon_usage_recorded": False,
         "total_price": final_total,
         "status": ORDER_STATUS_PENDING_PAYMENT,
         "created_at": created_at,
@@ -847,6 +941,53 @@ async def attach_cashfree_session(order_id: str, cashfree_data: dict):
     )
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+
+async def _record_coupon_usage_once(order_id: str, source: str) -> None:
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order or not (order.get("coupon_id") or order.get("coupon_code")):
+        return
+
+    result = await db.orders.update_one(
+        {
+            "id": order_id,
+            "payment_status": PAYMENT_STATUS_PAID,
+            "coupon_usage_recorded": {"$ne": True},
+            "$or": [
+                {"coupon_id": {"$type": "string", "$gt": ""}},
+                {"coupon_code": {"$type": "string", "$gt": ""}},
+            ],
+        },
+        {
+            "$set": {
+                "coupon_usage_recorded": True,
+                "coupon_usage_recorded_at": _now_iso(),
+                "updated_at": _now_iso(),
+            },
+            "$push": {
+                "payment_events": _payment_event(
+                    "coupon_usage_recorded",
+                    source,
+                    coupon_id=order.get("coupon_id"),
+                    coupon_code=order.get("coupon_code"),
+                )
+            },
+        },
+    )
+    if result.modified_count == 0:
+        return
+
+    incremented = await increment_coupon_usage(
+        coupon_id=order.get("coupon_id"),
+        coupon_code=order.get("coupon_code"),
+    )
+    if not incremented:
+        logger.error(
+            "Coupon usage claim recorded but coupon increment failed for order_id=%s coupon_id=%s coupon_code=%s",
+            order_id,
+            order.get("coupon_id"),
+            order.get("coupon_code"),
+        )
 
 
 def _is_reservation_valid(order: dict) -> bool:
@@ -941,8 +1082,10 @@ async def _mark_paid_stock_issue(order: dict, cashfree_data: dict, source: str) 
     )
     if result.modified_count == 0:
         updated_order = await _fetch_normalized_order(order["id"], order)
+        await _record_coupon_usage_once(order["id"], source)
         return serialize_mongo_value(updated_order)
 
+    await _record_coupon_usage_once(order["id"], source)
     updated_order = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
     return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
 
@@ -1018,12 +1161,14 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
                 }
             )
             current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            await _record_coupon_usage_once(order_id, source)
             await _send_paid_cashfree_notifications_once(order_id, source)
             return serialize_mongo_value(_normalize_order_payment_defaults(current_order))
 
         if not _is_reservation_valid(order):
             current_order = await _fetch_normalized_order(order_id, order)
             if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _record_coupon_usage_once(order_id, source)
                 await _send_paid_cashfree_notifications_once(order_id, source)
                 return serialize_mongo_value(current_order)
             if current_order.get("stock_reservation_transition"):
@@ -1034,6 +1179,7 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
         if not confirmed:
             current_order = await _fetch_normalized_order(order_id, order)
             if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _record_coupon_usage_once(order_id, source)
                 await _send_paid_cashfree_notifications_once(order_id, source)
                 return serialize_mongo_value(current_order)
             if current_order.get("stock_reservation_transition"):
@@ -1066,10 +1212,12 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
         if result.modified_count == 0:
             current_order = await _fetch_normalized_order(order_id, order)
             if current_order.get("payment_status") == PAYMENT_STATUS_PAID and current_order.get("stock_deducted"):
+                await _record_coupon_usage_once(order_id, source)
                 await _send_paid_cashfree_notifications_once(order_id, source)
                 return serialize_mongo_value(current_order)
             return await _mark_paid_stock_issue(current_order, cashfree_data, source)
 
+        await _record_coupon_usage_once(order_id, source)
         await _send_paid_cashfree_notifications_once(order_id, source)
     elif cashfree_order_status == CASHFREE_ORDER_STATUS_EXPIRED:
         if _is_paid_or_confirmed(order):

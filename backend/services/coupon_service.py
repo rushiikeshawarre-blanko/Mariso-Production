@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from core.constants import MAX_LIMIT
+from core.constants import MAX_LIMIT, PAYMENT_STATUS_PAID
 from core.database import db
 from models.coupon import CouponCreate, CouponUpdate, CouponValidationRequest
 
@@ -203,7 +203,18 @@ async def _customer_usage_count(coupon_id: str, request: CouponValidationRequest
         {"coupon_snapshot.id": coupon_id},
         {"coupon_snapshot.coupon_id": coupon_id},
     ]
-    return await db.orders.count_documents({"$and": [{"$or": identifiers}, {"$or": coupon_filters}]})
+    return await db.orders.count_documents({
+        "$and": [
+            {"$or": identifiers},
+            {"$or": coupon_filters},
+            {
+                "$or": [
+                    {"coupon_usage_recorded": True},
+                    {"payment_status": PAYMENT_STATUS_PAID},
+                ]
+            },
+        ]
+    })
 
 
 async def validate_coupon(request: CouponValidationRequest) -> dict:
@@ -266,3 +277,22 @@ async def validate_coupon(request: CouponValidationRequest) -> dict:
         "message": "Coupon applied successfully",
         "coupon_snapshot": _coupon_snapshot(coupon),
     }
+
+
+async def increment_coupon_usage(coupon_id: Optional[str] = None, coupon_code: Optional[str] = None) -> bool:
+    query = {"deleted_at": {"$exists": False}}
+    if coupon_id:
+        query["id"] = coupon_id
+    elif coupon_code:
+        query["code"] = coupon_code.strip().upper()
+    else:
+        return False
+
+    result = await db.coupons.update_one(
+        query,
+        {
+            "$inc": {"used_count": 1},
+            "$set": {"updated_at": _now_iso()},
+        },
+    )
+    return result.modified_count > 0

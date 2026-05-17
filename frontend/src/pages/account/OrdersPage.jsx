@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getCashfreePaymentStatus, getUserOrders } from '../../lib/api';
+import { formatINR } from '../../lib/currency';
 import { Package, Eye, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
@@ -191,7 +192,7 @@ const OrdersPage = () => {
             <div className="text-sm text-muted-foreground">
               {order.items?.length} item(s) • {order.payment_method.toUpperCase()}
             </div>
-            <p className="font-medium">Total: ₹{order.total_price?.toLocaleString()}</p>
+            <p className="font-medium">Total: {formatINR(order.total_price)}</p>
           </div>
         </div>
       ))}

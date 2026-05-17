@@ -4,6 +4,7 @@ import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
 import { CheckCircle2, Package, Truck, MapPin } from 'lucide-react';
 import { getOrder } from '../lib/api';
+import { formatINR } from '../lib/currency';
 
 const OrderSuccessPage = () => {
   const { orderId } = useParams();
@@ -26,6 +27,10 @@ const OrderSuccessPage = () => {
       fetchOrder();
     }
   }, [orderId]);
+
+  const hasCouponDiscount = Boolean(order?.coupon_code && Number(order?.coupon_discount_amount || 0) > 0);
+  const orderSubtotal = order?.subtotal_before_discount ??
+    (order?.items?.reduce((sum, item) => sum + (item.line_total ?? item.price * item.quantity), 0) || 0);
 
   if (loading) {
     return (
@@ -114,11 +119,24 @@ const OrderSuccessPage = () => {
                     <div className="flex-1">
                       <p className="font-medium">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
-                      <p className="text-sm">₹{(item.price * item.quantity).toLocaleString()}</p>
+                      <p className="text-sm">{formatINR(item.price * item.quantity)}</p>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {hasCouponDiscount && (
+                <div className="pt-6 border-t border-border space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Gross Amount</span>
+                    <span>{formatINR(orderSubtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Coupon {order.coupon_code}</span>
+                    <span className="font-medium text-[#8B9D83]">-{formatINR(order.coupon_discount_amount)}</span>
+                  </div>
+                </div>
+              )}
 
               {/* Shipping Address */}
               <div className="pt-6 border-t border-border">
@@ -134,7 +152,7 @@ const OrderSuccessPage = () => {
               {/* Total */}
               <div className="pt-6 mt-6 border-t border-border flex justify-between items-center">
                 <span className="font-medium">Total Paid</span>
-                <span className="text-xl font-medium" data-testid="order-total">₹{order.total_price?.toLocaleString()}</span>
+                <span className="text-xl font-medium" data-testid="order-total">{formatINR(order.total_price)}</span>
               </div>
             </div>
           )}

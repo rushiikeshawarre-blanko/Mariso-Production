@@ -28,6 +28,7 @@ class CashfreeCheckoutCreate(BaseModel):
     billing_city: str
     billing_postal_code: str
     gift_packaging: bool = False
+    coupon_code: Optional[str] = None
 
 class OrderPaymentFields(BaseModel):
     payment_provider: Optional[str] = None
@@ -48,6 +49,14 @@ class OrderPaymentFields(BaseModel):
     customer_email_sent_at: Optional[str] = None
     admin_email_sent_at: Optional[str] = None
     whatsapp_sent_at: Optional[str] = None
+    coupon_code: Optional[str] = None
+    coupon_id: Optional[str] = None
+    coupon_discount_amount: float = 0
+    eligible_subtotal: Optional[float] = None
+    subtotal_before_discount: Optional[float] = None
+    total_after_discount: Optional[float] = None
+    coupon_snapshot: Optional[dict] = None
+    coupon_usage_recorded: bool = False
     payment_events: List[dict] = Field(default_factory=list)
 
 class OrderStatusUpdate(BaseModel):

@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../components/ui/dialog';
 import { Eye, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatINR } from '../../lib/currency';
 
 const ORDER_ITEM_IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
@@ -76,6 +77,14 @@ const formatAdminDate = (value) => {
   if (Number.isNaN(date.getTime())) return 'Not available';
   return date.toLocaleString();
 };
+
+const getOrderSubtotal = (order) => (
+  order?.subtotal_before_discount ??
+  order?.items?.reduce((sum, item) => sum + (item.line_total ?? item.price * item.quantity), 0) ??
+  0
+);
+
+const hasCouponDiscount = (order) => Boolean(order?.coupon_code && Number(order?.coupon_discount_amount || 0) > 0);
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -235,7 +244,7 @@ const AdminOrders = () => {
                     </div>
                   </TableCell>
                   <TableCell>{order.items?.length} items</TableCell>
-                  <TableCell className="font-medium">₹{order.total_price?.toLocaleString()}</TableCell>
+                  <TableCell className="font-medium">{formatINR(order.total_price)}</TableCell>
                   <TableCell>
                     <div className="space-y-1.5">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPaymentStatusColor(order.payment_status)}`}>
@@ -349,19 +358,31 @@ const AdminOrders = () => {
                       <div className="flex-1">
                         <p className="font-medium">{item.product_name}</p>
                         <p className="text-sm text-muted-foreground">
-                          ₹{item.price?.toLocaleString()} × {item.quantity}
+                          {formatINR(item.price)} × {item.quantity}
                         </p>
                       </div>
-                      <p className="font-medium sm:text-right">₹{(item.line_total ?? item.price * item.quantity).toLocaleString()}</p>
+                      <p className="font-medium sm:text-right">{formatINR(item.line_total ?? item.price * item.quantity)}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Total */}
-              <div className="flex flex-col items-start justify-between gap-2 border-t border-border pt-4 sm:flex-row sm:items-center">
-                <span className="font-medium">Total</span>
-                <span className="text-xl font-heading">₹{selectedOrder.total_price?.toLocaleString()}</span>
+              {/* Payment Summary */}
+              <div className="space-y-3 border-t border-border pt-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{hasCouponDiscount(selectedOrder) ? 'Gross Amount' : 'Subtotal'}</span>
+                  <span>{formatINR(getOrderSubtotal(selectedOrder))}</span>
+                </div>
+                {hasCouponDiscount(selectedOrder) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Coupon {selectedOrder.coupon_code}</span>
+                    <span className="font-medium text-[#8B9D83]">-{formatINR(selectedOrder.coupon_discount_amount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-2 text-base font-medium">
+                  <span>Total Paid</span>
+                  <span className="text-xl font-heading">{formatINR(selectedOrder.total_price)}</span>
+                </div>
               </div>
 
               {/* Payment Method */}
