@@ -6,16 +6,11 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createCashfreeSession, validateCoupon } from '../lib/api';
+import { createCashfreeSession, getAvailableCoupons, validateCoupon } from '../lib/api';
 import { loadCashfree } from '../lib/cashfree';
+import { formatINR } from '../lib/currency';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
-
-const formatCouponCurrency = (value) =>
-  `₹${Number(value || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 
 const CheckoutPage = () => {
   const location = useLocation();
@@ -30,6 +25,9 @@ const CheckoutPage = () => {
   const [couponMessage, setCouponMessage] = useState('');
   const [couponError, setCouponError] = useState('');
   const [couponCartSignature, setCouponCartSignature] = useState('');
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [availableCouponsLoading, setAvailableCouponsLoading] = useState(false);
+  const [availableCouponsError, setAvailableCouponsError] = useState('');
   const paymentMessage = new URLSearchParams(location.search).get('payment');
   
   const GIFT_PACKAGING_PRICE = 149;
@@ -125,8 +123,61 @@ const CheckoutPage = () => {
     }));
   };
 
-  const handleApplyCoupon = async () => {
-    const normalizedCode = couponCode.trim().toUpperCase();
+  useEffect(() => {
+    let isCurrent = true;
+
+    const fetchAvailableCoupons = async () => {
+      if (items.length === 0) {
+        setAvailableCoupons([]);
+        return;
+      }
+
+      setAvailableCouponsLoading(true);
+      setAvailableCouponsError('');
+
+      try {
+        const couponItems = items.map((item) => ({
+          product_id: item.product_id || item.id || item.product?.id || '',
+          category_id: item.category_id || item.categoryId || item.product?.category_id || '',
+          quantity: item.quantity,
+          price: item.is_on_sale && (item.sale_price || item.discount_price)
+            ? (item.sale_price || item.discount_price)
+            : item.price,
+        }));
+
+        const result = await getAvailableCoupons({
+          items: couponItems,
+          surface: 'checkout',
+          user_id: user?.sub || user?.id || undefined,
+          email: formData.email || user?.email || undefined,
+          phone: formData.phone || undefined,
+        });
+
+        if (isCurrent) {
+          setAvailableCoupons(Array.isArray(result) ? result : result?.coupons || []);
+        }
+      } catch (error) {
+        console.error('Error fetching available coupons:', error);
+        if (isCurrent) {
+          setAvailableCoupons([]);
+          setAvailableCouponsError('Available offers could not be loaded.');
+        }
+      } finally {
+        if (isCurrent) {
+          setAvailableCouponsLoading(false);
+        }
+      }
+    };
+
+    fetchAvailableCoupons();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [items, formData.email, formData.phone, user?.email, user?.id, user?.sub]);
+
+  const handleApplyCoupon = async (codeOverride = '') => {
+    const normalizedCode = (codeOverride || couponCode).trim().toUpperCase();
     if (!normalizedCode) {
       setCouponError('Please enter a coupon code.');
       setCouponMessage('');
@@ -539,7 +590,7 @@ const CheckoutPage = () => {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={handleApplyCoupon}
+                          onClick={() => handleApplyCoupon()}
                           disabled={couponLoading}
                           className="shrink-0"
                           data-testid="apply-coupon-button"
@@ -555,7 +606,7 @@ const CheckoutPage = () => {
                             {appliedCoupon.code} applied
                           </span>
                           <span className="font-medium text-[#52624C]">
-                            -{formatCouponCurrency(appliedCoupon.discount_amount)}
+                            -{formatINR(appliedCoupon.discount_amount)}
                           </span>
                         </div>
                         {couponMessage && (
@@ -568,18 +619,77 @@ const CheckoutPage = () => {
                         {couponError}
                       </p>
                     ) : null}
+
+                    {(availableCouponsLoading || availableCoupons.length > 0 || availableCouponsError) && (
+                      <div className="mt-5 border-t border-border pt-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                          <h3 className="text-sm font-medium">Available Offers</h3>
+                        </div>
+
+                        {availableCouponsLoading ? (
+                          <p className="text-sm text-muted-foreground">Checking offers...</p>
+                        ) : availableCouponsError ? (
+                          <p className="text-sm text-muted-foreground">{availableCouponsError}</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {availableCoupons.map((offer) => {
+                              const disableApply = Boolean(appliedCoupon) || couponLoading || !offer.is_applicable;
+                              return (
+                                <div
+                                  key={offer.coupon_id || offer.code}
+                                  className="rounded-lg border border-border bg-muted/20 p-3"
+                                  data-testid={`available-coupon-${offer.code}`}
+                                >
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-medium">
+                                          {offer.display_title || offer.code}
+                                        </p>
+                                        <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs text-[#52624C]">
+                                          {offer.code}
+                                        </span>
+                                      </div>
+                                      {offer.display_description ? (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                          {offer.display_description}
+                                        </p>
+                                      ) : null}
+                                      <p className={`mt-1 text-xs ${offer.is_applicable ? 'text-[#52624C]' : 'text-muted-foreground'}`}>
+                                        {offer.message}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleApplyCoupon(offer.code)}
+                                      disabled={disableApply}
+                                      className="shrink-0"
+                                    >
+                                      {appliedCoupon?.code === offer.code ? 'Applied' : 'Apply'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <span>₹{getCheckoutDiscountSubtotal().toLocaleString()}</span>
+                      <span>{formatINR(getCheckoutDiscountSubtotal())}</span>
                     </div>
                     {getCheckoutSaving() > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Savings</span>
                         <span className="text-terracotta font-medium">
-                          ₹{getCheckoutSaving().toLocaleString()} saved
+                          {formatINR(getCheckoutSaving())} saved
                         </span>
                       </div>
                     )}
@@ -587,7 +697,7 @@ const CheckoutPage = () => {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Coupon {appliedCoupon.code}</span>
                         <span className="text-[#8B9D83] font-medium">
-                          -{formatCouponCurrency(appliedCoupon.discount_amount)}
+                          -{formatINR(appliedCoupon.discount_amount)}
                         </span>
                       </div>
                     )}
@@ -611,7 +721,7 @@ const CheckoutPage = () => {
                     <div className="flex justify-between font-medium">
                       <span>Total</span>
                       <span className="text-xl" data-testid="checkout-total">
-                        {appliedCoupon ? formatCouponCurrency(getCouponPreviewTotal()) : `₹${getCouponPreviewTotal().toLocaleString()}`}
+                        {appliedCoupon ? formatINR(getCouponPreviewTotal()) : formatINR(getCouponPreviewTotal())}
                       </span>
                     </div>
                     {appliedCoupon && (

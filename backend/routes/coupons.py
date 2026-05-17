@@ -3,6 +3,8 @@ from typing import List
 
 from core.auth import get_admin_user
 from models.coupon import (
+    AvailableCouponResponse,
+    AvailableCouponsRequest,
     CouponCreate,
     CouponResponse,
     CouponToggle,
@@ -13,6 +15,7 @@ from models.coupon import (
 from services.coupon_service import (
     create_coupon as create_coupon_doc,
     delete_coupon as delete_coupon_doc,
+    get_available_coupons as fetch_available_coupons,
     get_coupon as fetch_coupon,
     get_coupons as fetch_coupons,
     toggle_coupon as toggle_coupon_doc,
@@ -61,3 +64,8 @@ async def delete_admin_coupon(coupon_id: str, admin: dict = Depends(get_admin_us
 @router.post("/coupons/validate", response_model=CouponValidationResponse, response_model_exclude_none=True)
 async def validate_coupon(coupon: CouponValidationRequest):
     return await validate_coupon_doc(coupon)
+
+
+@router.post("/coupons/available", response_model=List[AvailableCouponResponse], response_model_exclude_none=True)
+async def get_available_coupons(payload: AvailableCouponsRequest):
+    return await fetch_available_coupons(payload)

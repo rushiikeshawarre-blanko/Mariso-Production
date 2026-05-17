@@ -3,8 +3,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 CouponType = Literal["general", "influencer", "personal", "recovery"]
+CouponVisibility = Literal["public", "private", "influencer"]
 DiscountType = Literal["percentage", "fixed"]
 AppliesTo = Literal["all", "categories", "products"]
+CouponSurface = Literal["checkout", "cart"]
 
 
 def normalize_coupon_code(code: str) -> str:
@@ -15,6 +17,11 @@ class CouponBase(BaseModel):
     code: str
     coupon_type: CouponType = "general"
     description: Optional[str] = ""
+    visibility: CouponVisibility = "private"
+    display_title: Optional[str] = ""
+    display_description: Optional[str] = ""
+    show_on_cart: bool = True
+    show_on_checkout: bool = True
     discount_type: DiscountType
     discount_value: float
     max_discount_amount: Optional[float] = Field(None, ge=0)
@@ -64,6 +71,11 @@ class CouponUpdate(BaseModel):
     code: Optional[str] = None
     coupon_type: Optional[CouponType] = None
     description: Optional[str] = None
+    visibility: Optional[CouponVisibility] = None
+    display_title: Optional[str] = None
+    display_description: Optional[str] = None
+    show_on_cart: Optional[bool] = None
+    show_on_checkout: Optional[bool] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
     max_discount_amount: Optional[float] = Field(None, ge=0)
@@ -102,6 +114,11 @@ class CouponResponse(BaseModel):
     code: str
     coupon_type: CouponType
     description: str
+    visibility: CouponVisibility = "private"
+    display_title: str = ""
+    display_description: str = ""
+    show_on_cart: bool = True
+    show_on_checkout: bool = True
     discount_type: DiscountType
     discount_value: float
     max_discount_amount: Optional[float]
@@ -155,3 +172,26 @@ class CouponValidationResponse(BaseModel):
     cart_subtotal: Optional[float] = None
     final_total: Optional[float] = None
     coupon_snapshot: Optional[dict] = None
+
+
+class AvailableCouponsRequest(BaseModel):
+    items: List[CouponValidationItem] = Field(..., min_length=1)
+    surface: CouponSurface = "checkout"
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class AvailableCouponResponse(BaseModel):
+    code: str
+    coupon_id: str
+    display_title: str
+    display_description: str
+    discount_type: DiscountType
+    discount_value: float
+    discount_amount: Optional[float] = None
+    eligible_subtotal: Optional[float] = None
+    cart_subtotal: Optional[float] = None
+    final_total: Optional[float] = None
+    is_applicable: bool
+    message: str
