@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getDashboardStats, exportOrdersExcel } from '../../lib/api';
+import { formatINR } from '../../lib/currency';
 import { Button } from '../../components/ui/button';
 import {
   LayoutDashboard,
@@ -610,7 +611,7 @@ const AdminLayout = () => {
                       <td className="py-3 px-4 font-medium">#{order.id.slice(0, 8).toUpperCase()}</td>
                       <td className="py-3 px-4">{getOrderCustomerDisplayName(order)}</td>
                       <td className="py-3 px-4">{order.items?.length} items</td>
-                      <td className="py-3 px-4">₹{order.total_price?.toLocaleString()}</td>
+                      <td className="py-3 px-4">{formatINR(order.total_price)}</td>
                       <td className="py-3 px-4">
                         <div className="space-y-1.5">
                           <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getPaymentStatusClass(order.payment_status)}`}>

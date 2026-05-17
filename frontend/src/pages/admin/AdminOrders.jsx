@@ -244,7 +244,14 @@ const AdminOrders = () => {
                     </div>
                   </TableCell>
                   <TableCell>{order.items?.length} items</TableCell>
-                  <TableCell className="font-medium">{formatINR(order.total_price)}</TableCell>
+                  <TableCell>
+                    <p className="font-medium">{formatINR(order.total_price)}</p>
+                    {hasCouponDiscount(order) && (
+                      <p className="mt-1 text-xs font-medium text-[#8B9D83]">
+                        {order.coupon_code} -{formatINR(order.coupon_discount_amount)}
+                      </p>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className="space-y-1.5">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPaymentStatusColor(order.payment_status)}`}>
@@ -409,6 +416,34 @@ const AdminOrders = () => {
                       {getPaymentStatusLabel(selectedOrder.payment_status)}
                     </span>
                   </div>
+                  {hasCouponDiscount(selectedOrder) && (
+                    <>
+                      <div>
+                        <p className="text-muted-foreground">Gross Amount</p>
+                        <p className="font-medium">{formatINR(getOrderSubtotal(selectedOrder))}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Coupon Code</p>
+                        <p className="font-medium">{selectedOrder.coupon_code}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Coupon Discount</p>
+                        <p className="font-medium text-[#8B9D83]">-{formatINR(selectedOrder.coupon_discount_amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Eligible Subtotal</p>
+                        <p className="font-medium">{formatINR(selectedOrder.eligible_subtotal)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Net Paid Amount</p>
+                        <p className="font-medium">{formatINR(selectedOrder.total_after_discount ?? selectedOrder.total_price)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Coupon Usage Recorded</p>
+                        <p className="font-medium">{formatAdminValue(selectedOrder.coupon_usage_recorded)}</p>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <p className="text-muted-foreground">Cashfree Order Status</p>
                     <p className="font-medium">{formatAdminValue(selectedOrder.cashfree_order_status)}</p>
