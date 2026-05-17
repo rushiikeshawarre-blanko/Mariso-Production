@@ -274,6 +274,16 @@ export const getCashfreePaymentStatus = async (orderId) => {
   }
 };
 
+export const validateCoupon = async (couponData) => {
+  try {
+    const response = await axiosInstance.post(`/coupons/validate`, couponData);
+    return response.data;
+  } catch (error) {
+    console.error('Error validating coupon:', error);
+    throw error;
+  }
+};
+
 export const getUserOrders = async () => {
   try {
     const response = await axiosInstance.get(`/orders`);
@@ -409,6 +419,66 @@ export const getCustomers = async () => {
     return response.data;
   } catch (error) {
     console.error('Error fetching customers:', error);
+    throw error;
+  }
+};
+
+export const getAdminCoupons = async () => {
+  try {
+    const response = await axiosInstance.get(`/admin/coupons`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin coupons:', error);
+    throw error;
+  }
+};
+
+export const getAdminCoupon = async (couponId) => {
+  try {
+    const response = await axiosInstance.get(`/admin/coupons/${couponId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin coupon:', error);
+    throw error;
+  }
+};
+
+export const createAdminCoupon = async (couponData) => {
+  try {
+    const response = await axiosInstance.post(`/admin/coupons`, couponData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating coupon:', error);
+    throw error;
+  }
+};
+
+export const updateAdminCoupon = async (couponId, couponData) => {
+  try {
+    const response = await axiosInstance.put(`/admin/coupons/${couponId}`, couponData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating coupon:', error);
+    throw error;
+  }
+};
+
+export const toggleAdminCoupon = async (couponId) => {
+  try {
+    const response = await axiosInstance.patch(`/admin/coupons/${couponId}/toggle`, {});
+    return response.data;
+  } catch (error) {
+    console.error('Error toggling coupon:', error);
+    throw error;
+  }
+};
+
+export const deleteAdminCoupon = async (couponId) => {
+  try {
+    const response = await axiosInstance.delete(`/admin/coupons/${couponId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting coupon:', error);
     throw error;
   }
 };

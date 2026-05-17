@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
@@ -6,10 +6,16 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createCashfreeSession } from '../lib/api';
+import { createCashfreeSession, validateCoupon } from '../lib/api';
 import { loadCashfree } from '../lib/cashfree';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
+
+const formatCouponCurrency = (value) =>
+  `₹${Number(value || 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 const CheckoutPage = () => {
   const location = useLocation();
@@ -18,6 +24,12 @@ const CheckoutPage = () => {
   const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponMessage, setCouponMessage] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const [couponCartSignature, setCouponCartSignature] = useState('');
   const paymentMessage = new URLSearchParams(location.search).get('payment');
   
   const GIFT_PACKAGING_PRICE = 149;
@@ -36,6 +48,17 @@ const CheckoutPage = () => {
     return items.reduce((total, item) => total + (getCheckoutEffectivePrice(item) * item.quantity), 0 );
   };
 
+  const cartSignature = items
+    .map((item) => [
+      item.id,
+      item.variantId || '',
+      item.selectedColorId || '',
+      item.selectedFlavorId || '',
+      item.quantity,
+      getCheckoutEffectivePrice(item),
+    ].join(':'))
+    .join('|');
+
   const getCheckoutSaving = () => {
     return getCheckoutOriginalSubtotal() - getCheckoutDiscountSubtotal();
   };
@@ -53,8 +76,21 @@ const CheckoutPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const getFinalTotal = () => {
-    return getCheckoutDiscountSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+  useEffect(() => {
+    if (appliedCoupon && couponCartSignature && couponCartSignature !== cartSignature) {
+      setAppliedCoupon(null);
+      setCouponMessage('');
+      setCouponError('Cart changed. Please apply the coupon again.');
+      setCouponCartSignature('');
+    }
+  }, [appliedCoupon, cartSignature, couponCartSignature]);
+
+  const getCouponPreviewItemsTotal = () => {
+    return appliedCoupon ? appliedCoupon.final_total : getCheckoutDiscountSubtotal();
+  };
+
+  const getCouponPreviewTotal = () => {
+    return getCouponPreviewItemsTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
 
   const getCheckoutItemImage = (item) => {
@@ -79,6 +115,70 @@ const CheckoutPage = () => {
     pending: 'Payment is still pending. You can retry checkout or check your order status.',
     cancelled: 'Payment was cancelled. Your items are still in your cart.',
   }[paymentMessage];
+
+  const buildCouponValidationItems = () => {
+    return items.map((item) => ({
+      product_id: item.product_id || item.id || item.product?.id || '',
+      category_id: item.category_id || item.categoryId || item.product?.category_id || '',
+      quantity: item.quantity,
+      price: getCheckoutEffectivePrice(item),
+    }));
+  };
+
+  const handleApplyCoupon = async () => {
+    const normalizedCode = couponCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      setCouponError('Please enter a coupon code.');
+      setCouponMessage('');
+      return;
+    }
+
+    if (appliedCoupon) {
+      setCouponError('Remove the current coupon before applying another.');
+      setCouponMessage('');
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError('');
+    setCouponMessage('');
+
+    try {
+      const result = await validateCoupon({
+        code: normalizedCode,
+        items: buildCouponValidationItems(),
+        user_id: user?.sub || user?.id || undefined,
+        email: formData.email || user?.email || undefined,
+        phone: formData.phone || undefined,
+      });
+
+      if (!result?.valid) {
+        setAppliedCoupon(null);
+        setCouponError(result?.message || 'Coupon could not be applied.');
+        return;
+      }
+
+      setAppliedCoupon(result);
+      setCouponCode(result.code || normalizedCode);
+      setCouponCartSignature(cartSignature);
+      setCouponMessage(result.message || 'Coupon applied successfully.');
+      toast.success('Coupon applied');
+    } catch (error) {
+      console.error('Error applying coupon:', error);
+      setAppliedCoupon(null);
+      setCouponError(error?.response?.data?.message || error?.response?.data?.detail || 'Unable to validate coupon. Please try again.');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponMessage('');
+    setCouponError('');
+    setCouponCartSignature('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -117,7 +217,8 @@ const CheckoutPage = () => {
         billing_address: formData.address,
         billing_city: formData.city,
         billing_postal_code: formData.postalCode,
-        gift_packaging: giftPackaging
+        gift_packaging: giftPackaging,
+        coupon_code: appliedCoupon?.code || undefined,
       };
 
       const session = await createCashfreeSession(checkoutPayload);
@@ -134,7 +235,17 @@ const CheckoutPage = () => {
       });
     } catch (error) {
       console.error('Error starting Cashfree checkout:', error);
-      toast.error('Unable to start secure payment. Please try again.');
+      const detail = error?.response?.data?.detail;
+      const message = typeof detail === 'string'
+        ? detail
+        : detail?.message || 'Unable to start secure payment. Please try again.';
+
+      if (appliedCoupon && message.toLowerCase().includes('coupon')) {
+        setCouponError(`${message} Remove or reapply the coupon.`);
+        toast.error(message);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -392,6 +503,73 @@ const CheckoutPage = () => {
                     </div>
                   )}
 
+                  <div className="border-t border-border pt-4 mb-4">
+                    <Label htmlFor="coupon-code" className="text-sm font-medium">Have a coupon?</Label>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        id="coupon-code"
+                        value={couponCode}
+                        onChange={(event) => {
+                          setCouponCode(event.target.value.toUpperCase());
+                          setCouponError('');
+                          setCouponMessage('');
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleApplyCoupon();
+                          }
+                        }}
+                        placeholder="Enter coupon code"
+                        disabled={Boolean(appliedCoupon) || couponLoading}
+                        className="uppercase"
+                        data-testid="checkout-coupon-input"
+                      />
+                      {appliedCoupon ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleRemoveCoupon}
+                          className="shrink-0"
+                          data-testid="remove-coupon-button"
+                        >
+                          Remove
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleApplyCoupon}
+                          disabled={couponLoading}
+                          className="shrink-0"
+                          data-testid="apply-coupon-button"
+                        >
+                          {couponLoading ? 'Applying...' : 'Apply'}
+                        </Button>
+                      )}
+                    </div>
+                    {appliedCoupon ? (
+                      <div className="mt-3 rounded-lg border border-[#8B9D83]/30 bg-[#8B9D83]/10 px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium text-[#52624C]">
+                            {appliedCoupon.code} applied
+                          </span>
+                          <span className="font-medium text-[#52624C]">
+                            -{formatCouponCurrency(appliedCoupon.discount_amount)}
+                          </span>
+                        </div>
+                        {couponMessage && (
+                          <p className="mt-1 text-xs text-[#52624C]">{couponMessage}</p>
+                        )}
+                      </div>
+                    ) : null}
+                    {couponError ? (
+                      <p className="mt-2 text-sm text-red-600" data-testid="coupon-error">
+                        {couponError}
+                      </p>
+                    ) : null}
+                  </div>
+
                   <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
@@ -402,6 +580,14 @@ const CheckoutPage = () => {
                         <span className="text-muted-foreground">Savings</span>
                         <span className="text-terracotta font-medium">
                           ₹{getCheckoutSaving().toLocaleString()} saved
+                        </span>
+                      </div>
+                    )}
+                    {appliedCoupon && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Coupon {appliedCoupon.code}</span>
+                        <span className="text-[#8B9D83] font-medium">
+                          -{formatCouponCurrency(appliedCoupon.discount_amount)}
                         </span>
                       </div>
                     )}
@@ -424,8 +610,15 @@ const CheckoutPage = () => {
                   <div className="border-t border-border mt-4 pt-4">
                     <div className="flex justify-between font-medium">
                       <span>Total</span>
-                      <span className="text-xl" data-testid="checkout-total">₹{getFinalTotal().toLocaleString()}</span>
+                      <span className="text-xl" data-testid="checkout-total">
+                        {appliedCoupon ? formatCouponCurrency(getCouponPreviewTotal()) : `₹${getCouponPreviewTotal().toLocaleString()}`}
+                      </span>
                     </div>
+                    {appliedCoupon && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Your secure payment total will include this coupon discount.
+                      </p>
+                    )}
                   </div>
 
                   <Button 

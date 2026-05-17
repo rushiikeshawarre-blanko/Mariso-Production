@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getDashboardStats, exportOrdersExcel } from '../../lib/api';
+import { formatINR } from '../../lib/currency';
 import { Button } from '../../components/ui/button';
 import {
   LayoutDashboard,
@@ -17,7 +18,8 @@ import {
   FileText,
   HelpCircle,
   Menu,
-  X
+  X,
+  BadgePercent
 } from 'lucide-react';
 import { Toaster } from '../../components/ui/sonner';
 import {
@@ -259,6 +261,7 @@ const AdminLayout = () => {
     { name: 'Categories', href: '/admin/categories', icon: FolderTree },
     { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
     { name: 'Customers', href: '/admin/customers', icon: Users },
+    { name: 'Coupons', href: '/admin/coupons', icon: BadgePercent },
     { name: 'Content Pages', href: '/admin/content-pages', icon: FileText },
     { name: 'FAQs', href: '/admin/faqs', icon: HelpCircle },
   ];
@@ -276,6 +279,7 @@ const AdminLayout = () => {
     if (location.pathname.startsWith('/admin/categories')) return 'Categories';
     if (location.pathname.startsWith('/admin/orders')) return 'Orders';
     if (location.pathname.startsWith('/admin/customers')) return 'Customers';
+    if (location.pathname.startsWith('/admin/coupons')) return 'Coupons';
     if (location.pathname.startsWith('/admin/content-pages')) return 'Content Pages';
     if (location.pathname.startsWith('/admin/faqs')) return 'FAQs';
     return 'Admin';
@@ -607,7 +611,7 @@ const AdminLayout = () => {
                       <td className="py-3 px-4 font-medium">#{order.id.slice(0, 8).toUpperCase()}</td>
                       <td className="py-3 px-4">{getOrderCustomerDisplayName(order)}</td>
                       <td className="py-3 px-4">{order.items?.length} items</td>
-                      <td className="py-3 px-4">₹{order.total_price?.toLocaleString()}</td>
+                      <td className="py-3 px-4">{formatINR(order.total_price)}</td>
                       <td className="py-3 px-4">
                         <div className="space-y-1.5">
                           <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getPaymentStatusClass(order.payment_status)}`}>

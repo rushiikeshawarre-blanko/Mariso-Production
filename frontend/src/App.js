@@ -31,6 +31,7 @@ import AdminOrders from "./pages/admin/AdminOrders";
 import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminContentPages from "./pages/admin/AdminContentPages";
 import AdminFaqs from "./pages/admin/AdminFaqs";
+import AdminCoupons from "./pages/admin/AdminCoupons";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
@@ -175,6 +176,7 @@ function AppRoutes() {
         <Route path="categories" element={<AdminCategories />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="customers" element={<AdminCustomers />} />
+        <Route path="coupons" element={<AdminCoupons />} />
         <Route path="content-pages" element={<AdminContentPages />} />
         <Route path="faqs" element={<AdminFaqs />} />
       </Route>

@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { getCashfreePaymentStatus, getOrder } from "../../lib/api";
+import { formatINR } from "../../lib/currency";
 import { Button } from "../../components/ui/button";
 
 const ORDER_ITEM_IMAGE_FALLBACK =
@@ -120,6 +121,8 @@ const OrderDetailsPage = () => {
   }
 
   const subtotal = order.items?.reduce((sum, item) => sum + (item.line_total ?? item.price * item.quantity), 0) || 0;
+  const grossSubtotal = order.subtotal_before_discount ?? subtotal;
+  const hasCouponDiscount = Boolean(order.coupon_code && Number(order.coupon_discount_amount || 0) > 0);
   const orderShortId = order.id?.slice(0, 8).toUpperCase();
 
   return (
@@ -246,12 +249,14 @@ const OrderDetailsPage = () => {
                 )}
 
                 <p className="text-sm text-muted-foreground mt-1">Qty: {item.quantity}</p>
-                <p className="text-sm text-muted-foreground">Unit Price: ₹{item.price?.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">
+                  Unit Price: {formatINR(item.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
 
               <div className="text-right">
                 <p className="font-medium text-foreground">
-                  ₹{(item.line_total ?? item.price * item.quantity).toLocaleString()}
+                  {formatINR(item.line_total ?? item.price * item.quantity)}
                 </p>
               </div>
             </div>
@@ -277,9 +282,16 @@ const OrderDetailsPage = () => {
           <h2 className="font-heading text-xl mb-4">Payment Summary</h2>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>₹{subtotal.toLocaleString()}</span>
+              <span className="text-muted-foreground">{hasCouponDiscount ? 'Gross Amount' : 'Subtotal'}</span>
+              <span>{formatINR(grossSubtotal)}</span>
             </div>
+
+            {hasCouponDiscount && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Coupon {order.coupon_code}</span>
+                <span className="font-medium text-[#8B9D83]">-{formatINR(order.coupon_discount_amount)}</span>
+              </div>
+            )}
 
             {order.gift_packaging && (
               <div className="flex justify-between">
@@ -301,8 +313,8 @@ const OrderDetailsPage = () => {
             )}
 
             <div className="border-t border-border pt-3 flex justify-between font-medium text-base">
-              <span>Total</span>
-              <span>₹{order.total_price?.toLocaleString()}</span>
+              <span>{hasCouponDiscount ? 'Total Paid' : 'Total'}</span>
+              <span>{formatINR(order.total_price)}</span>
             </div>
           </div>
         </div>

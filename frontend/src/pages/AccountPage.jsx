@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { User, Package, Heart, MapPin, LogOut } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getUserOrders, getWishlist } from '../lib/api';
+import { formatINR } from '../lib/currency';
 
 const AccountPage = () => {
   const location = useLocation();
@@ -105,7 +106,7 @@ const AccountPage = () => {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-medium">₹{order.total_price?.toLocaleString()}</p>
+                  <p className="font-medium">{formatINR(order.total_price)}</p>
                   <span className={`text-xs px-2 py-1 rounded-full status-${order.status}`}>
                     {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                   </span>

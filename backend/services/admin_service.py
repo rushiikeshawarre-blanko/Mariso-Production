@@ -284,9 +284,11 @@ async def export_orders_excel_service(
         "Price Per Unit",
         "Total Product Amount",
         "Delivery Charges",
-        "Discount Applied",
+        "Gross Amount",
         "Coupon Code",
-        "Final Order Value",
+        "Coupon Discount",
+        "Eligible Subtotal",
+        "Net Paid Amount",
         "Payment Method",
         "Payment Provider",
         "Payment Status",
@@ -323,13 +325,21 @@ async def export_orders_excel_service(
                 order_time = created_at[11:19] if len(created_at) >= 19 else ""
 
         items = order.get("items", []) or [{}]
-        order_discount = order.get("discount_amount", order.get("discount", 0))
         coupon_code = order.get("coupon_code", "")
+        coupon_discount = order.get("coupon_discount_amount", 0) or 0
+        gross_amount = order.get("subtotal_before_discount")
+        if gross_amount is None:
+            gross_amount = sum(
+                (item.get("line_total") if item.get("line_total") is not None else (item.get("price", 0) or 0) * (item.get("quantity", 0) or 0))
+                for item in items
+            )
+        eligible_subtotal = order.get("eligible_subtotal", "")
+        net_paid_amount = order.get("total_after_discount", order.get("total_price", 0))
         delivery_charges = order.get("delivery_charges", 0)
         payment_status = order.get("payment_status", "")
         payment_provider = order.get("payment_provider", "")
         revenue_eligible = is_revenue_eligible_order(order)
-        revenue_amount = order.get("total_price", 0) if revenue_eligible else 0
+        revenue_amount = net_paid_amount if revenue_eligible else 0
         delivery_date = order.get("delivery_date", "")
         delivery_time = order.get("delivery_time", "")
 
@@ -362,9 +372,11 @@ async def export_orders_excel_service(
                 unit_price,
                 total_product_amount,
                 delivery_charges,
-                order_discount,
+                gross_amount,
                 coupon_code,
-                order.get("total_price", 0),
+                coupon_discount,
+                eligible_subtotal,
+                net_paid_amount,
                 order.get("payment_method", ""),
                 payment_provider,
                 payment_status,
@@ -383,7 +395,8 @@ async def export_orders_excel_service(
     column_widths = {
         1: 16, 2: 14, 3: 12, 4: 24, 5: 18, 6: 28, 7: 34, 8: 18, 9: 12,
         10: 28, 11: 22, 12: 10, 13: 14, 14: 18, 15: 16, 16: 16, 17: 16,
-        18: 18, 19: 16, 20: 18, 21: 16, 22: 16, 23: 16, 24: 16, 25: 14, 26: 14,
+        18: 18, 19: 18, 20: 18, 21: 16, 22: 18, 23: 16, 24: 16, 25: 16,
+        26: 16, 27: 14, 28: 14,
     }
     for col_index, width in column_widths.items():
         sheet.column_dimensions[get_column_letter(col_index)].width = width
