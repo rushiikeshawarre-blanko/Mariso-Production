@@ -4,6 +4,7 @@ import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
+import MarisoLoader from '../components/ui/MarisoLoader';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
 import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Package, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -18,6 +19,8 @@ const ProductPage = () => {
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [productStatus, setProductStatus] = useState('loading');
+  const [retryNonce, setRetryNonce] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
@@ -131,15 +134,27 @@ const ProductPage = () => {
   useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
+      setProductStatus('loading');
+      setProduct(null);
+      setRelatedProducts([]);
       try {
         const prod = await getProduct(id);
         setProduct(prod);
+        setProductStatus(prod ? 'success' : 'not-found');
         
         // Fetch related products from same category
-        const related = await getProducts({ category_id: prod.category_id });
-        setRelatedProducts(related.filter(p => p.id !== prod.id).slice(0, 4));
+        if (prod?.category_id) {
+          try {
+            const related = await getProducts({ category_id: prod.category_id });
+            setRelatedProducts(related.filter(p => p.id !== prod.id).slice(0, 4));
+          } catch (error) {
+            console.error('Error fetching related products:', error);
+            setRelatedProducts([]);
+          }
+        }
       } catch (error) {
         console.error('Error fetching product:', error);
+        setProductStatus('error');
       } finally {
         setLoading(false);
       }
@@ -148,7 +163,7 @@ const ProductPage = () => {
     fetchProduct();
     setQuantity(1);
     window.scrollTo(0, 0);
-  }, [id]);
+  }, [id, retryNonce]);
 
   useEffect(() => {
     if (!product) return;
@@ -371,31 +386,30 @@ const ProductPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen">
-          <div className="max-w-[1440px] mx-auto container-padding">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <div className="space-y-4">
-                <div className="aspect-[3/4] bg-muted rounded-xl animate-pulse" />
-                <div className="flex gap-3">
-                  {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="w-20 h-24 bg-muted rounded-lg animate-pulse" />
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-6">
-                <div className="h-8 bg-muted rounded w-1/4 animate-pulse" />
-                <div className="h-12 bg-muted rounded w-3/4 animate-pulse" />
-                <div className="h-6 bg-muted rounded w-1/3 animate-pulse" />
-                <div className="h-32 bg-muted rounded animate-pulse" />
-              </div>
-            </div>
+        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+          <MarisoLoader label="Loading product..." />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (productStatus === 'error') {
+    return (
+      <Layout>
+        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="font-heading text-3xl mb-4">Unable to Load Product</h1>
+            <p className="mb-6 text-muted-foreground">Please try again in a moment.</p>
+            <Button className="btn-primary" onClick={() => setRetryNonce((current) => current + 1)}>
+              Retry
+            </Button>
           </div>
         </div>
       </Layout>
     );
   }
 
-  if (!product) {
+  if (!product || productStatus === 'not-found') {
     return (
       <Layout>
         <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">

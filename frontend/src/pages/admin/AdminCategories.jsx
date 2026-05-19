@@ -5,7 +5,8 @@ import {
   updateCategory,
   deleteCategory,
   createPresignedUpload,
-  uploadFileToPresignedUrl
+  uploadFileToPresignedUrl,
+  clearPublicCatalogCache,
 } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -318,6 +319,7 @@ const AdminCategories = () => {
           editingCategory.id,
           buildCategoryPayload({ image: uploadedImageUrl })
         );
+        clearPublicCatalogCache('categories');
 
         setEditingCategory((prev) => prev ? { ...prev, image: uploadedImageUrl } : prev);
         setCategories((prev) =>
@@ -371,6 +373,7 @@ const AdminCategories = () => {
         editingCategory.id,
         buildCategoryPayload({ image: '' })
       );
+      clearPublicCatalogCache('categories');
 
       setFormData((prev) => ({
         ...prev,
@@ -446,6 +449,7 @@ const AdminCategories = () => {
         await createCategory(payload);
         toast.success('Category created successfully');
       }
+      clearPublicCatalogCache('categories');
       setDialogOpen(false);
       fetchCategories();
     } catch (error) {
@@ -459,6 +463,7 @@ const AdminCategories = () => {
     try {
       await deleteCategory(categoryId);
       toast.success('Category deleted');
+      clearPublicCatalogCache('categories');
       fetchCategories();
     } catch (error) {
       toast.error('Failed to delete category');

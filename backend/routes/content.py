@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from core.auth import get_admin_user
 from models.content import (
@@ -26,12 +26,15 @@ from services.content_service import (
 )
 
 router = APIRouter(prefix="/api/content", tags=["Content"])
+CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
 
 
 @router.get("/pages", response_model=List[ContentPageResponse])
 async def get_pages(
+    response: Response,
     footer_only: bool = False,
 ):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await list_content_pages(active_only=True, footer_only=footer_only)
 
 
@@ -83,7 +86,8 @@ async def get_faqs(
 
 
 @router.get("/faqs/homepage", response_model=List[FAQResponse])
-async def get_homepage_faqs():
+async def get_homepage_faqs(response: Response):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await list_faqs(active_only=True, homepage_only=True)
 
 

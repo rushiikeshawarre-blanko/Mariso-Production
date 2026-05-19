@@ -4,6 +4,7 @@ import { ArrowRight, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-re
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
+import MarisoLoader from '../components/ui/MarisoLoader';
 import { getCategories, getFeaturedProducts, getBestsellers, getHomepageFaqs } from '../lib/api';
 
 const HomePage = () => {
@@ -183,15 +184,7 @@ const HomePage = () => {
           </div>
 
           {loading && featuredStatus === 'loading' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="space-y-4">
-                  <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
-                  <div className="h-4 bg-muted rounded w-1/2 animate-pulse" />
-                  <div className="h-6 bg-muted rounded w-3/4 animate-pulse" />
-                </div>
-              ))}
-            </div>
+            <MarisoLoader label="Loading products..." />
           ) : featuredStatus === 'error' ? (
             <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
               <p className="text-base font-medium text-foreground">Unable to load featured products right now.</p>
@@ -315,15 +308,7 @@ const HomePage = () => {
             </Link>
           </div>
           {loading && bestsellerStatus === 'loading' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="space-y-4">
-                  <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
-                  <div className="h-4 bg-muted rounded w-1/2 animate-pulse" />
-                  <div className="h-6 bg-muted rounded w-3/4 animate-pulse" />
-                </div>
-              ))}
-            </div>
+            <MarisoLoader label="Loading products..." />
           ) : bestsellerStatus === 'error' ? (
             <div className="rounded-[1.25rem] border border-black/5 bg-white px-6 py-10 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
               <p className="text-base font-medium text-foreground">Unable to load bestsellers right now.</p>

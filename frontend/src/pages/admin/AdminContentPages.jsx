@@ -4,6 +4,7 @@ import {
   deleteContentPage,
   getAdminContentPages,
   updateContentPage,
+  clearPublicCatalogCache,
 } from '../../lib/api';
 import RichTextEditor from '../../components/ui/rich-text-editor';
 import { htmlToPlainText, normalizeEditorHtml } from '../../lib/richContent';
@@ -142,6 +143,7 @@ const AdminContentPages = () => {
       } else {
         await createContentPage(payload);
       }
+      clearPublicCatalogCache('content');
       await fetchPages();
       resetForm();
     } catch (err) {
@@ -161,6 +163,7 @@ const AdminContentPages = () => {
       if (editingPage?.id === pageId) {
         resetForm();
       }
+      clearPublicCatalogCache('content');
       await fetchPages();
     } catch (err) {
       console.error('Error deleting content page:', err);

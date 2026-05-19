@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from typing import List, Optional
 from core.auth import get_admin_user
 from services.product_service import (
@@ -15,12 +15,14 @@ from services.product_service import (
 from models.product import ProductCreate, ProductUpdate, ProductResponse
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
+CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
 
 
 # ==================== PRODUCT ROUTES ====================
 
 @router.get("", response_model=List[ProductResponse])
 async def get_products(
+    response: Response,
     category_id: Optional[str] = None,
     search: Optional[str] = None,
     on_sale: Optional[bool] = None,
@@ -29,6 +31,7 @@ async def get_products(
     new_arrival: Optional[bool] = None,
     active_only: Optional[bool] = True,
 ):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await fetch_products(
         category_id=category_id,
         search=search,
@@ -63,12 +66,14 @@ async def get_admin_products(
 
 
 @router.get("/featured", response_model=List[ProductResponse])
-async def get_featured_products():
+async def get_featured_products(response: Response):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await fetch_featured_products()
 
 
 @router.get("/bestsellers", response_model=List[ProductResponse])
-async def get_bestsellers():
+async def get_bestsellers(response: Response):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await fetch_bestseller_products()
 
 

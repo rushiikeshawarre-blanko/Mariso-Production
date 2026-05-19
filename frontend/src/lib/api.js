@@ -21,11 +21,87 @@ const publicAxiosInstance = axios.create({
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const catalogCache = new Map();
+let publicCatalogCacheVersion = null;
+
+export const getCatalogCacheTtl = (path) => {
+  const pathname = path.split('?')[0];
+
+  switch (pathname) {
+    case '/products':
+      return 60 * 1000;
+    case '/products/featured':
+    case '/products/bestsellers':
+      return 120 * 1000;
+    case '/categories':
+    case '/content/pages':
+    case '/content/faqs/homepage':
+      return 300 * 1000;
+    default:
+      return 0;
+  }
+};
+
+export const isCacheableCatalogRequest = (path, method = 'get') => {
+  if ((method || 'get').toLowerCase() !== 'get') return false;
+  return getCatalogCacheTtl(path) > 0;
+};
+
+export const bumpPublicCatalogCacheVersion = () => {
+  publicCatalogCacheVersion = Math.max(Date.now(), (publicCatalogCacheVersion || 0) + 1);
+  return publicCatalogCacheVersion;
+};
+
+export const clearPublicCatalogCache = (scope = 'all') => {
+  bumpPublicCatalogCacheVersion();
+
+  if (scope === 'all') {
+    catalogCache.clear();
+    return;
+  }
+
+  const scopePrefixes = {
+    products: ['/products'],
+    categories: ['/categories', '/products'],
+    content: ['/content/pages', '/content/faqs/homepage'],
+  };
+  const prefixes = scopePrefixes[scope] || [];
+
+  if (prefixes.length === 0) return;
+
+  for (const key of catalogCache.keys()) {
+    const pathname = key.split('?')[0];
+    if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+      catalogCache.delete(key);
+    }
+  }
+};
 
 const shouldRetryPublicGet = (error) => {
   if (!error.response) return true;
   const status = error.response.status;
   return status >= 500 || status === 429;
+};
+
+const getCacheVersionedPublicConfig = (url, config = {}) => {
+  const requestPath = publicAxiosInstance.getUri({
+    ...config,
+    url,
+    method: 'get',
+    baseURL: '',
+  });
+
+  if (!publicCatalogCacheVersion || !isCacheableCatalogRequest(requestPath, 'get')) {
+    return config;
+  }
+
+  return {
+    ...config,
+    params: {
+      ...(config.params || {}),
+      _cv: publicCatalogCacheVersion,
+    },
+  };
 };
 
 
@@ -51,21 +127,54 @@ publicAxiosInstance.interceptors.request.use(
     delete config.headers.Authorization;
     delete config.headers.authorization;
 
-    config.headers['Cache-Control'] = 'no-cache';
-    config.headers.Pragma = 'no-cache';
-    config.params = {
-      ...(config.params || {}),
-      _ts: Date.now(),
-    };
+    const requestPath = publicAxiosInstance.getUri({
+      ...config,
+      baseURL: '',
+    });
+    const isCacheable = isCacheableCatalogRequest(requestPath, config.method);
+
+    if (!isCacheable) {
+      config.headers['Cache-Control'] = 'no-cache';
+      config.headers.Pragma = 'no-cache';
+      config.params = {
+        ...(config.params || {}),
+        _ts: Date.now(),
+      };
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 const publicGetWithRetry = async (url, config = {}, retries = 2, backoffMs = 300) => {
+  const requestConfig = getCacheVersionedPublicConfig(url, config);
+  const cacheKey = publicAxiosInstance.getUri({
+    ...requestConfig,
+    url,
+    method: 'get',
+    baseURL: '',
+  });
+  const cacheTtl = getCatalogCacheTtl(cacheKey);
+  const cached = cacheTtl > 0 ? catalogCache.get(cacheKey) : null;
+
+  if (cached && Date.now() - cached.createdAt < cacheTtl) {
+    return cached.data;
+  }
+
+  if (cached) {
+    catalogCache.delete(cacheKey);
+  }
+
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const response = await publicAxiosInstance.get(url, config);
+      const response = await publicAxiosInstance.get(url, requestConfig);
+      if (cacheTtl > 0) {
+        catalogCache.set(cacheKey, {
+          createdAt: Date.now(),
+          data: response.data,
+        });
+      }
       return response.data;
     } catch (error) {
       const canRetry = attempt < retries && shouldRetryPublicGet(error);

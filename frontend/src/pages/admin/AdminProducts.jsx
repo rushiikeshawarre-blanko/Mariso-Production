@@ -8,6 +8,7 @@ import {
   deleteProduct,
   createPresignedUpload,
   uploadFileToPresignedUrl,
+  clearPublicCatalogCache,
 } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -1394,6 +1395,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
         await createProduct(productData);
         toast.success('Product created successfully');
       }
+      clearPublicCatalogCache('products');
       setDialogOpen(false);
       await fetchData();
     } catch (error) {
@@ -1409,6 +1411,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     try {
       await deleteProduct(productId);
       toast.success('Product deleted');
+      clearPublicCatalogCache('products');
       await fetchData();
     } catch (error) {
       console.error('Error deleting product:', error);

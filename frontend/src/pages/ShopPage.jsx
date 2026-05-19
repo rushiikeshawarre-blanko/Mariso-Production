@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
+import MarisoLoader from '../components/ui/MarisoLoader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
@@ -446,15 +447,7 @@ const ShopPage = () => {
               </div>
 
               {loading && productsStatus === 'loading' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 xl:gap-6">
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="space-y-4">
-                      <div className="aspect-[3/4] bg-muted rounded-lg animate-pulse" />
-                      <div className="h-4 bg-muted rounded w-1/2 animate-pulse" />
-                      <div className="h-6 bg-muted rounded w-3/4 animate-pulse" />
-                    </div>
-                  ))}
-                </div>
+                <MarisoLoader label="Loading products..." />
               ) : productsStatus === 'error' ? (
                 <div className="py-16 text-center">
                   <p className="mb-4 text-muted-foreground">Unable to load products right now.</p>
@@ -471,7 +464,7 @@ const ShopPage = () => {
               ) : productsStatus === 'empty' ? (
                 <div className="text-center py-16">
                   <p className="text-muted-foreground mb-4">
-                    {searchQuery ? `No products found for "${searchQuery}"` : 'No products found'}
+                    {searchQuery ? `No products found for "${searchQuery}"` : 'No products available'}
                   </p>
                   <Button onClick={clearFilters} variant="outline" data-testid="clear-filters-empty">
                     Clear Filters

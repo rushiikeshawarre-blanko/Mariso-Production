@@ -4,6 +4,7 @@ import {
   deleteFaq,
   getAdminFaqs,
   updateFaq,
+  clearPublicCatalogCache,
 } from '../../lib/api';
 
 const initialFormState = {
@@ -99,6 +100,7 @@ const AdminFaqs = () => {
       } else {
         await createFaq(payload);
       }
+      clearPublicCatalogCache('content');
       await fetchFaqs();
       resetForm();
     } catch (err) {
@@ -118,6 +120,7 @@ const AdminFaqs = () => {
       if (editingFaq?.id === faqId) {
         resetForm();
       }
+      clearPublicCatalogCache('content');
       await fetchFaqs();
     } catch (err) {
       console.error('Error deleting FAQ:', err);
