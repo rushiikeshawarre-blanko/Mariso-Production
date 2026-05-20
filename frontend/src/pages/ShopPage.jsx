@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
@@ -10,9 +10,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../c
 import { SlidersHorizontal, X } from 'lucide-react';
 import { getProducts, getCategories } from '../lib/api';
 
-const SHOP_REVALIDATE_INTERVAL_MS = 20 * 1000;
+const SHOP_REVALIDATE_INTERVAL_MS = 5 * 1000;
 
 const ShopPage = () => {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [products, setProducts] = useState([]);
@@ -28,6 +29,7 @@ const ShopPage = () => {
   const [productsStatus, setProductsStatus] = useState('loading');
   const requestSequenceRef = useRef(0);
   const lastRevalidationRef = useRef(0);
+  const routeRevalidationKeyRef = useRef(null);
   const categoriesRef = useRef([]);
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -227,12 +229,12 @@ const ShopPage = () => {
     fetchShopData();
   }, [fetchShopData, retryNonce]);
 
-  const revalidateProducts = useCallback(() => {
+  const revalidateProducts = useCallback(({ bypassThrottle = false } = {}) => {
     if (document.visibilityState && document.visibilityState !== 'visible') return;
     if (productsStatus === 'loading') return;
 
     const now = Date.now();
-    if (now - lastRevalidationRef.current < SHOP_REVALIDATE_INTERVAL_MS) return;
+    if (!bypassThrottle && now - lastRevalidationRef.current < SHOP_REVALIDATE_INTERVAL_MS) return;
 
     lastRevalidationRef.current = now;
     fetchShopData({
@@ -244,9 +246,13 @@ const ShopPage = () => {
 
   useEffect(() => {
     if (!loading && (productsStatus === 'success' || productsStatus === 'empty')) {
-      revalidateProducts();
+      const routeKey = location.key || `${location.pathname}${location.search}`;
+      if (routeRevalidationKeyRef.current !== routeKey) {
+        routeRevalidationKeyRef.current = routeKey;
+        revalidateProducts({ bypassThrottle: true });
+      }
     }
-  }, [loading, productsStatus, revalidateProducts]);
+  }, [loading, location.key, location.pathname, location.search, productsStatus, revalidateProducts]);
 
   useEffect(() => {
     const handleReturnToShop = () => {
