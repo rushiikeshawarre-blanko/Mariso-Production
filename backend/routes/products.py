@@ -3,8 +3,9 @@ from typing import List, Optional
 from core.auth import get_admin_user
 from services.product_service import (
     get_products as fetch_products,
-    get_featured_products as fetch_featured_products,
-    get_bestsellers as fetch_bestseller_products,
+    get_product_cards as fetch_product_cards,
+    get_featured_product_cards as fetch_featured_product_cards,
+    get_bestseller_product_cards as fetch_bestseller_product_cards,
     get_product as fetch_product_by_id,
     create_product as create_product_doc,
     update_product as update_product_doc,
@@ -12,7 +13,7 @@ from services.product_service import (
     generate_product_variants as generate_product_variants_for_product,
     get_product_variant_stock as fetch_product_variant_stock,
 )
-from models.product import ProductCreate, ProductUpdate, ProductResponse
+from models.product import ProductCardResponse, ProductCreate, ProductUpdate, ProductResponse
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
@@ -20,7 +21,7 @@ CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
 
 # ==================== PRODUCT ROUTES ====================
 
-@router.get("", response_model=List[ProductResponse])
+@router.get("", response_model=List[ProductCardResponse])
 async def get_products(
     response: Response,
     category_id: Optional[str] = None,
@@ -32,7 +33,7 @@ async def get_products(
     active_only: Optional[bool] = True,
 ):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
-    return await fetch_products(
+    return await fetch_product_cards(
         category_id=category_id,
         search=search,
         on_sale=on_sale,
@@ -65,16 +66,16 @@ async def get_admin_products(
     )
 
 
-@router.get("/featured", response_model=List[ProductResponse])
+@router.get("/featured", response_model=List[ProductCardResponse])
 async def get_featured_products(response: Response):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
-    return await fetch_featured_products()
+    return await fetch_featured_product_cards()
 
 
-@router.get("/bestsellers", response_model=List[ProductResponse])
+@router.get("/bestsellers", response_model=List[ProductCardResponse])
 async def get_bestsellers(response: Response):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
-    return await fetch_bestseller_products()
+    return await fetch_bestseller_product_cards()
 
 
 @router.get("/{product_id}", response_model=ProductResponse)

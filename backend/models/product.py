@@ -161,6 +161,56 @@ class ProductResponse(BaseModel):
     created_at: str
 
 
+class ProductCardColorOption(BaseModel):
+    id: str = ""
+    name: str = ""
+    hex_code: Optional[str] = ""
+    hex_code_secondary: Optional[str] = None
+    is_active: bool = True
+    images: List[str] = Field(default_factory=list)
+
+
+class ProductCardFlavorOption(BaseModel):
+    id: str = ""
+    name: str = ""
+    is_active: bool = True
+
+
+class ProductCardVariant(BaseModel):
+    id: str = ""
+    color_id: Optional[str] = None
+    flavor_id: Optional[str] = None
+    stock: Optional[int] = None
+    is_active: bool = True
+
+
+class ProductCardResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str
+    slug: str
+    category_id: str
+    category_name: Optional[str] = ""
+    sku: str
+    short_description: str
+    description: str
+    price: float
+    discount_price: Optional[float]
+    is_on_sale: bool
+    stock: int
+    images: List[str]
+    has_color_options: bool
+    has_flavor_options: bool
+    color_options: List[ProductCardColorOption] = Field(default_factory=list)
+    flavor_options: List[ProductCardFlavorOption] = Field(default_factory=list)
+    variants: List[ProductCardVariant] = Field(default_factory=list)
+    is_active: bool
+    is_featured: bool
+    is_bestseller: bool
+    is_new_arrival: bool
+    created_at: str
+
+
 def normalize_color_options(color_options: List[ColorOption]) -> List[dict]:
     normalized = []
     for color in color_options:

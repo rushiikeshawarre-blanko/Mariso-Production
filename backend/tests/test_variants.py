@@ -377,3 +377,43 @@ class TestProductListWithVariants:
         product = products_with_variants[0]
         assert 'variants' in product
         assert isinstance(product['variants'], list)
+
+        variant = product['variants'][0]
+        assert set(variant.keys()).issubset({'id', 'color_id', 'flavor_id', 'stock', 'is_active'})
+
+    def test_products_list_uses_lightweight_card_payload(self, api_client):
+        """Products list omits heavy product-detail-only fields"""
+        response = api_client.get(f"{BASE_URL}/api/products")
+
+        assert response.status_code == 200
+        products = response.json()
+        assert len(products) > 0
+
+        product = products[0]
+        assert 'description' in product
+        assert 'short_description' in product
+        assert 'sku' in product
+        assert 'created_at' in product
+        assert 'video' not in product
+        assert 'care_instructions' not in product
+        assert 'shipping_info' not in product
+        assert 'materials' not in product
+        assert 'dimensions' not in product
+        assert 'burn_time' not in product
+        assert 'sale_start' not in product
+        assert 'sale_end' not in product
+        assert 'show_free_shipping' not in product
+
+        if product.get('images'):
+            assert len(product['images']) <= 1
+
+        for color in product.get('color_options', []):
+            assert set(color.keys()).issubset({
+                'id',
+                'name',
+                'hex_code',
+                'hex_code_secondary',
+                'is_active',
+                'images',
+            })
+            assert len(color.get('images', [])) <= 1

@@ -13,6 +13,32 @@ from utils.helpers import generate_slug, get_selected_variant, ensure_product_de
 
 logger = logging.getLogger(__name__)
 
+PRODUCT_CARD_PROJECTION = {
+    "_id": 0,
+    "id": 1,
+    "name": 1,
+    "slug": 1,
+    "category_id": 1,
+    "sku": 1,
+    "short_description": 1,
+    "description": 1,
+    "price": 1,
+    "discount_price": 1,
+    "is_on_sale": 1,
+    "stock": 1,
+    "images": 1,
+    "has_color_options": 1,
+    "has_flavor_options": 1,
+    "color_options": 1,
+    "flavor_options": 1,
+    "variants": 1,
+    "is_active": 1,
+    "is_featured": 1,
+    "is_bestseller": 1,
+    "is_new_arrival": 1,
+    "created_at": 1,
+}
+
 def validate_sale_pricing_payload(price, discount_price, is_on_sale):
     if is_on_sale:
         if discount_price is None:
@@ -76,6 +102,74 @@ def enrich_product(product: dict, category_map: Optional[dict] = None) -> dict:
 async def enrich_products(products: List[dict]) -> List[dict]:
     category_map = await build_category_map_from_products(products)
     return [enrich_product(product, category_map) for product in products]
+
+
+def _first_image(images: Optional[list]) -> List[str]:
+    for image in images or []:
+        if image:
+            return [image]
+    return []
+
+
+def map_product_to_card_response(product: dict) -> dict:
+    product = ensure_product_defaults(product or {})
+
+    return {
+        "id": product.get("id", ""),
+        "name": product.get("name", ""),
+        "slug": product.get("slug", ""),
+        "category_id": product.get("category_id", ""),
+        "category_name": product.get("category_name", ""),
+        "sku": product.get("sku", ""),
+        "short_description": product.get("short_description", ""),
+        "description": product.get("description", ""),
+        "price": product.get("price", 0),
+        "discount_price": product.get("discount_price"),
+        "is_on_sale": product.get("is_on_sale", False),
+        "stock": product.get("stock", 0),
+        "images": _first_image(product.get("images")),
+        "has_color_options": product.get("has_color_options", False),
+        "has_flavor_options": product.get("has_flavor_options", False),
+        "color_options": [
+            {
+                "id": color.get("id", ""),
+                "name": color.get("name", ""),
+                "hex_code": color.get("hex_code", ""),
+                "hex_code_secondary": color.get("hex_code_secondary"),
+                "is_active": color.get("is_active", True),
+                "images": _first_image(color.get("images")),
+            }
+            for color in product.get("color_options") or []
+        ],
+        "flavor_options": [
+            {
+                "id": flavor.get("id", ""),
+                "name": flavor.get("name", ""),
+                "is_active": flavor.get("is_active", True),
+            }
+            for flavor in product.get("flavor_options") or []
+        ],
+        "variants": [
+            {
+                "id": variant.get("id", ""),
+                "color_id": variant.get("color_id"),
+                "flavor_id": variant.get("flavor_id"),
+                "stock": variant.get("stock"),
+                "is_active": variant.get("is_active", True),
+            }
+            for variant in product.get("variants") or []
+        ],
+        "is_active": product.get("is_active", True),
+        "is_featured": product.get("is_featured", False),
+        "is_bestseller": product.get("is_bestseller", False),
+        "is_new_arrival": product.get("is_new_arrival", False),
+        "created_at": product.get("created_at", ""),
+    }
+
+
+async def map_products_to_card_responses(products: List[dict]) -> List[dict]:
+    enriched_products = await enrich_products(products)
+    return [map_product_to_card_response(product) for product in enriched_products]
 
 
 def generate_variant_combinations(color_options: list, flavor_options: list, existing_variants: list = None) -> list:
@@ -171,10 +265,51 @@ async def get_products(
     
     return await enrich_products(products)
 
+async def get_product_cards(
+    category_id: Optional[str] = None,
+    search: Optional[str] = None,
+    on_sale: Optional[bool] = None,
+    featured: Optional[bool] = None,
+    bestseller: Optional[bool] = None,
+    new_arrival: Optional[bool] = None,
+    active_only: Optional[bool] = True
+):
+    query = {}
+    if category_id is not None:
+        query["category_id"] = category_id
+    if search is not None:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"description": {"$regex": search, "$options": "i"}},
+            {"short_description": {"$regex": search, "$options": "i"}},
+        ]
+    if on_sale is not None:
+        query["is_on_sale"] = on_sale
+    if featured is not None:
+        query["is_featured"] = featured
+    if bestseller is not None:
+        query["is_bestseller"] = bestseller
+    if new_arrival is not None:
+        query["is_new_arrival"] = new_arrival
+    if active_only is not None:
+        query["is_active"] = active_only
+
+    products = await db.products.find(query, PRODUCT_CARD_PROJECTION).to_list(MAX_LIMIT)
+
+    return await map_products_to_card_responses(products)
+
 async def get_featured_products():
     products = await db.products.find({"is_active": True, "is_featured": True}, {"_id": 0}).to_list(8)
     
     return await enrich_products(products)
+
+async def get_featured_product_cards():
+    products = await db.products.find(
+        {"is_active": True, "is_featured": True},
+        PRODUCT_CARD_PROJECTION,
+    ).to_list(8)
+
+    return await map_products_to_card_responses(products)
 
 async def get_bestsellers():
     pipeline = [
@@ -192,6 +327,29 @@ async def get_bestsellers():
         products = await db.products.find({"id": {"$in": ids}, "is_active": True}, {"_id": 0}).to_list(8)
     
     return await enrich_products(products)
+
+async def get_bestseller_product_cards():
+    pipeline = [
+        {"$unwind": "$items"},
+        {"$group": {"_id": "$items.product_id", "count": {"$sum": "$items.quantity"}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 8}
+    ]
+    bestseller_ids = await db.orders.aggregate(pipeline).to_list(8)
+
+    if not bestseller_ids:
+        products = await db.products.find(
+            {"is_active": True},
+            PRODUCT_CARD_PROJECTION,
+        ).to_list(8)
+    else:
+        ids = [item['_id'] for item in bestseller_ids]
+        products = await db.products.find(
+            {"id": {"$in": ids}, "is_active": True},
+            PRODUCT_CARD_PROJECTION,
+        ).to_list(8)
+
+    return await map_products_to_card_responses(products)
 
 async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id, "is_active": True}, {"_id": 0})
