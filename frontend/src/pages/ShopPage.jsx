@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
@@ -9,6 +9,8 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { getProducts, getCategories } from '../lib/api';
+
+const SHOP_REVALIDATE_INTERVAL_MS = 20 * 1000;
 
 const ShopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,7 +27,13 @@ const ShopPage = () => {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [productsStatus, setProductsStatus] = useState('loading');
   const requestSequenceRef = useRef(0);
+  const lastRevalidationRef = useRef(0);
+  const categoriesRef = useRef([]);
   const [retryNonce, setRetryNonce] = useState(0);
+
+  useEffect(() => {
+    categoriesRef.current = categories;
+  }, [categories]);
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') || '');
@@ -75,121 +83,184 @@ const ShopPage = () => {
       .filter((group) => group.children.length > 0);
   }, [parentCategories, childCategories]);
 
-  useEffect(() => {
-    const currentRequestId = ++requestSequenceRef.current;
+  const filterProductsForView = useCallback((allProducts, categoriesForFiltering) => {
+    let filtered = [...(allProducts || [])];
 
-    const fetchData = async () => {
-      setLoading(true);
-      setProductsStatus('loading');
+    const activeParents = categoriesForFiltering.filter(
+      (category) => !category.parent_id && category.is_active !== false
+    );
+    const activeChildren = categoriesForFiltering.filter(
+      (category) => category.parent_id && category.is_active !== false
+    );
 
-      try {
-        const [productResult, categoriesResult] = await Promise.allSettled([
-          getProducts({
-            on_sale: showOnSale || undefined,
-          }),
-          getCategories(),
-        ]);
+    const parentCategory =
+      activeParents.find((category) => category.slug === selectedParentSlug) || null;
 
-        if (currentRequestId !== requestSequenceRef.current) {
-          return;
-        }
+    const parentChildIds = parentCategory
+      ? activeChildren
+          .filter((category) => category.parent_id === parentCategory.id)
+          .map((category) => category.id)
+      : [];
 
-        if (productResult.status === 'rejected') {
-          console.error('Error fetching products:', productResult.reason);
-          setProducts([]);
-          setProductsStatus('error');
-        }
+    if (selectedCategory) {
+      filtered = filtered.filter(
+        (product) => product.category_id === selectedCategory
+      );
+    } else if (parentCategory) {
+      filtered = filtered.filter((product) =>
+        parentChildIds.includes(product.category_id)
+      );
+    }
 
-        if (categoriesResult.status === 'rejected') {
-          console.error('Error fetching categories:', categoriesResult.reason);
-        }
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(
+        (product) =>
+          product.name?.toLowerCase().includes(query) ||
+          product.description?.toLowerCase().includes(query) ||
+          product.short_description?.toLowerCase().includes(query) ||
+          product.sku?.toLowerCase().includes(query)
+      );
+    }
 
-        if (categoriesResult.status === 'fulfilled') {
-          setCategories(categoriesResult.value || []);
-        }
-
-        if (productResult.status === 'fulfilled') {
-          const allProducts = productResult.value || [];
-          const categoriesForFiltering =
-            categoriesResult.status === 'fulfilled' ? categoriesResult.value || [] : [];
-
-          let filtered = [...allProducts];
-
-          const activeParents = categoriesForFiltering.filter(
-            (category) => !category.parent_id && category.is_active !== false
-          );
-          const activeChildren = categoriesForFiltering.filter(
-            (category) => category.parent_id && category.is_active !== false
-          );
-
-          const parentCategory =
-            activeParents.find((category) => category.slug === selectedParentSlug) || null;
-
-          const parentChildIds = parentCategory
-            ? activeChildren
-                .filter((category) => category.parent_id === parentCategory.id)
-                .map((category) => category.id)
-            : [];
-
-          if (selectedCategory) {
-            filtered = filtered.filter(
-              (product) => product.category_id === selectedCategory
-            );
-          } else if (parentCategory) {
-            filtered = filtered.filter((product) =>
-              parentChildIds.includes(product.category_id)
-            );
-          }
-
-          if (searchQuery.trim()) {
-            const query = searchQuery.trim().toLowerCase();
-            filtered = filtered.filter(
-              (product) =>
-                product.name?.toLowerCase().includes(query) ||
-                product.description?.toLowerCase().includes(query) ||
-                product.short_description?.toLowerCase().includes(query) ||
-                product.sku?.toLowerCase().includes(query)
-            );
-          }
-
-          const getEffectivePrice = (product) => {
-            const hasSalePrice = product.is_on_sale && product.discount_price != null;
-            return Number(hasSalePrice ? product.discount_price : product.price) || 0;
-          };
-
-          switch (sortBy) {
-            case 'price-low':
-              filtered.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
-              break;
-            case 'price-high':
-              filtered.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
-              break;
-            case 'name':
-              filtered.sort((a, b) => a.name.localeCompare(b.name));
-              break;
-            default:
-              filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-          }
-
-          setProducts(filtered);
-          setProductsStatus(filtered.length > 0 ? 'success' : 'empty');
-        }
-      } catch (error) {
-        if (currentRequestId !== requestSequenceRef.current) {
-          return;
-        }
-        console.error('Error fetching products:', error);
-        setProducts([]);
-        setProductsStatus('error');
-      } finally {
-        if (currentRequestId === requestSequenceRef.current) {
-          setLoading(false);
-        }
-      }
+    const getEffectivePrice = (product) => {
+      const hasSalePrice = product.is_on_sale && product.discount_price != null;
+      return Number(hasSalePrice ? product.discount_price : product.price) || 0;
     };
 
-    fetchData();
-  }, [selectedCategory, selectedParentSlug, showOnSale, sortBy, searchQuery, retryNonce]);
+    switch (sortBy) {
+      case 'price-low':
+        filtered.sort((a, b) => getEffectivePrice(a) - getEffectivePrice(b));
+        break;
+      case 'price-high':
+        filtered.sort((a, b) => getEffectivePrice(b) - getEffectivePrice(a));
+        break;
+      case 'name':
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      default:
+        filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+
+    return filtered;
+  }, [searchQuery, selectedCategory, selectedParentSlug, sortBy]);
+
+  const fetchShopData = useCallback(async ({
+    forceRefresh = false,
+    showLoader = true,
+    refreshCategories = true,
+  } = {}) => {
+    const currentRequestId = ++requestSequenceRef.current;
+
+    if (showLoader) {
+      setLoading(true);
+      setProductsStatus('loading');
+    }
+
+    try {
+      const productParams = {
+        on_sale: showOnSale || undefined,
+      };
+      const productOptions = forceRefresh ? { forceRefresh: true } : {};
+      const categoriesRequest = refreshCategories
+        ? getCategories()
+        : Promise.resolve(categoriesRef.current);
+
+      const [productResult, categoriesResult] = await Promise.allSettled([
+        getProducts(productParams, productOptions),
+        categoriesRequest,
+      ]);
+
+      if (currentRequestId !== requestSequenceRef.current) {
+        return;
+      }
+
+      if (categoriesResult.status === 'rejected') {
+        console.error('Error fetching categories:', categoriesResult.reason);
+      }
+
+      const categoriesForFiltering =
+        categoriesResult.status === 'fulfilled'
+          ? categoriesResult.value || []
+          : categoriesRef.current;
+
+      if (categoriesResult.status === 'fulfilled' && refreshCategories) {
+        setCategories(categoriesForFiltering);
+      }
+
+      if (productResult.status === 'rejected') {
+        console.error('Error fetching products:', productResult.reason);
+
+        if (!showLoader) {
+          return;
+        }
+
+        setProducts([]);
+        setProductsStatus('error');
+        return;
+      }
+
+      const filtered = filterProductsForView(productResult.value || [], categoriesForFiltering);
+      setProducts(filtered);
+      setProductsStatus(filtered.length > 0 ? 'success' : 'empty');
+    } catch (error) {
+      if (currentRequestId !== requestSequenceRef.current) {
+        return;
+      }
+
+      console.error('Error fetching products:', error);
+
+      if (!showLoader) {
+        return;
+      }
+
+      setProducts([]);
+      setProductsStatus('error');
+    } finally {
+      if (showLoader && currentRequestId === requestSequenceRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [filterProductsForView, showOnSale]);
+
+  useEffect(() => {
+    fetchShopData();
+  }, [fetchShopData, retryNonce]);
+
+  const revalidateProducts = useCallback(() => {
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    if (productsStatus === 'loading') return;
+
+    const now = Date.now();
+    if (now - lastRevalidationRef.current < SHOP_REVALIDATE_INTERVAL_MS) return;
+
+    lastRevalidationRef.current = now;
+    fetchShopData({
+      forceRefresh: true,
+      showLoader: false,
+      refreshCategories: false,
+    });
+  }, [fetchShopData, productsStatus]);
+
+  useEffect(() => {
+    if (!loading && (productsStatus === 'success' || productsStatus === 'empty')) {
+      revalidateProducts();
+    }
+  }, [loading, productsStatus, revalidateProducts]);
+
+  useEffect(() => {
+    const handleReturnToShop = () => {
+      revalidateProducts();
+    };
+
+    window.addEventListener('focus', handleReturnToShop);
+    document.addEventListener('visibilitychange', handleReturnToShop);
+
+    return () => {
+      window.removeEventListener('focus', handleReturnToShop);
+      document.removeEventListener('visibilitychange', handleReturnToShop);
+    };
+  }, [revalidateProducts]);
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);

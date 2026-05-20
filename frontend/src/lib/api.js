@@ -83,24 +83,31 @@ const shouldRetryPublicGet = (error) => {
   return status >= 500 || status === 429;
 };
 
-const getCacheVersionedPublicConfig = (url, config = {}) => {
+const getCatalogPublicRequest = (url, config = {}) => {
+  const { forceRefresh = false, skipCache = false, ...axiosConfig } = config;
   const requestPath = publicAxiosInstance.getUri({
-    ...config,
+    ...axiosConfig,
     url,
     method: 'get',
     baseURL: '',
   });
+  const isCacheable = isCacheableCatalogRequest(requestPath, 'get');
+  const shouldForceRefresh = (forceRefresh || skipCache) && isCacheable;
 
-  if (!publicCatalogCacheVersion || !isCacheableCatalogRequest(requestPath, 'get')) {
-    return config;
+  if (!publicCatalogCacheVersion && !shouldForceRefresh) {
+    return { requestConfig: axiosConfig, forceRefresh: false };
   }
 
   return {
-    ...config,
-    params: {
-      ...(config.params || {}),
-      _cv: publicCatalogCacheVersion,
+    requestConfig: {
+      ...axiosConfig,
+      params: {
+        ...(axiosConfig.params || {}),
+        ...(publicCatalogCacheVersion && isCacheable ? { _cv: publicCatalogCacheVersion } : {}),
+        ...(shouldForceRefresh ? { _refresh: Date.now() } : {}),
+      },
     },
+    forceRefresh: shouldForceRefresh,
   };
 };
 
@@ -148,7 +155,7 @@ publicAxiosInstance.interceptors.request.use(
 );
 
 const publicGetWithRetry = async (url, config = {}, retries = 2, backoffMs = 300) => {
-  const requestConfig = getCacheVersionedPublicConfig(url, config);
+  const { requestConfig, forceRefresh } = getCatalogPublicRequest(url, config);
   const cacheKey = publicAxiosInstance.getUri({
     ...requestConfig,
     url,
@@ -158,7 +165,7 @@ const publicGetWithRetry = async (url, config = {}, retries = 2, backoffMs = 300
   const cacheTtl = getCatalogCacheTtl(cacheKey);
   const cached = cacheTtl > 0 ? catalogCache.get(cacheKey) : null;
 
-  if (cached && Date.now() - cached.createdAt < cacheTtl) {
+  if (!forceRefresh && cached && Date.now() - cached.createdAt < cacheTtl) {
     return cached.data;
   }
 
@@ -219,9 +226,9 @@ axiosInstance.interceptors.request.use(
 );
 
 // Products
-export const getProducts = async (params = {}) => {
+export const getProducts = async (params = {}, options = {}) => {
   try {
-    return await publicGetWithRetry(`/products`, { params });
+    return await publicGetWithRetry(`/products`, { ...options, params });
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
