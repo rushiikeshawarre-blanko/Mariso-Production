@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 import base64
 import hashlib
 import hmac
@@ -22,6 +22,14 @@ from core.config import (
 logger = logging.getLogger(__name__)
 
 CASHFREE_TIMEOUT_SECONDS = 15
+SENSITIVE_LOG_KEY_PARTS = (
+    "authorization",
+    "client_secret",
+    "secret",
+    "token",
+    "payment_session_id",
+    "session_id",
+)
 
 
 def _get_header(headers: dict, name: str) -> Optional[str]:
@@ -181,22 +189,72 @@ def _normalize_cashfree_get_order_response(data: dict) -> dict:
     }
 
 
-def _raise_cashfree_error(response: requests.Response) -> None:
+def _sanitize_for_log(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            key_text = str(key).lower()
+            if any(part in key_text for part in SENSITIVE_LOG_KEY_PARTS):
+                sanitized[key] = "[redacted]"
+            else:
+                sanitized[key] = _sanitize_for_log(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_for_log(item) for item in value]
+    if isinstance(value, str):
+        return value[:500]
+    return value
+
+
+def _extract_cashfree_error_fields(error_body: Any) -> tuple[Optional[str], Optional[str]]:
+    if not isinstance(error_body, dict):
+        return None, None
+
+    error_code = (
+        error_body.get("code")
+        or error_body.get("error_code")
+        or error_body.get("type")
+    )
+    error_message = (
+        error_body.get("message")
+        or error_body.get("error")
+        or error_body.get("error_description")
+    )
+    return error_code, error_message
+
+
+def _raise_cashfree_error(
+    response: requests.Response,
+    *,
+    order_id: str,
+    order_amount: float,
+) -> None:
     try:
         error_body = response.json()
     except ValueError:
         error_body = {"message": response.text[:500]}
 
+    safe_error_body = _sanitize_for_log(error_body)
+    error_code, error_message = _extract_cashfree_error_fields(safe_error_body)
     logger.warning(
-        "Cashfree create order failed with status %s",
+        "Cashfree create order failed: order_id=%s order_amount=%s cashfree_status_code=%s "
+        "cashfree_error_code=%s cashfree_error_message=%s cashfree_error=%s exception_type=%s",
+        order_id,
+        order_amount,
         response.status_code,
+        error_code,
+        error_message,
+        safe_error_body,
+        "CashfreeHTTPError",
     )
     raise HTTPException(
         status_code=502,
         detail={
             "message": "Cashfree create order failed",
             "cashfree_status_code": response.status_code,
-            "cashfree_error": error_body,
+            "cashfree_error_code": error_code,
+            "cashfree_error_message": error_message,
+            "cashfree_error": safe_error_body,
         },
     )
 
@@ -210,9 +268,10 @@ def create_cashfree_order_session(
 ) -> dict:
     idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mariso:cashfree:create-order:{order_id}"))
     headers = _build_cashfree_headers(idempotency_key)
+    rounded_order_amount = round(float(order_amount or 0), 2)
     payload = _build_cashfree_order_payload(
         order_id=order_id,
-        order_amount=round(float(order_amount or 0), 2),
+        order_amount=rounded_order_amount,
         customer_name=customer_name,
         customer_email=customer_email,
         customer_phone=customer_phone,
@@ -225,23 +284,55 @@ def create_cashfree_order_session(
             headers=headers,
             timeout=CASHFREE_TIMEOUT_SECONDS,
         )
-    except requests.Timeout:
-        logger.warning("Cashfree create order timed out for order_id=%s", order_id)
+    except requests.Timeout as exc:
+        logger.warning(
+            "Cashfree create order timed out: order_id=%s order_amount=%s exception_type=%s",
+            order_id,
+            rounded_order_amount,
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=504, detail="Cashfree create order timed out")
-    except requests.RequestException:
-        logger.exception("Cashfree create order request failed for order_id=%s", order_id)
+    except requests.RequestException as exc:
+        logger.exception(
+            "Cashfree create order request failed: order_id=%s order_amount=%s exception_type=%s",
+            order_id,
+            rounded_order_amount,
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=502, detail="Cashfree create order request failed")
 
     if response.status_code >= 400:
-        _raise_cashfree_error(response)
+        _raise_cashfree_error(
+            response,
+            order_id=order_id,
+            order_amount=rounded_order_amount,
+        )
 
     try:
         data = response.json()
     except ValueError:
+        logger.warning(
+            "Cashfree create order returned invalid JSON: order_id=%s order_amount=%s "
+            "cashfree_status_code=%s exception_type=%s",
+            order_id,
+            rounded_order_amount,
+            response.status_code,
+            "ValueError",
+        )
         raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
 
     normalized = _normalize_cashfree_order_response(data)
     if not normalized.get("payment_session_id"):
+        logger.warning(
+            "Cashfree create order response missing payment_session_id: order_id=%s order_amount=%s "
+            "cashfree_status_code=%s cashfree_order_status=%s response_keys=%s exception_type=%s",
+            order_id,
+            rounded_order_amount,
+            response.status_code,
+            normalized.get("cashfree_order_status"),
+            sorted(data.keys()) if isinstance(data, dict) else None,
+            "MissingPaymentSessionId",
+        )
         raise HTTPException(status_code=502, detail="Cashfree response missing payment_session_id")
 
     return normalized

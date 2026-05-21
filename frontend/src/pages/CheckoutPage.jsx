@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/button';
@@ -14,10 +14,12 @@ import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, S
 
 const CheckoutPage = () => {
   const location = useLocation();
-  const { giftPackaging = false, giftNote = '' } = location.state || {};
+  const { giftPackaging = false, giftNote = '', couponCode: couponCodeFromCart = '' } = location.state || {};
   const { items } = useCart();
   const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
+  const initialCouponAppliedRef = useRef(false);
+  const normalizedCouponCodeFromCart = (couponCodeFromCart || '').trim().toUpperCase();
   const [loading, setLoading] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
@@ -114,14 +116,16 @@ const CheckoutPage = () => {
     cancelled: 'Payment was cancelled. Your items are still in your cart.',
   }[paymentMessage];
 
-  const buildCouponValidationItems = () => {
+  const buildCouponValidationItems = useCallback(() => {
     return items.map((item) => ({
       product_id: item.product_id || item.id || item.product?.id || '',
       category_id: item.category_id || item.categoryId || item.product?.category_id || '',
       quantity: item.quantity,
-      price: getCheckoutEffectivePrice(item),
+      price: item.is_on_sale && (item.sale_price || item.discount_price)
+        ? (item.sale_price || item.discount_price)
+        : item.price,
     }));
-  };
+  }, [items]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -176,7 +180,7 @@ const CheckoutPage = () => {
     };
   }, [items, formData.email, formData.phone, user?.email, user?.id, user?.sub]);
 
-  const handleApplyCoupon = async (codeOverride = '') => {
+  const handleApplyCoupon = useCallback(async (codeOverride = '') => {
     const normalizedCode = (codeOverride || couponCode).trim().toUpperCase();
     if (!normalizedCode) {
       setCouponError('Please enter a coupon code.');
@@ -221,7 +225,17 @@ const CheckoutPage = () => {
     } finally {
       setCouponLoading(false);
     }
-  };
+  }, [
+    appliedCoupon,
+    buildCouponValidationItems,
+    cartSignature,
+    couponCode,
+    formData.email,
+    formData.phone,
+    user?.email,
+    user?.id,
+    user?.sub,
+  ]);
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -231,8 +245,20 @@ const CheckoutPage = () => {
     setCouponCartSignature('');
   };
 
+  useEffect(() => {
+    if (!normalizedCouponCodeFromCart || initialCouponAppliedRef.current || items.length === 0) {
+      return;
+    }
+
+    initialCouponAppliedRef.current = true;
+    setCouponCode(normalizedCouponCodeFromCart);
+    handleApplyCoupon(normalizedCouponCodeFromCart);
+  }, [handleApplyCoupon, items.length, normalizedCouponCodeFromCart]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (loading) return;
     
     if (!isAuthenticated) {
       toast.error('Please sign in to place an order');

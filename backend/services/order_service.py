@@ -781,6 +781,8 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
 
 
 async def _send_order_notifications(created_order: dict) -> dict:
+    notification_fields = {}
+
     try:
         send_order_placed_email(created_order)
     except Exception as e:
@@ -792,11 +794,13 @@ async def _send_order_notifications(created_order: dict) -> dict:
         logger.error(f"Failed to send admin order alert email: {e}")
 
     try:
-        send_order_status_whatsapp(created_order)
+        whatsapp_result = send_order_status_whatsapp(created_order)
+        if whatsapp_result and whatsapp_result.get("success"):
+            notification_fields["whatsapp_sent_at"] = _now_iso()
     except Exception as e:
         logger.error(f"Failed to send confirmed WhatsApp: {e}")
 
-    return {}
+    return notification_fields
 
 
 async def create_order(order: OrderCreate, user: dict):
@@ -1122,7 +1126,12 @@ async def _send_paid_cashfree_notifications_once(order_id: str, source: str) -> 
         logger.error(f"Failed to send Cashfree paid admin order alert email: {e}")
 
     try:
-        send_order_status_whatsapp(order)
+        whatsapp_result = send_order_status_whatsapp(order)
+        if whatsapp_result and whatsapp_result.get("success"):
+            await db.orders.update_one(
+                {"id": order_id},
+                {"$set": {"whatsapp_sent_at": _now_iso()}}
+            )
     except Exception as e:
         logger.error(f"Failed to send Cashfree paid WhatsApp: {e}")
 

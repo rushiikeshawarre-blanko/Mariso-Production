@@ -67,6 +67,8 @@ TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER", "").strip()
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "").strip()
+TWILIO_WHATSAPP_ENABLED = os.environ.get("TWILIO_WHATSAPP_ENABLED", "false").strip().lower() == "true"
+TWILIO_WHATSAPP_ORDER_CONFIRMED_CONTENT_SID = os.environ.get("TWILIO_WHATSAPP_ORDER_CONFIRMED_CONTENT_SID", "").strip()
 
 
 AWS_REGION = os.environ.get("AWS_REGION", "").strip()

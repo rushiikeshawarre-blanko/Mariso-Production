@@ -11,14 +11,38 @@ def serialize_mongo_value(order_doc):
         return {key: serialize_mongo_value(val) for key, val in order_doc.items()}
     return order_doc
 
-def format_phone(phone: str) -> str:
-    phone = phone.strip().replace(" ", "").replace("-", "")
+def normalize_phone_e164(phone: str) -> Optional[str]:
+    raw_phone = str(phone or "").strip()
+    if not raw_phone:
+        return None
 
-    if phone.startswith("+"):
-        return phone
-    if phone.startswith("0"):
-        return "+91" + phone[1:]
-    return f"+91{phone}"
+    has_plus = raw_phone.startswith("+")
+    digits = re.sub(r"\D", "", raw_phone)
+    if not digits:
+        return None
+
+    if has_plus:
+        normalized = f"+{digits}"
+    else:
+        digits = digits.lstrip("0")
+        if len(digits) == 10:
+            normalized = f"+91{digits}"
+        elif len(digits) == 12 and digits.startswith("91"):
+            normalized = f"+{digits}"
+        else:
+            normalized = f"+{digits}"
+
+    e164_digits = normalized[1:]
+    if not normalized.startswith("+") or not e164_digits.isdigit():
+        return None
+    if len(e164_digits) < 8 or len(e164_digits) > 15:
+        return None
+
+    return normalized
+
+
+def format_phone(phone: str) -> str:
+    return normalize_phone_e164(phone) or ""
 
 def generate_slug(name: str) -> str:
     slug = name.lower().strip()

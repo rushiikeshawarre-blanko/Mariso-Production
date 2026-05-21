@@ -4,6 +4,8 @@ import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import {
   Dialog,
@@ -14,7 +16,7 @@ import {
 } from '../components/ui/dialog';
 import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { getAvailableCoupons, getProducts } from '../lib/api';
+import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
 
 const CartPage = () => {
@@ -28,6 +30,12 @@ const CartPage = () => {
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [availableCouponsLoading, setAvailableCouponsLoading] = useState(false);
   const [availableCouponsError, setAvailableCouponsError] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponMessage, setCouponMessage] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const [appliedCouponCartSignature, setAppliedCouponCartSignature] = useState('');
 
   const GIFT_PACKAGING_PRICE = 149;
 
@@ -206,13 +214,109 @@ const CartPage = () => {
     return getOriginalSubtotal() - getDiscountedSubtotal();
   };
 
+  const buildCouponValidationItems = () => {
+    return items.map((item) => ({
+      product_id: item.product_id || item.id || item.product?.id || '',
+      category_id: item.category_id || item.categoryId || item.product?.category_id || '',
+      quantity: item.quantity,
+      price: getItemEffectivePrice(item),
+    }));
+  };
+
+  const getCouponDiscountAmount = () => {
+    return appliedCoupon ? Number(appliedCoupon.discount_amount || 0) : 0;
+  };
+
+  const getPayableItemsTotal = () => {
+    return Math.max(getDiscountedSubtotal() - getCouponDiscountAmount(), 0);
+  };
+
   const getFinalTotal = () => {
-    return getDiscountedSubtotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+    return getPayableItemsTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+  };
+
+  useEffect(() => {
+    if (appliedCoupon && appliedCouponCartSignature && appliedCouponCartSignature !== cartSignature) {
+      setAppliedCoupon(null);
+      setCouponMessage('');
+      setCouponError('Cart changed. Please apply the coupon again.');
+      setAppliedCouponCartSignature('');
+    }
+  }, [appliedCoupon, appliedCouponCartSignature, cartSignature]);
+
+  useEffect(() => {
+    if (!appliedCoupon || availableCouponsLoading) return;
+
+    const refreshedCoupon = availableCoupons.find((offer) => offer.code === appliedCoupon.code);
+    if (!refreshedCoupon) return;
+
+    if (!refreshedCoupon.is_applicable) {
+      setAppliedCoupon(null);
+      setCouponMessage('');
+      setCouponError('Coupon is no longer available for this cart.');
+      setAppliedCouponCartSignature('');
+      return;
+    }
+
+    if (refreshedCoupon.discount_amount !== appliedCoupon.discount_amount) {
+      setAppliedCoupon(refreshedCoupon);
+    }
+  }, [appliedCoupon, availableCoupons, availableCouponsLoading]);
+
+  const handleApplyCoupon = async (codeOverride = '') => {
+    const normalizedCode = (codeOverride || couponCode).trim().toUpperCase();
+    if (!normalizedCode) {
+      setCouponError('Please enter a coupon code.');
+      setCouponMessage('');
+      return;
+    }
+
+    if (appliedCoupon) {
+      setCouponError('Remove the current coupon before applying another.');
+      setCouponMessage('');
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError('');
+    setCouponMessage('');
+
+    try {
+      const result = await validateCoupon({
+        code: normalizedCode,
+        items: buildCouponValidationItems(),
+      });
+
+      if (!result?.valid) {
+        setAppliedCoupon(null);
+        setCouponError(result?.message || 'Coupon could not be applied.');
+        return;
+      }
+
+      setAppliedCoupon(result);
+      setCouponCode(result.code || normalizedCode);
+      setAppliedCouponCartSignature(cartSignature);
+      setCouponMessage(`${result.code || normalizedCode} applied — You saved ${formatINR(result.discount_amount)}`);
+    } catch (error) {
+      console.error('Error applying coupon:', error);
+      setAppliedCoupon(null);
+      setCouponError(error?.response?.data?.message || error?.response?.data?.detail || 'Unable to validate coupon. Please try again.');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponMessage('');
+    setCouponError('');
+    setAppliedCouponCartSignature('');
   };
 
   const confirmCheckout = () => {
     setCheckoutDialogOpen(false);
-    navigate('/checkout', { state: { giftPackaging, giftNote } });
+    navigate('/checkout', { state: { giftPackaging, giftNote, couponCode: appliedCoupon?.code } });
   };
 
   const continueShoppingFromDialog = () => {
@@ -430,51 +534,105 @@ const CartPage = () => {
                 <h2 className="font-heading text-xl mb-6">Order Summary</h2>
                 
                 <div className="space-y-4 mb-6">
-                  {getDiscountAmount() > 0 ? (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Original Subtotal ({getCartCount()} items)</span>
-                      <span className="line-through text-muted-foreground">
-                        ₹{getOriginalSubtotal().toLocaleString()}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal ({getCartCount()} items)</span>
-                      <span>₹{getOriginalSubtotal().toLocaleString()}</span>
-                    </div>
-                  )}
-                  {getDiscountAmount() > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Discount</span>
-                      <span className="text-terracotta font-medium">
-                        ₹{getDiscountAmount().toLocaleString()} saved
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground">Original Subtotal ({getCartCount()} items)</span>
+                    <span className={getDiscountAmount() > 0 ? 'text-muted-foreground line-through' : ''}>
+                      {formatINR(getOriginalSubtotal())}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground">Product Discount / Savings</span>
+                    <span className="font-medium text-terracotta">
+                      -{formatINR(getDiscountAmount())}
+                    </span>
+                  </div>
+                  {appliedCoupon && (
+                    <div className="flex justify-between gap-4 text-sm">
+                      <span className="text-muted-foreground">Coupon {appliedCoupon.code}</span>
+                      <span className="font-medium text-[#52624C]">
+                        -{formatINR(getCouponDiscountAmount())}
                       </span>
                     </div>
                   )}
                   {giftPackaging && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between gap-4 text-sm">
                       <span className="text-muted-foreground">Gift Packaging</span>
-                      <span>₹{GIFT_PACKAGING_PRICE}</span>
+                      <span>{formatINR(GIFT_PACKAGING_PRICE)}</span>
                     </div>
                   )}
-                  {getDiscountAmount() > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span>₹{getDiscountedSubtotal().toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between gap-4 text-sm">
                     <span className="text-muted-foreground">Shipping</span>
                     <span className="text-[#8B9D83]">Free</span>
+                  </div>
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span>Included</span>
                   </div>
                 </div>
 
                 <div className="border-t border-border pt-4 mb-8">
-                  <div className="flex items-center justify-between gap-4 font-medium">
-                    <span>Total</span>
-                    <span className="text-xl" data-testid="cart-total">₹{getFinalTotal().toLocaleString()}</span>
+                  <div className="flex items-end justify-between gap-4 font-medium">
+                    <span>Total Payable</span>
+                    <span className="text-2xl text-[#52624C]" data-testid="cart-total">{formatINR(getFinalTotal())}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Including taxes</p>
+                  <p className="text-xs text-muted-foreground mt-1">After discounts, coupons, shipping, and taxes.</p>
+                </div>
+
+                <div className="mb-8 border-t border-border pt-5">
+                  <Label htmlFor="cart-coupon-code" className="text-sm font-medium">Have a coupon?</Label>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="cart-coupon-code"
+                      value={couponCode}
+                      onChange={(event) => {
+                        setCouponCode(event.target.value.toUpperCase());
+                        setCouponError('');
+                        setCouponMessage('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleApplyCoupon();
+                        }
+                      }}
+                      placeholder="Enter coupon code"
+                      disabled={Boolean(appliedCoupon) || couponLoading}
+                      className="uppercase"
+                      data-testid="cart-coupon-input"
+                    />
+                    {appliedCoupon ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRemoveCoupon}
+                        className="shrink-0"
+                        data-testid="cart-remove-coupon-button"
+                      >
+                        Remove
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleApplyCoupon()}
+                        disabled={couponLoading}
+                        className="shrink-0"
+                        data-testid="cart-apply-coupon-button"
+                      >
+                        {couponLoading ? 'Applying...' : 'Apply'}
+                      </Button>
+                    )}
+                  </div>
+                  {appliedCoupon && couponMessage ? (
+                    <div className="mt-3 rounded-lg border border-[#8B9D83]/30 bg-[#8B9D83]/10 px-3 py-2 text-sm">
+                      <p className="font-medium text-[#52624C]">{couponMessage}</p>
+                    </div>
+                  ) : null}
+                  {couponError ? (
+                    <p className="mt-2 text-sm text-red-600" data-testid="cart-coupon-error">
+                      {couponError}
+                    </p>
+                  ) : null}
                 </div>
 
                 {(availableCouponsLoading || availableCoupons.length > 0 || availableCouponsError) && (
@@ -490,7 +648,14 @@ const CartPage = () => {
                       <p className="text-sm text-muted-foreground">{availableCouponsError}</p>
                     ) : (
                       <div className="space-y-3">
-                        {availableCoupons.map((offer) => (
+                        {availableCoupons.map((offer) => {
+                          const isApplied = appliedCoupon?.code === offer.code;
+                          const offerFinalTotal = Math.max(
+                            getDiscountedSubtotal() - Number(offer.discount_amount || 0),
+                            0
+                          ) + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+
+                          return (
                           <div
                             key={offer.coupon_id || offer.code}
                             className="rounded-lg border border-border bg-muted/20 p-3"
@@ -519,8 +684,38 @@ const CartPage = () => {
                                 </span>
                               ) : null}
                             </div>
+                            {offer.is_applicable ? (
+                              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="text-xs text-muted-foreground">
+                                  You pay {formatINR(offerFinalTotal)} with this offer
+                                </p>
+                                {isApplied ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRemoveCoupon}
+                                    className="shrink-0"
+                                  >
+                                    Remove
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleApplyCoupon(offer.code)}
+                                    disabled={Boolean(appliedCoupon) || couponLoading}
+                                    className="shrink-0"
+                                  >
+                                    Apply
+                                  </Button>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

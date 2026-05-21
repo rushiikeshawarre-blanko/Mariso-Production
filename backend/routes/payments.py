@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -21,6 +22,7 @@ from services.order_service import (
 )
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+logger = logging.getLogger(__name__)
 
 CASHFREE_PAYMENT_SUCCESS_WEBHOOK = "PAYMENT_SUCCESS_WEBHOOK"
 CASHFREE_PAYMENT_FAILED_WEBHOOK = "PAYMENT_FAILED_WEBHOOK"
@@ -45,6 +47,17 @@ def _payment_result(order: dict) -> dict:
         "stock_reserved": order.get("stock_reserved"),
         "stock_reserved_until": order.get("stock_reserved_until"),
         "stock_deducted": order.get("stock_deducted"),
+    }
+
+
+def _cashfree_error_context(exc: HTTPException) -> dict:
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    return {
+        "cashfree_status_code": detail.get("cashfree_status_code"),
+        "cashfree_error_code": detail.get("cashfree_error_code"),
+        "cashfree_error_message": detail.get("cashfree_error_message"),
+        "cashfree_error": detail.get("cashfree_error"),
+        "exception_type": type(exc).__name__,
     }
 
 
@@ -115,6 +128,22 @@ async def create_cashfree_session_route(
             customer_phone=pending_order["billing_phone"],
         )
     except HTTPException as exc:
+        error_context = _cashfree_error_context(exc)
+        logger.warning(
+            "Cashfree create-session failed: order_id=%s final_payable=%s coupon_code=%s item_count=%s "
+            "status_code=%s cashfree_status_code=%s cashfree_error_code=%s cashfree_error_message=%s "
+            "cashfree_error=%s exception_type=%s",
+            order_id,
+            pending_order.get("total_price"),
+            pending_order.get("coupon_code"),
+            len(pending_order.get("items") or []),
+            exc.status_code,
+            error_context.get("cashfree_status_code"),
+            error_context.get("cashfree_error_code"),
+            error_context.get("cashfree_error_message"),
+            error_context.get("cashfree_error"),
+            error_context.get("exception_type"),
+        )
         await mark_cashfree_order_failed(order_id, "cashfree_create_session_failed")
         raise exc
 
