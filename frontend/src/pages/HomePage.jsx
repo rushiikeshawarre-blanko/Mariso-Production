@@ -99,7 +99,7 @@ const HomePage = () => {
     <Layout>
       {/* Hero Section */}
       <section 
-        className="relative min-h-[92vh] flex items-center justify-center overflow-hidden pt-20"
+        className="relative min-h-[76vh] md:min-h-[92vh] flex items-center justify-center overflow-hidden pt-20"
         data-testid="hero-section"
       >
         {/* Background Image */}
@@ -166,9 +166,9 @@ const HomePage = () => {
       </section>
 
       {/* Featured Products */}
-      <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="featured-section">
+      <section className="py-14 md:py-28 bg-[#F8F5F1]" data-testid="featured-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-14">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-8 md:mb-14">
             <div>
               <p className="text-[11px] tracking-[0.24em] uppercase text-muted-foreground mb-3">
                 New Arrivals
@@ -208,9 +208,9 @@ const HomePage = () => {
       </section>
 
       {/* Shop by Category */}
-      <section className="py-24 md:py-28 bg-white" data-testid="categories-section">
+      <section className="py-14 md:py-28 bg-white" data-testid="categories-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="text-center mb-14">
+          <div className="text-center mb-8 md:mb-14">
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
               Explore
             </p>
@@ -291,9 +291,9 @@ const HomePage = () => {
       </section>
 
       {/* Bestsellers */}
-      <section className="py-24 md:py-28 bg-white" data-testid="bestsellers-section">
+      <section className="py-14 md:py-28 bg-white" data-testid="bestsellers-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-12">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-8 md:mb-12">
             <div>
               <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
                 Most Loved

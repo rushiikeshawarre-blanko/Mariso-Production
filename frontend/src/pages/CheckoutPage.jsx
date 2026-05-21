@@ -366,9 +366,9 @@ const CheckoutPage = () => {
           )}
 
           <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
               {/* Billing Details */}
-              <div className="lg:col-span-2 space-y-8">
+              <div className="contents lg:block lg:col-span-2 lg:space-y-8">
                 {/* Contact Information */}
                 <div className="bg-white rounded-xl p-8 card-shadow">
                   <h2 className="font-heading text-xl mb-6">Contact Information</h2>
@@ -483,7 +483,7 @@ const CheckoutPage = () => {
                 </div>
 
                 {/* Why Choose Mariso */}
-                <div className="bg-terracotta/5 rounded-xl p-8 border border-terracotta/20" data-testid="why-choose-mariso-section">
+                <div className="order-5 lg:order-none bg-terracotta/5 rounded-xl p-8 border border-terracotta/20" data-testid="why-choose-mariso-section">
                   <div className="flex items-center gap-2 mb-6">
                     <Sparkles className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
                     <h2 className="font-heading text-xl">Why Choose Mariso?</h2>
@@ -536,7 +536,7 @@ const CheckoutPage = () => {
               </div>
 
               {/* Order Summary */}
-              <div className="lg:col-span-1">
+              <div className="order-4 lg:order-none lg:col-span-1">
                 <div className="bg-white rounded-xl p-8 card-shadow sticky top-32">
                   <h2 className="font-heading text-xl mb-6">Order Summary</h2>
 
