@@ -76,6 +76,14 @@ async def _generate_tracking_token() -> str:
             return token
 
 
+async def _generate_feedback_token() -> str:
+    while True:
+        token = secrets.token_urlsafe(32)
+        existing_order = await db.orders.find_one({"feedback_token": token}, {"_id": 1})
+        if not existing_order:
+            return token
+
+
 async def ensure_order_tracking_token(order: dict) -> str:
     existing_token = order.get("tracking_token")
     if existing_token:
@@ -100,6 +108,32 @@ async def ensure_order_tracking_token(order: dict) -> str:
 
     updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "tracking_token": 1})
     return updated_order.get("tracking_token") or token
+
+
+async def ensure_order_feedback_token(order: dict) -> str:
+    existing_token = order.get("feedback_token")
+    if existing_token:
+        return existing_token
+
+    order_id = order.get("id")
+    if not order_id:
+        raise HTTPException(status_code=400, detail="Order is missing an id")
+
+    token = await _generate_feedback_token()
+    await db.orders.update_one(
+        {
+            "id": order_id,
+            "$or": [
+                {"feedback_token": {"$exists": False}},
+                {"feedback_token": None},
+                {"feedback_token": ""},
+            ],
+        },
+        {"$set": {"feedback_token": token, "updated_at": _now_iso()}},
+    )
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "feedback_token": 1})
+    return updated_order.get("feedback_token") or token
 
 
 def _build_tracking_steps(status: Optional[str]) -> List[dict]:
@@ -1529,14 +1563,18 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     if status_update.status != old_status and status_update.status not in allowed_transitions.get(old_status, []):
         raise HTTPException(status_code=400, detail="Invalid status transition")
     
+    update_fields = {
+        "status": status_update.status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin_id,
+    }
+    if status_update.status == "delivered":
+        update_fields["delivered_at"] = update_fields["updated_at"]
+
     await db.orders.update_one(
         {"id": order_id},
         {
-            "$set": {
-                "status": status_update.status,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "updated_by": admin_id,
-            }
+            "$set": update_fields
         }
     )
     
@@ -1558,6 +1596,8 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         status = status_update.status
         if status in ["packed", "shipped", "delivered"]:
             order["tracking_token"] = await ensure_order_tracking_token(order)
+        if status == "delivered":
+            order["feedback_token"] = await ensure_order_feedback_token(order)
 
         # EMAIL → send only for shipped and delivered from admin status updates.
         # Confirmed is already sent at checkout.

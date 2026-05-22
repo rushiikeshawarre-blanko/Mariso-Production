@@ -22,6 +22,7 @@ import AddressesPage from "./pages/account/AddressesPage";
 import FaqPage from "./pages/FaqPage";
 import ContentPage from "./pages/ContentPage";
 import TrackOrderPage from "./pages/TrackOrderPage";
+import FeedbackPage from "./pages/FeedbackPage";
 import Layout from "./components/layout/Layout";
 
 // Admin Pages
@@ -33,6 +34,7 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminContentPages from "./pages/admin/AdminContentPages";
 import AdminFaqs from "./pages/admin/AdminFaqs";
 import AdminCoupons from "./pages/admin/AdminCoupons";
+import AdminFeedback from "./pages/admin/AdminFeedback";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
@@ -124,6 +126,7 @@ function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/pages/:slug" element={<Layout><ContentPage /></Layout>} />
       <Route path="/track-order/:token" element={<TrackOrderPage />} />
+      <Route path="/feedback/:feedbackToken" element={<FeedbackPage />} />
       {/* Protected Routes */}
       <Route
         path="/checkout"
@@ -179,6 +182,7 @@ function AppRoutes() {
         <Route path="orders" element={<AdminOrders />} />
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="coupons" element={<AdminCoupons />} />
+        <Route path="feedback" element={<AdminFeedback />} />
         <Route path="content-pages" element={<AdminContentPages />} />
         <Route path="faqs" element={<AdminFaqs />} />
       </Route>

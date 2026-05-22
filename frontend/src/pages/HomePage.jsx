@@ -5,13 +5,38 @@ import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
 import MarisoLoader from '../components/ui/MarisoLoader';
-import { getCategories, getFeaturedProducts, getBestsellers, getHomepageFaqs } from '../lib/api';
+import { getCategories, getFeaturedProducts, getBestsellers, getHomepageFaqs, getHomepageFeedbackReviews } from '../lib/api';
+
+const defaultTestimonials = [
+  {
+    name: "Priya Mehta",
+    text: "The Vanilla Sandstone candle has become my go-to for cozy evenings. The scent is divine and the container is now my jewelry holder!",
+    rating: 5
+  },
+  {
+    name: "Ananya Singh",
+    text: "Gifted the Rose Candle Bouquet to my sister. She absolutely loved it! The packaging was beautiful and arrived in perfect condition.",
+    rating: 5
+  },
+  {
+    name: "Riya Sharma",
+    text: "The jesmonite coasters are stunning. Each piece feels unique and handcrafted. They've elevated my coffee table beautifully.",
+    rating: 5
+  }
+];
+
+const clampRating = (rating) => {
+  const numericRating = Number(rating || 5);
+  if (Number.isNaN(numericRating)) return 5;
+  return Math.min(Math.max(Math.round(numericRating), 1), 5);
+};
 
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [bestsellers, setBestsellers] = useState([]);
   const [homepageFaqs, setHomepageFaqs] = useState([]);
+  const [homepageReviews, setHomepageReviews] = useState([]);
   const [openFaqId, setOpenFaqId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hoveredButton, setHoveredButton] = useState(null);
@@ -24,11 +49,12 @@ const HomePage = () => {
     setBestsellerStatus('loading');
 
     try {
-      const [catsResult, featuredResult, bestResult, homepageFaqsResult] = await Promise.allSettled([
+      const [catsResult, featuredResult, bestResult, homepageFaqsResult, homepageReviewsResult] = await Promise.allSettled([
         getCategories(),
         getFeaturedProducts(),
         getBestsellers(),
-        getHomepageFaqs()
+        getHomepageFaqs(),
+        getHomepageFeedbackReviews()
       ]);
 
       if (catsResult.status === 'fulfilled') {
@@ -60,6 +86,22 @@ const HomePage = () => {
         setHomepageFaqs(faqItems);
         setOpenFaqId(null);
       }
+
+      if (homepageReviewsResult.status === 'fulfilled') {
+        const reviewItems = homepageReviewsResult.value || [];
+        setHomepageReviews(
+          reviewItems
+            .filter((review) => review?.text)
+            .map((review) => ({
+              name: review.name || 'Mariso Customer',
+              text: review.text,
+              rating: clampRating(review.rating),
+            }))
+        );
+      } else {
+        console.error('Error fetching homepage reviews:', homepageReviewsResult.reason);
+        setHomepageReviews([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       setFeaturedStatus((current) => (current === 'loading' ? 'error' : current));
@@ -77,23 +119,8 @@ const HomePage = () => {
     setOpenFaqId((current) => (current === faqId ? null : faqId));
   };
 
-  const testimonials = [
-    {
-      name: "Priya Mehta",
-      text: "The Vanilla Sandstone candle has become my go-to for cozy evenings. The scent is divine and the container is now my jewelry holder!",
-      rating: 5
-    },
-    {
-      name: "Ananya Singh",
-      text: "Gifted the Rose Candle Bouquet to my sister. She absolutely loved it! The packaging was beautiful and arrived in perfect condition.",
-      rating: 5
-    },
-    {
-      name: "Riya Sharma",
-      text: "The jesmonite coasters are stunning. Each piece feels unique and handcrafted. They've elevated my coffee table beautifully.",
-      rating: 5
-    }
-  ];
+  const testimonials = [...homepageReviews, ...defaultTestimonials].slice(0, 10);
+  const marqueeTestimonials = testimonials.length > 0 ? testimonials : defaultTestimonials;
 
   return (
     <Layout>
@@ -524,24 +551,39 @@ const HomePage = () => {
             </p>
             <h2 className="font-heading text-4xl md:text-5xl tracking-tight">What Our Customers Say</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <div 
-                key={index}
-                className="bg-white p-8 rounded-[1.25rem] shadow-[0_12px_30px_rgba(0,0,0,0.06)] border border-black/5"
-                data-testid={`testimonial-${index}`}
-              >
-                <div className="flex gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star key={i} className="h-4 w-4 fill-terracotta text-terracotta" />
-                  ))}
-                </div>
-                <p className="text-foreground/80 leading-8 mb-6 font-serif-accent text-lg italic">
-                  "{testimonial.text}"
-                </p>
-                <p className="font-medium text-sm">{testimonial.name}</p>
+          <div className="review-marquee-shell">
+            <div className="review-marquee" aria-label="Customer reviews" tabIndex={0}>
+              <div className="review-marquee-track">
+                {[0, 1].map((trackIndex) => (
+                  <div
+                    key={trackIndex}
+                    className="review-marquee-set"
+                    aria-hidden={trackIndex === 1 ? 'true' : undefined}
+                  >
+                    {marqueeTestimonials.map((testimonial, index) => {
+                      const rating = clampRating(testimonial.rating);
+                      return (
+                        <article
+                          key={`${trackIndex}-${testimonial.name}-${index}`}
+                          className="review-marquee-card"
+                          data-testid={`testimonial-${index}`}
+                        >
+                          <div className="flex gap-1 mb-4">
+                            {[...Array(rating)].map((_, i) => (
+                              <Star key={i} className="h-4 w-4 fill-terracotta text-terracotta" />
+                            ))}
+                          </div>
+                          <p className="line-clamp-5 text-foreground/80 leading-8 mb-6 font-serif-accent text-lg italic">
+                            "{testimonial.text}"
+                          </p>
+                          <p className="font-medium text-sm">{testimonial.name || 'Mariso Customer'}</p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>

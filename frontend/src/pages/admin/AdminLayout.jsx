@@ -19,7 +19,8 @@ import {
   HelpCircle,
   Menu,
   X,
-  BadgePercent
+  BadgePercent,
+  MessageSquareText
 } from 'lucide-react';
 import { Toaster } from '../../components/ui/sonner';
 import {
@@ -262,6 +263,7 @@ const AdminLayout = () => {
     { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
     { name: 'Customers', href: '/admin/customers', icon: Users },
     { name: 'Coupons', href: '/admin/coupons', icon: BadgePercent },
+    { name: 'Feedback', href: '/admin/feedback', icon: MessageSquareText },
     { name: 'Content Pages', href: '/admin/content-pages', icon: FileText },
     { name: 'FAQs', href: '/admin/faqs', icon: HelpCircle },
   ];
@@ -280,6 +282,7 @@ const AdminLayout = () => {
     if (location.pathname.startsWith('/admin/orders')) return 'Orders';
     if (location.pathname.startsWith('/admin/customers')) return 'Customers';
     if (location.pathname.startsWith('/admin/coupons')) return 'Coupons';
+    if (location.pathname.startsWith('/admin/feedback')) return 'Feedback';
     if (location.pathname.startsWith('/admin/content-pages')) return 'Content Pages';
     if (location.pathname.startsWith('/admin/faqs')) return 'FAQs';
     return 'Admin';

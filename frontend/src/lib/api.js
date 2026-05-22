@@ -36,6 +36,7 @@ export const getCatalogCacheTtl = (path) => {
     case '/categories':
     case '/content/pages':
     case '/content/faqs/homepage':
+    case '/feedback/reviews/homepage':
       return 300 * 1000;
     default:
       return 0;
@@ -399,6 +400,34 @@ export const getTrackedOrder = async (token) => {
   }
 };
 
+export const getFeedbackForm = async (feedbackToken) => {
+  try {
+    return await publicGetWithRetry(`/feedback/${encodeURIComponent(feedbackToken)}`);
+  } catch (error) {
+    console.error('Error fetching feedback form:', error);
+    throw error;
+  }
+};
+
+export const submitFeedback = async (feedbackToken, payload) => {
+  try {
+    const response = await publicAxiosInstance.post(`/feedback/${encodeURIComponent(feedbackToken)}/submit`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    throw error;
+  }
+};
+
+export const getHomepageFeedbackReviews = async () => {
+  try {
+    return await publicGetWithRetry(`/feedback/reviews/homepage`);
+  } catch (error) {
+    console.error('Error fetching homepage feedback reviews:', error);
+    throw error;
+  }
+};
+
 export const validateCoupon = async (couponData) => {
   try {
     const response = await axiosInstance.post(`/coupons/validate`, couponData);
@@ -614,6 +643,106 @@ export const deleteAdminCoupon = async (couponId) => {
     return response.data;
   } catch (error) {
     console.error('Error deleting coupon:', error);
+    throw error;
+  }
+};
+
+export const getAdminFeedbackQuestions = async () => {
+  try {
+    const response = await axiosInstance.get(`/admin/feedback/questions`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching feedback questions:', error);
+    throw error;
+  }
+};
+
+export const createAdminFeedbackQuestion = async (questionData) => {
+  try {
+    const response = await axiosInstance.post(`/admin/feedback/questions`, questionData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating feedback question:', error);
+    throw error;
+  }
+};
+
+export const updateAdminFeedbackQuestion = async (questionId, questionData) => {
+  try {
+    const response = await axiosInstance.put(`/admin/feedback/questions/${questionId}`, questionData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating feedback question:', error);
+    throw error;
+  }
+};
+
+export const deleteAdminFeedbackQuestion = async (questionId) => {
+  try {
+    const response = await axiosInstance.delete(`/admin/feedback/questions/${questionId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting feedback question:', error);
+    throw error;
+  }
+};
+
+export const getAdminFeedbackRewardRules = async () => {
+  try {
+    const response = await axiosInstance.get(`/admin/feedback/reward-rules`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching feedback reward rules:', error);
+    throw error;
+  }
+};
+
+export const createAdminFeedbackRewardRule = async (ruleData) => {
+  try {
+    const response = await axiosInstance.post(`/admin/feedback/reward-rules`, ruleData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating feedback reward rule:', error);
+    throw error;
+  }
+};
+
+export const updateAdminFeedbackRewardRule = async (ruleId, ruleData) => {
+  try {
+    const response = await axiosInstance.put(`/admin/feedback/reward-rules/${ruleId}`, ruleData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating feedback reward rule:', error);
+    throw error;
+  }
+};
+
+export const deleteAdminFeedbackRewardRule = async (ruleId) => {
+  try {
+    const response = await axiosInstance.delete(`/admin/feedback/reward-rules/${ruleId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting feedback reward rule:', error);
+    throw error;
+  }
+};
+
+export const getAdminFeedbackSubmissions = async (limit = 1000) => {
+  try {
+    const response = await axiosInstance.get(`/admin/feedback/submissions`, { params: { limit } });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching feedback submissions:', error);
+    throw error;
+  }
+};
+
+export const updateAdminFeedbackSubmissionHomepage = async (submissionId, payload) => {
+  try {
+    const response = await axiosInstance.patch(`/admin/feedback/submissions/${submissionId}/homepage`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating feedback submission homepage status:', error);
     throw error;
   }
 };

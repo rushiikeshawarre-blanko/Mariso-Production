@@ -2,7 +2,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-CouponType = Literal["general", "influencer", "personal", "recovery"]
+CouponType = Literal["general", "influencer", "personal", "recovery", "feedback_reward"]
 CouponVisibility = Literal["public", "private", "influencer"]
 DiscountType = Literal["percentage", "fixed"]
 AppliesTo = Literal["all", "categories", "products"]
@@ -37,6 +37,12 @@ class CouponBase(BaseModel):
     influencer_handle: Optional[str] = ""
     is_active: bool = True
     allow_stacking: bool = False
+    assigned_user_id: Optional[str] = None
+    assigned_email: Optional[str] = None
+    assigned_phone: Optional[str] = None
+    source: Optional[str] = None
+    source_order_id: Optional[str] = None
+    source_feedback_submission_id: Optional[str] = None
 
     @field_validator("code")
     @classmethod
@@ -91,6 +97,12 @@ class CouponUpdate(BaseModel):
     influencer_handle: Optional[str] = None
     is_active: Optional[bool] = None
     allow_stacking: Optional[bool] = False
+    assigned_user_id: Optional[str] = None
+    assigned_email: Optional[str] = None
+    assigned_phone: Optional[str] = None
+    source: Optional[str] = None
+    source_order_id: Optional[str] = None
+    source_feedback_submission_id: Optional[str] = None
 
     @field_validator("code")
     @classmethod
@@ -135,6 +147,12 @@ class CouponResponse(BaseModel):
     influencer_handle: str
     is_active: bool
     allow_stacking: bool
+    assigned_user_id: Optional[str] = None
+    assigned_email: Optional[str] = None
+    assigned_phone: Optional[str] = None
+    source: Optional[str] = None
+    source_order_id: Optional[str] = None
+    source_feedback_submission_id: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -185,13 +203,20 @@ class AvailableCouponsRequest(BaseModel):
 class AvailableCouponResponse(BaseModel):
     code: str
     coupon_id: str
+    description: Optional[str] = ""
+    name: Optional[str] = ""
     display_title: str
     display_description: str
     discount_type: DiscountType
     discount_value: float
+    max_discount_amount: Optional[float] = None
+    minimum_order_amount: Optional[float] = 0
     discount_amount: Optional[float] = None
     eligible_subtotal: Optional[float] = None
     cart_subtotal: Optional[float] = None
     final_total: Optional[float] = None
+    expiry_date: Optional[str] = None
+    end_date: Optional[str] = None
+    source: Optional[str] = None
     is_applicable: bool
     message: str

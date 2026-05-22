@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+import secrets
 import uuid
 
 from fastapi import HTTPException
@@ -9,6 +10,7 @@ from pymongo.errors import DuplicateKeyError
 from core.constants import MAX_LIMIT, PAYMENT_STATUS_PAID
 from core.database import db
 from models.coupon import AvailableCouponsRequest, CouponCreate, CouponUpdate, CouponValidationRequest
+from utils.helpers import format_phone
 
 
 def _now_iso() -> str:
@@ -53,8 +55,18 @@ def _coupon_snapshot(coupon: dict) -> dict:
         "end_date": coupon.get("end_date"),
         "influencer_name": coupon.get("influencer_name", ""),
         "influencer_handle": coupon.get("influencer_handle", ""),
+        "source": coupon.get("source"),
         "allow_stacking": False,
     }
+
+
+def _normalize_optional_email(value: Optional[str]) -> Optional[str]:
+    normalized = str(value or "").strip().lower()
+    return normalized or None
+
+
+def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
+    return format_phone(str(value or "")) or None
 
 
 def _validate_coupon_dates(start_date: Optional[str], end_date: Optional[str]) -> None:
@@ -119,6 +131,85 @@ async def create_coupon(coupon: CouponCreate) -> dict:
         raise HTTPException(status_code=400, detail="Coupon code already exists")
 
     return await get_coupon(coupon_doc["id"])
+
+
+async def create_feedback_reward_coupon(
+    *,
+    order: dict,
+    submission_id: str,
+    reward_rule: dict,
+) -> dict:
+    existing = await db.coupons.find_one(
+        {
+            "source": "feedback_reward",
+            "source_feedback_submission_id": submission_id,
+            "deleted_at": {"$exists": False},
+        },
+        {"_id": 0},
+    )
+    if existing:
+        return existing
+
+    now = _now_iso()
+    end_date = reward_rule.get("end_date")
+    validity_days = int(reward_rule.get("validity_days") or 0)
+    if validity_days > 0:
+        end_date = (datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=validity_days)).isoformat()
+
+    for _ in range(8):
+        code = f"THANKYOU-{secrets.token_urlsafe(6).replace('-', '').replace('_', '').upper()[:8]}"
+        coupon_doc = {
+            "id": str(uuid.uuid4()),
+            "code": code,
+            "coupon_type": "personal",
+            "description": reward_rule.get("description") or reward_rule.get("name") or "Feedback reward",
+            "visibility": "private",
+            "display_title": reward_rule.get("display_title") or "Your feedback reward",
+            "display_description": reward_rule.get("display_description") or "",
+            "show_on_cart": False,
+            "show_on_checkout": False,
+            "discount_type": reward_rule["discount_type"],
+            "discount_value": reward_rule["discount_value"],
+            "max_discount_amount": reward_rule.get("max_discount_amount"),
+            "minimum_order_amount": reward_rule.get("coupon_minimum_order_amount", 0),
+            "applies_to": "all",
+            "applicable_category_ids": [],
+            "applicable_product_ids": [],
+            "start_date": now,
+            "end_date": end_date,
+            "usage_limit_total": 1,
+            "usage_limit_per_customer": 1,
+            "used_count": 0,
+            "influencer_name": "",
+            "influencer_handle": "",
+            "is_active": True,
+            "allow_stacking": False,
+            "assigned_user_id": order.get("user_id"),
+            "assigned_email": _normalize_optional_email(order.get("billing_email")),
+            "assigned_phone": _normalize_optional_phone(order.get("billing_phone")),
+            "source": "feedback_reward",
+            "source_order_id": order.get("id"),
+            "source_feedback_submission_id": submission_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            await db.coupons.insert_one(coupon_doc)
+            return await get_coupon(coupon_doc["id"])
+        except DuplicateKeyError:
+            existing = await db.coupons.find_one(
+                {
+                    "source": "feedback_reward",
+                    "source_feedback_submission_id": submission_id,
+                    "deleted_at": {"$exists": False},
+                },
+                {"_id": 0},
+            )
+            if existing:
+                return existing
+            continue
+
+    raise HTTPException(status_code=500, detail="Unable to create reward coupon")
 
 
 async def update_coupon(coupon_id: str, coupon: CouponUpdate) -> dict:
@@ -202,7 +293,9 @@ async def _customer_usage_count(coupon_id: str, request: CouponValidationRequest
     if request.email:
         identifiers.append({"billing_email": request.email.strip().lower()})
     if request.phone:
-        identifiers.append({"billing_phone": request.phone.strip()})
+        normalized_phone = _normalize_optional_phone(request.phone)
+        if normalized_phone:
+            identifiers.append({"billing_phone": normalized_phone})
 
     if not identifiers:
         return 0
@@ -241,6 +334,20 @@ async def _evaluate_coupon(coupon: dict, request: CouponValidationRequest, *, lo
         return {"valid": False, "message": "Coupon is not active yet", "hide_from_available": True}
     if end and now > end:
         return {"valid": False, "message": "Coupon has expired", "hide_from_available": True}
+
+    assigned_user_id = coupon.get("assigned_user_id")
+    assigned_email = _normalize_optional_email(coupon.get("assigned_email"))
+    assigned_phone = _normalize_optional_phone(coupon.get("assigned_phone"))
+    if assigned_user_id or assigned_email or assigned_phone:
+        request_email = _normalize_optional_email(request.email)
+        request_phone = _normalize_optional_phone(request.phone)
+        matches_assignee = (
+            bool(assigned_user_id and request.user_id == assigned_user_id)
+            or bool(assigned_email and request_email == assigned_email)
+            or bool(assigned_phone and request_phone == assigned_phone)
+        )
+        if not matches_assignee:
+            return {"valid": False, "message": "Coupon is not assigned to this customer", "hide_from_available": True}
 
     usage_limit_total = coupon.get("usage_limit_total")
     used_count = coupon.get("used_count", 0)
@@ -304,16 +411,76 @@ async def validate_coupon(request: CouponValidationRequest) -> dict:
     return await _evaluate_coupon(coupon, request)
 
 
+def _available_coupon_payload(coupon: dict, result: dict) -> dict:
+    return {
+        "code": coupon["code"],
+        "coupon_id": coupon["id"],
+        "description": coupon.get("description", ""),
+        "name": coupon.get("display_title") or coupon.get("description") or coupon["code"],
+        "display_title": coupon.get("display_title") or coupon.get("description") or coupon["code"],
+        "display_description": coupon.get("display_description") or coupon.get("description", ""),
+        "discount_type": coupon["discount_type"],
+        "discount_value": coupon["discount_value"],
+        "max_discount_amount": coupon.get("max_discount_amount"),
+        "minimum_order_amount": coupon.get("minimum_order_amount", 0),
+        "discount_amount": result.get("discount_amount"),
+        "eligible_subtotal": result.get("eligible_subtotal"),
+        "cart_subtotal": result.get("cart_subtotal"),
+        "final_total": result.get("final_total"),
+        "expiry_date": coupon.get("end_date"),
+        "end_date": coupon.get("end_date"),
+        "source": coupon.get("source"),
+        "is_applicable": bool(result.get("valid")),
+        "message": "Coupon available" if result.get("valid") else result.get("message", "Coupon unavailable"),
+    }
+
+
+def _feedback_reward_sort_date(coupon: dict) -> datetime:
+    for field in ("created_at", "end_date", "expiry_date"):
+        try:
+            parsed = _parse_iso_datetime(coupon.get(field))
+        except HTTPException:
+            parsed = None
+        if parsed:
+            return parsed
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
 async def get_available_coupons(request: AvailableCouponsRequest) -> List[dict]:
     surface_field = "show_on_cart" if request.surface == "cart" else "show_on_checkout"
+    request_email = _normalize_optional_email(request.email)
+    request_phone = _normalize_optional_phone(request.phone)
+
+    personal_reward_matchers = []
+    if request.user_id:
+        personal_reward_matchers.append({"assigned_user_id": request.user_id})
+    if request_email:
+        personal_reward_matchers.append({"assigned_email": request_email})
+    if request_phone:
+        personal_reward_matchers.append({"assigned_phone": request_phone})
+
+    visibility_filters = [
+        {
+            "visibility": "public",
+            "$or": [{surface_field: True}, {surface_field: {"$exists": False}}],
+        }
+    ]
+    if personal_reward_matchers:
+        visibility_filters.append({
+            "visibility": "private",
+            "coupon_type": "personal",
+            "source": "feedback_reward",
+            "$or": personal_reward_matchers,
+        })
+
     query = {
         "deleted_at": {"$exists": False},
         "is_active": True,
-        "visibility": "public",
-        "$or": [{surface_field: True}, {surface_field: {"$exists": False}}],
+        "$or": visibility_filters,
     }
     coupons = await db.coupons.find(query, {"_id": 0}).sort("created_at", -1).to_list(MAX_LIMIT)
     available = []
+    matching_feedback_rewards = []
 
     for coupon in coupons:
         validation_request = CouponValidationRequest(
@@ -327,20 +494,24 @@ async def get_available_coupons(request: AvailableCouponsRequest) -> List[dict]:
         if result.get("hide_from_available"):
             continue
 
-        available.append({
-            "code": coupon["code"],
-            "coupon_id": coupon["id"],
-            "display_title": coupon.get("display_title") or coupon.get("description") or coupon["code"],
-            "display_description": coupon.get("display_description") or coupon.get("description", ""),
-            "discount_type": coupon["discount_type"],
-            "discount_value": coupon["discount_value"],
-            "discount_amount": result.get("discount_amount"),
-            "eligible_subtotal": result.get("eligible_subtotal"),
-            "cart_subtotal": result.get("cart_subtotal"),
-            "final_total": result.get("final_total"),
-            "is_applicable": bool(result.get("valid")),
-            "message": "Coupon available" if result.get("valid") else result.get("message", "Coupon unavailable"),
-        })
+        if coupon.get("source") == "feedback_reward":
+            try:
+                used_count = int(coupon.get("used_count") or 0)
+            except (TypeError, ValueError):
+                used_count = 0
+            if used_count > 0:
+                continue
+            matching_feedback_rewards.append((coupon, result))
+            continue
+
+        available.append(_available_coupon_payload(coupon, result))
+
+    if matching_feedback_rewards:
+        latest_coupon, latest_result = max(
+            matching_feedback_rewards,
+            key=lambda item: _feedback_reward_sort_date(item[0]),
+        )
+        available.append(_available_coupon_payload(latest_coupon, latest_result))
 
     return available
 

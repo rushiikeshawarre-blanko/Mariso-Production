@@ -14,13 +14,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../components/ui/dialog';
-import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles } from 'lucide-react';
+import { useAuth0 } from '@auth0/auth0-react';
+import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
 
 const CartPage = () => {
   const { items, removeItem, updateQuantity, getCartCount } = useCart();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const [giftPackaging, setGiftPackaging] = useState(false);
   const [giftNote, setGiftNote] = useState('');
@@ -171,6 +173,8 @@ const CartPage = () => {
         const result = await getAvailableCoupons({
           items: couponItems,
           surface: 'cart',
+          user_id: user?.sub || user?.id || undefined,
+          email: user?.email || undefined,
         });
 
         if (isCurrent) {
@@ -194,7 +198,7 @@ const CartPage = () => {
     return () => {
       isCurrent = false;
     };
-  }, [cartSignature, items]);
+  }, [cartSignature, items, user?.email, user?.id, user?.sub]);
 
   const getItemEffectivePrice = (item) => {
     return item.is_on_sale && (item.sale_price || item.discount_price)
@@ -234,6 +238,35 @@ const CartPage = () => {
   const getFinalTotal = () => {
     return getPayableItemsTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
   };
+
+  const formatCouponDiscount = (coupon) => {
+    if (!coupon) return '';
+    if (coupon.discount_type === 'percentage') {
+      return `${coupon.discount_value}% off`;
+    }
+    return `${formatINR(coupon.discount_value)} off`;
+  };
+
+  const formatCouponDate = (dateValue) => {
+    if (!dateValue) return '';
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const feedbackReward = availableCoupons.find((offer) => offer.source === 'feedback_reward');
+  const visibleAvailableCoupons = feedbackReward
+    ? availableCoupons.filter((offer) => offer.code !== feedbackReward.code)
+    : availableCoupons;
+  const isFeedbackRewardApplied = Boolean(
+    appliedCoupon
+    && feedbackReward
+    && appliedCoupon.code === feedbackReward.code
+  );
 
   useEffect(() => {
     if (appliedCoupon && appliedCouponCartSignature && appliedCouponCartSignature !== cartSignature) {
@@ -285,6 +318,8 @@ const CartPage = () => {
       const result = await validateCoupon({
         code: normalizedCode,
         items: buildCouponValidationItems(),
+        user_id: user?.sub || user?.id || undefined,
+        email: user?.email || undefined,
       });
 
       if (!result?.valid) {
@@ -293,7 +328,11 @@ const CartPage = () => {
         return;
       }
 
-      setAppliedCoupon(result);
+      const sourceOffer = availableCoupons.find((offer) => offer.code === (result.code || normalizedCode));
+      setAppliedCoupon({
+        ...result,
+        source: result?.coupon_snapshot?.source || sourceOffer?.source,
+      });
       setCouponCode(result.code || normalizedCode);
       setAppliedCouponCartSignature(cartSignature);
       setCouponMessage(`${result.code || normalizedCode} applied — You saved ${formatINR(result.discount_amount)}`);
@@ -623,7 +662,7 @@ const CartPage = () => {
                       </Button>
                     )}
                   </div>
-                  {appliedCoupon && couponMessage ? (
+                  {appliedCoupon && couponMessage && appliedCoupon.source !== 'feedback_reward' ? (
                     <div className="mt-3 rounded-lg border border-[#8B9D83]/30 bg-[#8B9D83]/10 px-3 py-2 text-sm">
                       <p className="font-medium text-[#52624C]">{couponMessage}</p>
                     </div>
@@ -635,7 +674,90 @@ const CartPage = () => {
                   ) : null}
                 </div>
 
-                {(availableCouponsLoading || availableCoupons.length > 0 || availableCouponsError) && (
+                {feedbackReward && (
+                  <div
+                    className="mb-8 overflow-hidden rounded-xl border border-[#D6B47A]/45 bg-[#FFF8EA] shadow-sm"
+                    data-testid="cart-feedback-reward-card"
+                  >
+                    <div className="bg-[#52624C] px-4 py-3 text-white">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15">
+                          {isFeedbackRewardApplied ? (
+                            <CheckCircle2 className="h-4 w-4" strokeWidth={1.7} />
+                          ) : (
+                            <Gift className="h-4 w-4" strokeWidth={1.7} />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">You have a Mariso reward waiting 🎁</p>
+                          <p className="mt-0.5 text-xs text-white/80">
+                            {feedbackReward.display_description || feedbackReward.description || 'A thank-you for sharing your feedback.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-heading text-2xl text-[#52624C]">
+                            {formatCouponDiscount(feedbackReward)}
+                          </p>
+                          {feedbackReward.discount_amount ? (
+                            <p className="text-xs font-medium text-[#52624C]">
+                              Save {formatINR(feedbackReward.discount_amount)} on this cart
+                            </p>
+                          ) : null}
+                        </div>
+                        <span className="rounded-full border border-[#D6B47A]/60 bg-white px-3 py-1 font-mono text-xs text-[#52624C]">
+                          {feedbackReward.code}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                        <span>
+                          {feedbackReward.end_date || feedbackReward.expiry_date
+                            ? `Valid until ${formatCouponDate(feedbackReward.end_date || feedbackReward.expiry_date)}`
+                            : 'Available for a limited time'}
+                        </span>
+                        {feedbackReward.minimum_order_amount ? (
+                          <span>Minimum order {formatINR(feedbackReward.minimum_order_amount)}</span>
+                        ) : null}
+                      </div>
+
+                      {isFeedbackRewardApplied ? (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-[#8B9D83]/30 bg-white/70 px-3 py-2 text-sm">
+                          <span className="font-medium text-[#52624C]">Reward applied</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRemoveCoupon}
+                            className="shrink-0"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          className="btn-primary w-full"
+                          onClick={() => handleApplyCoupon(feedbackReward.code)}
+                          disabled={Boolean(appliedCoupon) || couponLoading || !feedbackReward.is_applicable}
+                          data-testid="cart-apply-feedback-reward"
+                        >
+                          {couponLoading ? 'Applying...' : 'Apply Reward'}
+                        </Button>
+                      )}
+
+                      {!feedbackReward.is_applicable ? (
+                        <p className="text-xs text-muted-foreground">{feedbackReward.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+
+                {(availableCouponsLoading || visibleAvailableCoupons.length > 0 || availableCouponsError) && (
                   <div className="mb-8 border-t border-border pt-5">
                     <div className="mb-3 flex items-center gap-2">
                       <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
@@ -648,8 +770,9 @@ const CartPage = () => {
                       <p className="text-sm text-muted-foreground">{availableCouponsError}</p>
                     ) : (
                       <div className="space-y-3">
-                        {availableCoupons.map((offer) => {
+                        {visibleAvailableCoupons.map((offer) => {
                           const isApplied = appliedCoupon?.code === offer.code;
+                          const isRewardOffer = offer.source === 'feedback_reward';
                           const offerFinalTotal = Math.max(
                             getDiscountedSubtotal() - Number(offer.discount_amount || 0),
                             0
@@ -663,13 +786,13 @@ const CartPage = () => {
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-medium">
-                                {offer.display_title || offer.code}
+                                {isRewardOffer ? 'Mariso feedback reward' : (offer.display_title || offer.code)}
                               </p>
                               <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs text-[#52624C]">
                                 {offer.code}
                               </span>
                             </div>
-                            {offer.display_description ? (
+                            {offer.display_description && !isRewardOffer ? (
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {offer.display_description}
                               </p>
@@ -708,7 +831,7 @@ const CartPage = () => {
                                     disabled={Boolean(appliedCoupon) || couponLoading}
                                     className="shrink-0"
                                   >
-                                    Apply
+                                    {isRewardOffer ? 'Apply Reward' : 'Apply'}
                                   </Button>
                                 )}
                               </div>
