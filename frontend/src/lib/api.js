@@ -390,6 +390,15 @@ export const getCashfreePaymentStatus = async (orderId) => {
   }
 };
 
+export const getTrackedOrder = async (token) => {
+  try {
+    return await publicGetWithRetry(`/orders/track/${encodeURIComponent(token)}`);
+  } catch (error) {
+    console.error('Error fetching tracked order:', error);
+    throw error;
+  }
+};
+
 export const validateCoupon = async (couponData) => {
   try {
     const response = await axiosInstance.post(`/coupons/validate`, couponData);

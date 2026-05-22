@@ -21,6 +21,7 @@ import WishlistPage from "./pages/account/WishlistPage";
 import AddressesPage from "./pages/account/AddressesPage";
 import FaqPage from "./pages/FaqPage";
 import ContentPage from "./pages/ContentPage";
+import TrackOrderPage from "./pages/TrackOrderPage";
 import Layout from "./components/layout/Layout";
 
 // Admin Pages
@@ -122,6 +123,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/pages/:slug" element={<Layout><ContentPage /></Layout>} />
+      <Route path="/track-order/:token" element={<TrackOrderPage />} />
       {/* Protected Routes */}
       <Route
         path="/checkout"

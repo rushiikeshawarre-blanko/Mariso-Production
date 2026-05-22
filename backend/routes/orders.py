@@ -5,6 +5,7 @@ from core.auth import get_current_user, get_admin_user
 from services.order_service import (
     create_order,
     get_user_orders,
+    get_public_tracked_order,
     get_order,
     get_all_orders,
     update_order_status,
@@ -21,6 +22,11 @@ async def create_order_route(order: OrderCreate, user: dict = Depends(get_curren
 @router.get("/orders", response_model=List[dict])
 async def get_user_orders_route(user: dict = Depends(get_current_user), limit: int = 100):
     return await get_user_orders(user["id"], limit)
+
+
+@router.get("/orders/track/{tracking_token}", response_model=dict)
+async def get_public_tracked_order_route(tracking_token: str):
+    return await get_public_tracked_order(tracking_token)
 
 
 @router.get("/orders/{order_id}", response_model=dict)

@@ -33,6 +33,7 @@ from email_service import send_order_placed_email, send_order_status_email, send
 from whatsapp_service import send_order_status_whatsapp
 import logging
 from datetime import datetime, timedelta, timezone
+import secrets
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,89 @@ def _payment_event(event_type: str, source: str = "system", **details) -> dict:
 
 def _round_money(value: float) -> float:
     return round(max(float(value or 0), 0), 2)
+
+
+async def _generate_tracking_token() -> str:
+    while True:
+        token = secrets.token_urlsafe(32)
+        existing_order = await db.orders.find_one({"tracking_token": token}, {"_id": 1})
+        if not existing_order:
+            return token
+
+
+async def ensure_order_tracking_token(order: dict) -> str:
+    existing_token = order.get("tracking_token")
+    if existing_token:
+        return existing_token
+
+    order_id = order.get("id")
+    if not order_id:
+        raise HTTPException(status_code=400, detail="Order is missing an id")
+
+    token = await _generate_tracking_token()
+    await db.orders.update_one(
+        {
+            "id": order_id,
+            "$or": [
+                {"tracking_token": {"$exists": False}},
+                {"tracking_token": None},
+                {"tracking_token": ""},
+            ],
+        },
+        {"$set": {"tracking_token": token, "updated_at": _now_iso()}},
+    )
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "tracking_token": 1})
+    return updated_order.get("tracking_token") or token
+
+
+def _build_tracking_steps(status: Optional[str]) -> List[dict]:
+    steps = [
+        ("pending", "Order placed"),
+        ("confirmed", "Confirmed"),
+        ("packed", "Packed"),
+        ("shipped", "Shipped"),
+        ("delivered", "Delivered"),
+    ]
+    normalized_status = status or "pending"
+    status_index = next((index for index, (key, _) in enumerate(steps) if key == normalized_status), 0)
+
+    return [
+        {
+            "key": key,
+            "label": label,
+            "completed": index <= status_index,
+            "current": index == status_index,
+        }
+        for index, (key, label) in enumerate(steps)
+    ]
+
+
+def _redact_order_for_tracking(order: dict) -> dict:
+    normalized_order = _normalize_order_payment_defaults(order)
+    items = [
+        {
+            "product_name": item.get("product_name"),
+            "product_image": item.get("product_image"),
+            "quantity": item.get("quantity"),
+            "color_name": item.get("color_name") or "",
+            "flavor_name": item.get("flavor_name") or "",
+        }
+        for item in normalized_order.get("items", [])
+    ]
+
+    return {
+        "order_number": str(normalized_order.get("id", ""))[:8].upper(),
+        "status": normalized_order.get("status"),
+        "payment_status": normalized_order.get("payment_status"),
+        "payment_method": normalized_order.get("payment_method"),
+        "created_at": normalized_order.get("created_at"),
+        "updated_at": normalized_order.get("updated_at"),
+        "items": items,
+        "item_count": sum(int(item.get("quantity") or 0) for item in items),
+        "total_price": normalized_order.get("total_price"),
+        "tracking_steps": _build_tracking_steps(normalized_order.get("status")),
+    }
 
 
 async def record_cashfree_webhook_event(
@@ -739,9 +823,11 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
     final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
     formatted_phone = format_phone(order.billing_phone or "")
     created_at = _now_iso()
+    tracking_token = await _generate_tracking_token()
 
     order_doc = {
         "id": order_id,
+        "tracking_token": tracking_token,
         "user_id": user["id"],
         "items": items_with_details,
         "billing_name": order.billing_name,
@@ -770,6 +856,7 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "total_price": final_total,
         "status": ORDER_STATUS_CONFIRMED,
         "created_at": created_at,
+        "updated_at": created_at,
     }
     await db.orders.insert_one(order_doc)
 
@@ -782,6 +869,7 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
 
 async def _send_order_notifications(created_order: dict) -> dict:
     notification_fields = {}
+    created_order["tracking_token"] = await ensure_order_tracking_token(created_order)
 
     try:
         send_order_placed_email(created_order)
@@ -857,9 +945,11 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
     reserved_until = (now_dt + timedelta(minutes=STOCK_RESERVATION_MINUTES)).isoformat()
     final_total = coupon_amounts["total_after_discount"]
     formatted_phone = format_phone(order_payload.billing_phone or "")
+    tracking_token = await _generate_tracking_token()
 
     order_doc = {
         "id": order_id,
+        "tracking_token": tracking_token,
         "user_id": user["id"],
         "items": items_with_details,
         "billing_name": order_payload.billing_name,
@@ -906,6 +996,7 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "total_price": final_total,
         "status": ORDER_STATUS_PENDING_PAYMENT,
         "created_at": created_at,
+        "updated_at": created_at,
     }
     try:
         await db.orders.insert_one(order_doc)
@@ -1114,6 +1205,7 @@ async def _send_paid_cashfree_notifications_once(order_id: str, source: str) -> 
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         return
+    order["tracking_token"] = await ensure_order_tracking_token(order)
 
     try:
         send_order_placed_email(order)
@@ -1367,6 +1459,17 @@ async def get_user_orders(user_id: str, limit: int = 100):
     return serialize_mongo_value(orders)
 
 
+async def get_public_tracked_order(tracking_token: str):
+    if not tracking_token:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = await db.orders.find_one({"tracking_token": tracking_token}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return serialize_mongo_value(_redact_order_for_tracking(order))
+
+
 async def get_order(order_id: str, user: dict):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -1453,6 +1556,8 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         logger.info("DEBUG status changed, applying notification strategy")
 
         status = status_update.status
+        if status in ["packed", "shipped", "delivered"]:
+            order["tracking_token"] = await ensure_order_tracking_token(order)
 
         # EMAIL → send only for shipped and delivered from admin status updates.
         # Confirmed is already sent at checkout.

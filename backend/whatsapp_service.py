@@ -126,8 +126,9 @@ def send_order_status_whatsapp(order: dict):
     customer_name = order.get("billing_name", "Customer")
     order_short_id = str(order.get("id", ""))[:8].upper()
     status = str(order.get("status", "")).capitalize()
+    tracking_token = str(order.get("tracking_token") or "").strip()
 
-    order_link = f"{FRONTEND_URL}/account/orders/{order.get('id')}"
+    order_link = f"{FRONTEND_URL.rstrip('/')}/track-order/{tracking_token}"
 
     if status == "Confirmed":
         content_sid = os.getenv("TWILIO_WHATSAPP_ORDER_CONFIRMED_CONTENT_SID", "").strip()

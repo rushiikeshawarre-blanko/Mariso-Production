@@ -83,6 +83,11 @@ def build_order_items_html(items: Iterable[dict]) -> str:
     return "".join(rows)
 
 
+def _order_tracking_link(order: dict) -> str:
+    tracking_token = str(order.get("tracking_token") or "").strip()
+    return f"{FRONTEND_URL}/track-order/{tracking_token}"
+
+
 def send_order_placed_email(order: dict) -> None:
     to_email = order.get("billing_email")
     if not to_email:
@@ -91,6 +96,7 @@ def send_order_placed_email(order: dict) -> None:
 
     order_short_id = str(order.get("id", ""))[:8].upper()
     subject = f"Your Mariso order {order_short_id} is confirmed"
+    order_link = _order_tracking_link(order)
 
     items_list = build_order_items_html(order.get("items", [])) or "<li>No item details available</li>"
 
@@ -113,7 +119,7 @@ def send_order_placed_email(order: dict) -> None:
       <p>
         You can view your order details and track its status anytime using the link below:<br/>
         <strong>View Your Order:</strong>
-        <a href="{FRONTEND_URL}/account/orders/{order.get('id')}">
+        <a href="{order_link}">
           View Order
         </a>
       </p>
@@ -216,7 +222,7 @@ def send_order_status_email(order: dict) -> None:
     status = str(order.get("status", "")).capitalize()
     order_id = order.get("id")
     order_short_id = str(order_id)[:8].upper()
-    order_link = f"{FRONTEND_URL}/account/orders/{order_id}"
+    order_link = _order_tracking_link(order)
     feedback_link = f"{FRONTEND_URL}/feedback/{order_id}"
 
     items_list = build_order_items_html(order.get("items", [])) or "<li>No item details available</li>"
