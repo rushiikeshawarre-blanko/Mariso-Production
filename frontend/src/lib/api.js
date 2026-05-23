@@ -312,6 +312,87 @@ export const getCategories = async () => {
   }
 };
 
+const normalizeSearchText = (value) => String(value || '').toLowerCase();
+
+const stripHtmlForSearch = (value) => {
+  const text = String(value || '');
+
+  if (typeof DOMParser !== 'undefined') {
+    const parsedDocument = new DOMParser().parseFromString(text, 'text/html');
+    return parsedDocument.body.textContent || '';
+  }
+
+  return text.replace(/<[^>]*>/g, ' ');
+};
+
+const getSuggestionMatchRank = (name, metadataFields, query) => {
+  const normalizedName = normalizeSearchText(name);
+
+  if (normalizedName === query) return 0;
+  if (normalizedName.startsWith(query)) return 1;
+  if (normalizedName.includes(query)) return 2;
+  if (metadataFields.some((field) => normalizeSearchText(field).includes(query))) return 3;
+
+  return null;
+};
+
+export const searchCatalogSuggestions = async (query, limit = 8) => {
+  const trimmedQuery = normalizeSearchText(query?.trim());
+
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const [categories, products] = await Promise.all([getCategories(), getProducts()]);
+
+  const categorySuggestions = (categories || [])
+    .filter((category) => category.is_active !== false)
+    .map((category) => ({
+      suggestion: {
+        type: 'category',
+        id: category.id,
+        name: category.name,
+        slug: category.slug || '',
+        parent_id: category.parent_id || null,
+      },
+      rank: getSuggestionMatchRank(
+        category.name,
+        [category.description, category.slug],
+        trimmedQuery
+      ),
+    }))
+    .filter(({ rank }) => rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.suggestion.name.localeCompare(b.suggestion.name))
+    .map(({ suggestion }) => suggestion);
+
+  const productSuggestions = (products || [])
+    .filter((product) => product.is_active !== false)
+    .map((product) => ({
+      suggestion: {
+        type: 'product',
+        id: product.id,
+        name: product.name,
+      },
+      rank: getSuggestionMatchRank(
+        product.name,
+        [
+          product.short_description,
+          stripHtmlForSearch(product.description),
+          product.category_name,
+          product.subcategory,
+          product.sku,
+          product.slug,
+        ],
+        trimmedQuery
+      ),
+    }))
+    .filter(({ rank }) => rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.suggestion.name.localeCompare(b.suggestion.name))
+    .map(({ suggestion }) => suggestion);
+
+  return [...categorySuggestions, ...productSuggestions].slice(0, limit);
+};
+
 export const getCategory = async (id) => {
   try {
     return await publicGetWithRetry(`/categories/${id}`);

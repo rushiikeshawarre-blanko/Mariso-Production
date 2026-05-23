@@ -20,7 +20,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
-import { searchProducts, getCategories } from '../../lib/api';
+import { searchCatalogSuggestions, getCategories } from '../../lib/api';
 
 export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -126,12 +126,12 @@ export const Navbar = () => {
 
       try {
         setSearchLoading(true);
-        const results = await searchProducts(query);
+        const results = await searchCatalogSuggestions(query);
         if (searchRequestIdRef.current === requestId) {
           setSearchResults(results);
         }
       } catch (error) {
-        console.error('Failed to search products:', error);
+        console.error('Failed to search catalog:', error);
         if (searchRequestIdRef.current === requestId) {
           setSearchResults([]);
         }
@@ -152,6 +152,8 @@ export const Navbar = () => {
       href: `/shop?parent=${encodeURIComponent(category.slug)}`,
     })),
   ];
+  const categorySearchResults = searchResults.filter((suggestion) => suggestion.type === 'category');
+  const productSearchResults = searchResults.filter((suggestion) => suggestion.type === 'product');
 
   const handleLogout = () => {
     auth0Logout({
@@ -169,9 +171,19 @@ export const Navbar = () => {
     navigate(`/shop?search=${encodeURIComponent(query)}`);
   };
 
-  const handleSuggestionClick = (productId) => {
+  const handleSuggestionClick = (suggestion) => {
     closeSearch();
-    navigate(`/product/${productId}`);
+
+    if (suggestion.type === 'category') {
+      if (suggestion.parent_id) {
+        navigate(`/shop?category=${encodeURIComponent(suggestion.id)}`);
+      } else {
+        navigate(`/shop?parent=${encodeURIComponent(suggestion.slug)}`);
+      }
+      return;
+    }
+
+    navigate(`/product/${suggestion.id}`);
   };
 
   const handleMobileSearchOpenChange = (open) => {
@@ -195,6 +207,47 @@ export const Navbar = () => {
   const navBg = scrolled || !isHomePage 
     ? 'bg-[#F8F5F1]/95 backdrop-blur-md border-b border-border/50' 
     : 'bg-transparent';
+
+  const renderSuggestionGroups = (testIdPrefix) => (
+    <>
+      {categorySearchResults.length > 0 && (
+        <div>
+          <div className="px-4 pt-3 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Categories
+          </div>
+          {categorySearchResults.map((suggestion) => (
+            <button
+              key={`category-${suggestion.id}`}
+              type="button"
+              className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
+              onClick={() => handleSuggestionClick(suggestion)}
+              data-testid={`${testIdPrefix}-${suggestion.id}`}
+            >
+              <div className="font-medium text-foreground">{suggestion.name}</div>
+            </button>
+          ))}
+        </div>
+      )}
+      {productSearchResults.length > 0 && (
+        <div className={categorySearchResults.length > 0 ? 'border-t border-border' : ''}>
+          <div className="px-4 pt-3 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Products
+          </div>
+          {productSearchResults.map((suggestion) => (
+            <button
+              key={`product-${suggestion.id}`}
+              type="button"
+              className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
+              onClick={() => handleSuggestionClick(suggestion)}
+              data-testid={`${testIdPrefix}-${suggestion.id}`}
+            >
+              <div className="font-medium text-foreground">{suggestion.name}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <nav 
@@ -260,23 +313,13 @@ export const Navbar = () => {
 
                 {!searchLoading && searchInput.trim() && searchResults.length === 0 && (
                   <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground shadow-lg z-50">
-                    No matching products found.
+                    No matching results found.
                   </div>
                 )}
 
                 {!searchLoading && searchResults.length > 0 && (
-                  <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background divide-y divide-border overflow-hidden shadow-lg z-50">
-                    {searchResults.map((product) => (
-                      <button
-                        key={product.id}
-                        type="button"
-                        className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
-                        onClick={() => handleSuggestionClick(product.id)}
-                        data-testid={`navbar-inline-search-result-${product.id}`}
-                      >
-                        <div className="font-medium text-foreground">{product.name}</div>
-                      </button>
-                    ))}
+                  <div className="absolute top-full right-0 mt-2 w-full rounded-lg border border-border bg-background overflow-hidden shadow-lg z-50">
+                    {renderSuggestionGroups('navbar-inline-search-result')}
                   </div>
                 )}
               </div>
@@ -433,9 +476,9 @@ export const Navbar = () => {
       <Dialog open={mobileSearchOpen} onOpenChange={handleMobileSearchOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Search products</DialogTitle>
+            <DialogTitle>Search products and categories</DialogTitle>
             <DialogDescription>
-              Search by product name, description, or SKU.
+              Search by category, product name, or keyword.
             </DialogDescription>
           </DialogHeader>
 
@@ -464,23 +507,13 @@ export const Navbar = () => {
 
             {!searchLoading && searchInput.trim() && searchResults.length === 0 && (
               <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-                No matching products found.
+                No matching results found.
               </div>
             )}
 
             {!searchLoading && searchResults.length > 0 && (
-              <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
-                {searchResults.map((product) => (
-                  <button
-                    key={product.id}
-                    type="button"
-                    className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
-                    onClick={() => handleSuggestionClick(product.id)}
-                    data-testid={`navbar-search-result-${product.id}`}
-                  >
-                    <div className="font-medium text-foreground">{product.name}</div>
-                  </button>
-                ))}
+              <div className="rounded-lg border border-border overflow-hidden">
+                {renderSuggestionGroups('navbar-search-result')}
               </div>
             )}
 
