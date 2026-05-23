@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -31,6 +31,9 @@ export const Navbar = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [navCategories, setNavCategories] = useState([]);
+  const desktopSearchPanelRef = useRef(null);
+  const desktopSearchButtonRef = useRef(null);
+  const searchRequestIdRef = useRef(0);
   const { getCartCount } = useCart();
   const {
     user,
@@ -42,13 +45,52 @@ export const Navbar = () => {
   const adminEmails = ["mariso.store@gmail.com"];
   const isAdmin = () => adminEmails.includes((user?.email || "").toLowerCase());
 
+  const closeSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+    setSearchInput('');
+    setSearchResults([]);
+    setSearchLoading(false);
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
+      if (searchOpen || mobileSearchOpen) {
+        closeSearch();
+      }
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [closeSearch, mobileSearchOpen, searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      const clickedPanel = desktopSearchPanelRef.current?.contains(event.target);
+      const clickedButton = desktopSearchButtonRef.current?.contains(event.target);
+
+      if (!clickedPanel && !clickedButton) {
+        closeSearch();
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeSearch();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeSearch, searchOpen]);
 
   useEffect(() => {
     const fetchNavCategories = async () => {
@@ -70,6 +112,8 @@ export const Navbar = () => {
 
   useEffect(() => {
     const query = searchInput.trim();
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
 
     if ((!searchOpen && !mobileSearchOpen) || !query) {
       setSearchResults([]);
@@ -78,15 +122,23 @@ export const Navbar = () => {
     }
 
     const timeoutId = setTimeout(async () => {
+      if (searchRequestIdRef.current !== requestId) return;
+
       try {
         setSearchLoading(true);
         const results = await searchProducts(query);
-        setSearchResults(results);
+        if (searchRequestIdRef.current === requestId) {
+          setSearchResults(results);
+        }
       } catch (error) {
         console.error('Failed to search products:', error);
-        setSearchResults([]);
+        if (searchRequestIdRef.current === requestId) {
+          setSearchResults([]);
+        }
       } finally {
-        setSearchLoading(false);
+        if (searchRequestIdRef.current === requestId) {
+          setSearchLoading(false);
+        }
       }
     }, 250);
 
@@ -113,40 +165,30 @@ export const Navbar = () => {
     const query = searchInput.trim();
     if (!query) return;
 
-    setSearchOpen(false);
-    setMobileSearchOpen(false);
-    setSearchInput('');
-    setSearchResults([]);
+    closeSearch();
     navigate(`/shop?search=${encodeURIComponent(query)}`);
   };
 
   const handleSuggestionClick = (productId) => {
-    setSearchOpen(false);
-    setMobileSearchOpen(false);
-    setSearchInput('');
-    setSearchResults([]);
+    closeSearch();
     navigate(`/product/${productId}`);
   };
 
   const handleMobileSearchOpenChange = (open) => {
-    setMobileSearchOpen(open);
-    if (!open) {
-      setSearchInput('');
-      setSearchResults([]);
-      setSearchLoading(false);
+    if (open) {
+      setMobileSearchOpen(true);
+    } else {
+      closeSearch();
     }
   };
 
   const toggleDesktopSearch = () => {
-    setSearchOpen((prev) => {
-      const next = !prev;
-      if (!next) {
-        setSearchInput('');
-        setSearchResults([]);
-        setSearchLoading(false);
-      }
-      return next;
-    });
+    if (searchOpen) {
+      closeSearch();
+      return;
+    }
+
+    setSearchOpen(true);
   };
 
   const isHomePage = location.pathname === '/';
@@ -188,6 +230,7 @@ export const Navbar = () => {
           <div className="flex items-center gap-2 relative">
             {searchOpen && (
               <div
+                ref={desktopSearchPanelRef}
                 className="hidden lg:block absolute right-full mr-2 top-1/2 -translate-y-1/2 w-[320px] xl:w-[360px] z-40"
                 data-testid="desktop-search-panel"
               >
@@ -232,9 +275,6 @@ export const Navbar = () => {
                         data-testid={`navbar-inline-search-result-${product.id}`}
                       >
                         <div className="font-medium text-foreground">{product.name}</div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {product.short_description || product.description || product.sku || 'View product'}
-                        </div>
                       </button>
                     ))}
                   </div>
@@ -243,6 +283,7 @@ export const Navbar = () => {
             )}
             {/* Search - Hidden on mobile */}
             <Button 
+              ref={desktopSearchButtonRef}
               variant="ghost" 
               size="icon" 
               className="hidden lg:flex"
@@ -438,9 +479,6 @@ export const Navbar = () => {
                     data-testid={`navbar-search-result-${product.id}`}
                   >
                     <div className="font-medium text-foreground">{product.name}</div>
-                    <div className="text-sm text-muted-foreground line-clamp-1">
-                      {product.short_description || product.description || product.sku || 'View product'}
-                    </div>
                   </button>
                 ))}
               </div>
