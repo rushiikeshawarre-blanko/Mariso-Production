@@ -307,7 +307,7 @@ async def get_featured_product_cards():
     products = await db.products.find(
         {"is_active": True, "is_featured": True},
         PRODUCT_CARD_PROJECTION,
-    ).to_list(8)
+    ).sort("created_at", -1).to_list(8)
 
     return await map_products_to_card_responses(products)
 
@@ -329,25 +329,10 @@ async def get_bestsellers():
     return await enrich_products(products)
 
 async def get_bestseller_product_cards():
-    pipeline = [
-        {"$unwind": "$items"},
-        {"$group": {"_id": "$items.product_id", "count": {"$sum": "$items.quantity"}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 8}
-    ]
-    bestseller_ids = await db.orders.aggregate(pipeline).to_list(8)
-
-    if not bestseller_ids:
-        products = await db.products.find(
-            {"is_active": True},
-            PRODUCT_CARD_PROJECTION,
-        ).to_list(8)
-    else:
-        ids = [item['_id'] for item in bestseller_ids]
-        products = await db.products.find(
-            {"id": {"$in": ids}, "is_active": True},
-            PRODUCT_CARD_PROJECTION,
-        ).to_list(8)
+    products = await db.products.find(
+        {"is_active": True, "is_bestseller": True},
+        PRODUCT_CARD_PROJECTION,
+    ).sort("created_at", -1).to_list(8)
 
     return await map_products_to_card_responses(products)
 

@@ -730,7 +730,10 @@ const ProductPage = () => {
                       {product.materials && (
                         <section className="border-t border-border pt-4">
                           <h4 className="mb-2 text-sm font-semibold text-foreground">Materials Used</h4>
-                          <p className="leading-7 whitespace-pre-line">{product.materials}</p>
+                          <div
+                            className="product-rich-text leading-7 [&_p]:my-3 [&_p]:leading-7 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-terracotta [&_a]:underline [&_strong]:font-semibold [&_strong]:text-foreground [&_b]:font-semibold [&_b]:text-foreground [&_em]:italic [&_i]:italic [&_u]:underline"
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichContent(product.materials || '') }}
+                          />
                         </section>
                       )}
 
@@ -757,20 +760,21 @@ const ProductPage = () => {
                     Care Instructions
                   </AccordionTrigger>
                   <AccordionContent>
-                    <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-4">
-                      {product.care_instructions ? (
-                        <li>{product.care_instructions}</li>
-                      ) : (
-                        <>
-                          <li>Trim wick to 1/4 inch before each burn</li>
-                          <li>Allow wax to melt to the edges on first burn</li>
-                          <li>Keep away from drafts and vibrations</li>
-                          <li>Never leave burning candle unattended</li>
-                          <li>Stop burning when 1/2 inch of wax remains</li>
-                          <li>Keep out of reach of children and pets</li>
-                        </>
-                      )}
-                    </ul>
+                    {product.care_instructions ? (
+                      <div
+                        className="product-rich-text text-sm text-muted-foreground leading-7 [&_p]:my-3 [&_p]:leading-7 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-terracotta [&_a]:underline [&_strong]:font-semibold [&_strong]:text-foreground [&_b]:font-semibold [&_b]:text-foreground [&_em]:italic [&_i]:italic [&_u]:underline"
+                        dangerouslySetInnerHTML={{ __html: sanitizeRichContent(product.care_instructions || '') }}
+                      />
+                    ) : (
+                      <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-4">
+                        <li>Trim wick to 1/4 inch before each burn</li>
+                        <li>Allow wax to melt to the edges on first burn</li>
+                        <li>Keep away from drafts and vibrations</li>
+                        <li>Never leave burning candle unattended</li>
+                        <li>Stop burning when 1/2 inch of wax remains</li>
+                        <li>Keep out of reach of children and pets</li>
+                      </ul>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
 
@@ -779,25 +783,16 @@ const ProductPage = () => {
                     Shipping & Returns
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="space-y-4 text-sm text-muted-foreground">
-                      <div>
-                        <p className="font-medium text-foreground mb-1">Shipping</p>
-                        <ul className="space-y-1 list-disc pl-4">
-                          <li>{product.shipping_info || 'Ships within 3-5 business days'}</li>
-                          <li>Free shipping on orders over ₹1500</li>
-                          <li>Standard shipping: ₹99</li>
-                          <li>Express shipping: ₹199 (2-3 days)</li>
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground mb-1">Returns</p>
-                        <ul className="space-y-1 list-disc pl-4">
-                          <li>7-day return policy for unused items</li>
-                          <li>Items must be in original packaging</li>
-                          <li>Contact us for replacement of damaged items</li>
-                        </ul>
-                      </div>
-                    </div>
+                    {product.shipping_info ? (
+                      <div
+                        className="product-rich-text text-sm text-muted-foreground leading-7 [&_p]:my-3 [&_p]:leading-7 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-terracotta [&_a]:underline [&_strong]:font-semibold [&_strong]:text-foreground [&_b]:font-semibold [&_b]:text-foreground [&_em]:italic [&_i]:italic [&_u]:underline"
+                        dangerouslySetInnerHTML={{ __html: sanitizeRichContent(product.shipping_info || '') }}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground leading-7">
+                        Shipping information will be updated soon.
+                      </p>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>

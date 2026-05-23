@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronDown, ChevronRight, Star, Sparkles } from 'lucide-react';
+import AutoScroll from 'embla-carousel-auto-scroll';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { Button } from '../components/ui/button';
 import MarisoLoader from '../components/ui/MarisoLoader';
+import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '../components/ui/carousel';
 import { getCategories, getFeaturedProducts, getBestsellers, getHomepageFaqs, getHomepageFeedbackReviews } from '../lib/api';
 
 const defaultTestimonials = [
@@ -31,6 +33,8 @@ const clampRating = (rating) => {
   return Math.min(Math.max(Math.round(numericRating), 1), 5);
 };
 
+const carouselArrowClass = 'hidden h-11 w-11 border border-foreground/20 bg-[#FBF8F4] text-foreground shadow-[0_5px_16px_rgba(0,0,0,0.09)] transition-colors hover:border-foreground/35 hover:bg-white disabled:!opacity-35 lg:flex';
+
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
@@ -42,6 +46,21 @@ const HomePage = () => {
   const [hoveredButton, setHoveredButton] = useState(null);
   const [featuredStatus, setFeaturedStatus] = useState('loading');
   const [bestsellerStatus, setBestsellerStatus] = useState('loading');
+  const reviewAutoScrollRef = useRef(null);
+
+  if (!reviewAutoScrollRef.current) {
+    reviewAutoScrollRef.current = AutoScroll({
+      speed: 0.35,
+      startDelay: 800,
+      playOnInit: true,
+      stopOnInteraction: false,
+      stopOnMouseEnter: true,
+      stopOnFocusIn: true,
+      breakpoints: {
+        '(prefers-reduced-motion: reduce)': { active: false },
+      },
+    });
+  }
 
   const initializeData = useCallback(async () => {
     setLoading(true);
@@ -121,6 +140,9 @@ const HomePage = () => {
 
   const testimonials = [...homepageReviews, ...defaultTestimonials].slice(0, 10);
   const marqueeTestimonials = testimonials.length > 0 ? testimonials : defaultTestimonials;
+  const reviewCarouselTestimonials = marqueeTestimonials.length < 6
+    ? [...marqueeTestimonials, ...marqueeTestimonials]
+    : marqueeTestimonials;
 
   return (
     <Layout>
@@ -193,21 +215,15 @@ const HomePage = () => {
       </section>
 
       {/* Featured Products */}
-      <section className="py-14 md:py-28 bg-[#F8F5F1]" data-testid="featured-section">
+      <section className="select-none py-14 md:py-28 bg-[#F8F5F1]" data-testid="featured-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-8 md:mb-14">
+          <div className="mb-8 md:mb-14">
             <div>
               <p className="text-[11px] tracking-[0.24em] uppercase text-muted-foreground mb-3">
                 New Arrivals
               </p>
               <h2 className="font-heading text-4xl md:text-5xl tracking-[-0.02em]">Featured Collection</h2>
             </div>
-            <Link to="/shop" className="mt-4 md:mt-0">
-              <Button variant="ghost" className="group text-foreground/80 hover:text-foreground px-0" data-testid="view-all-featured">
-                View All
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" strokeWidth={1.5} />
-              </Button>
-            </Link>
           </div>
 
           {loading && featuredStatus === 'loading' ? (
@@ -225,11 +241,30 @@ const HomePage = () => {
               <p className="text-base font-medium text-foreground">No featured products available right now.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
-              {featuredProducts.slice(0, 4).map((product) => (
-                <ProductCard key={product.id} product={product} testIdPrefix="featured" />
-              ))}
-            </div>
+            <>
+              <Carousel opts={{ align: 'start', dragFree: true }} className="w-full select-none">
+                <CarouselContent className="-ml-5 select-none">
+                  {featuredProducts.map((product) => (
+                    <CarouselItem key={product.id} className="select-none basis-[84%] pl-5 sm:basis-[46%] md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
+                      <ProductCard product={product} testIdPrefix="featured" />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                {featuredProducts.length > 4 && (
+                  <>
+                    <CarouselPrevious className={`${carouselArrowClass} left-auto right-14 -top-[4.9rem] translate-y-0`} />
+                    <CarouselNext className={`${carouselArrowClass} right-0 -top-[4.9rem] translate-y-0`} />
+                  </>
+                )}
+              </Carousel>
+              <div className="mt-10 flex justify-center md:mt-14">
+                <Link to="/shop?featured=true">
+                  <Button className="h-12 rounded-full bg-black px-10 text-[12px] tracking-[0.22em] text-white hover:bg-black/90" data-testid="view-all-featured">
+                    VIEW ALL
+                  </Button>
+                </Link>
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -318,21 +353,15 @@ const HomePage = () => {
       </section>
 
       {/* Bestsellers */}
-      <section className="py-14 md:py-28 bg-white" data-testid="bestsellers-section">
+      <section className="select-none py-14 md:py-28 bg-white" data-testid="bestsellers-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-8 md:mb-12">
+          <div className="mb-8 md:mb-12">
             <div>
               <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
                 Most Loved
               </p>
               <h2 className="font-heading text-4xl md:text-5xl tracking-tight">Bestsellers</h2>
             </div>
-            <Link to="/shop?bestsellers=true" className="mt-4 md:mt-0">
-              <Button variant="ghost" className="group" data-testid="view-all-bestsellers">
-                View All
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" strokeWidth={1.5} />
-              </Button>
-            </Link>
           </div>
           {loading && bestsellerStatus === 'loading' ? (
             <MarisoLoader label="Loading products..." />
@@ -349,11 +378,30 @@ const HomePage = () => {
               <p className="text-base font-medium text-foreground">No bestsellers available right now.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 xl:gap-10">
-              {bestsellers.slice(0, 4).map((product) => (
-                <ProductCard key={product.id} product={product} testIdPrefix="bestseller" />
-              ))}
-            </div>
+            <>
+              <Carousel opts={{ align: 'start', dragFree: true }} className="w-full select-none">
+                <CarouselContent className="-ml-5 select-none">
+                  {bestsellers.map((product) => (
+                    <CarouselItem key={product.id} className="select-none basis-[84%] pl-5 sm:basis-[46%] md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
+                      <ProductCard product={product} testIdPrefix="bestseller" />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                {bestsellers.length > 4 && (
+                  <>
+                    <CarouselPrevious className={`${carouselArrowClass} left-auto right-14 -top-[4.9rem] translate-y-0`} />
+                    <CarouselNext className={`${carouselArrowClass} right-0 -top-[4.9rem] translate-y-0`} />
+                  </>
+                )}
+              </Carousel>
+              <div className="mt-10 flex justify-center md:mt-14">
+                <Link to="/shop?bestsellers=true">
+                  <Button className="h-12 rounded-full bg-black px-10 text-[12px] tracking-[0.22em] text-white hover:bg-black/90" data-testid="view-all-bestsellers">
+                    VIEW ALL
+                  </Button>
+                </Link>
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -551,39 +599,46 @@ const HomePage = () => {
             </p>
             <h2 className="font-heading text-4xl md:text-5xl tracking-tight">What Our Customers Say</h2>
           </div>
-          <div className="review-marquee-shell">
-            <div className="review-marquee" aria-label="Customer reviews" tabIndex={0}>
-              <div className="review-marquee-track">
-                {[0, 1].map((trackIndex) => (
-                  <div
-                    key={trackIndex}
-                    className="review-marquee-set"
-                    aria-hidden={trackIndex === 1 ? 'true' : undefined}
-                  >
-                    {marqueeTestimonials.map((testimonial, index) => {
-                      const rating = clampRating(testimonial.rating);
-                      return (
-                        <article
-                          key={`${trackIndex}-${testimonial.name}-${index}`}
-                          className="review-marquee-card"
-                          data-testid={`testimonial-${index}`}
-                        >
-                          <div className="flex gap-1 mb-4">
-                            {[...Array(rating)].map((_, i) => (
-                              <Star key={i} className="h-4 w-4 fill-terracotta text-terracotta" />
-                            ))}
-                          </div>
-                          <p className="line-clamp-5 text-foreground/80 leading-8 mb-6 font-serif-accent text-lg italic">
-                            "{testimonial.text}"
-                          </p>
-                          <p className="font-medium text-sm">{testimonial.name || 'Mariso Customer'}</p>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div>
+            <Carousel
+              opts={{ align: 'start', loop: true }}
+              plugins={[reviewAutoScrollRef.current]}
+              className="w-full select-none"
+              aria-label="Customer reviews"
+            >
+              <CarouselContent className="-ml-5 py-1">
+                {reviewCarouselTestimonials.map((testimonial, index) => {
+                  const rating = clampRating(testimonial.rating);
+                  const isRepeatedSlide = index >= marqueeTestimonials.length;
+
+                  return (
+                    <CarouselItem key={`${testimonial.name}-${index}`} className="basis-[88%] pl-5 sm:basis-[68%] md:basis-1/2 lg:basis-1/3">
+                      <article
+                        className="flex min-h-[18rem] h-full flex-col rounded-[1.25rem] border border-black/5 bg-white p-8 shadow-[0_12px_30px_rgba(0,0,0,0.06)]"
+                        data-testid={`testimonial-${index % marqueeTestimonials.length}`}
+                        aria-hidden={isRepeatedSlide ? 'true' : undefined}
+                      >
+                        <div className="mb-4 flex gap-1">
+                          {[...Array(rating)].map((_, i) => (
+                            <Star key={i} className="h-4 w-4 fill-terracotta text-terracotta" />
+                          ))}
+                        </div>
+                        <p className="mb-6 line-clamp-5 text-lg italic leading-8 text-foreground/80 font-serif-accent">
+                          "{testimonial.text}"
+                        </p>
+                        <p className="mt-auto text-sm font-medium">{testimonial.name || 'Mariso Customer'}</p>
+                      </article>
+                    </CarouselItem>
+                  );
+                })}
+              </CarouselContent>
+              {marqueeTestimonials.length > 3 && (
+                <>
+                  <CarouselPrevious className={`${carouselArrowClass} left-auto right-14 -top-[4.9rem] translate-y-0`} />
+                  <CarouselNext className={`${carouselArrowClass} right-0 -top-[4.9rem] translate-y-0`} />
+                </>
+              )}
+            </Carousel>
           </div>
         </div>
       </section>

@@ -13,7 +13,6 @@ import {
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -1375,9 +1374,9 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: formData.show_returns,
       show_reusable_container: formData.show_reusable_container,
       show_gift_packaging: formData.show_gift_packaging,
-      care_instructions: formData.care_instructions,
-      shipping_info: formData.shipping_info,
-      materials: formData.materials,
+      care_instructions: normalizeEditorHtml(formData.care_instructions),
+      shipping_info: normalizeEditorHtml(formData.shipping_info),
+      materials: normalizeEditorHtml(formData.materials),
       dimensions: formData.dimensions,
       burn_time: formData.burn_time,
       has_color_options: formData.has_color_options,
@@ -1900,15 +1899,17 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="md:col-span-2">
                         <Label htmlFor="materials">Materials Used</Label>
-                        <Textarea
-                          id="materials"
-                          name="materials"
-                          value={formData.materials}
-                          onChange={handleChange}
-                          placeholder="e.g., 100% Natural Soy Wax, Premium Fragrance Oils, Cotton Wick"
-                          rows={4}
-                          className="mt-1 min-h-[110px] resize-y"
-                        />
+                        <div className="mt-1">
+                          <RichTextEditor
+                            value={formData.materials}
+                            onChange={(html) => setFormData((prev) => ({
+                              ...prev,
+                              materials: html,
+                            }))}
+                            minHeightClassName="min-h-[110px]"
+                            testId="product-materials-input"
+                          />
+                        </div>
                       </div>
                       <div>
                         <Label htmlFor="dimensions">Dimensions</Label>
@@ -1935,25 +1936,31 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                     </div>
                     <div>
                       <Label htmlFor="care_instructions">Care Instructions</Label>
-                      <Textarea
-                        id="care_instructions"
-                        name="care_instructions"
-                        value={formData.care_instructions}
-                        onChange={handleChange}
-                        rows={2}
-                        className="mt-1"
-                      />
+                      <div className="mt-1">
+                        <RichTextEditor
+                          value={formData.care_instructions}
+                          onChange={(html) => setFormData((prev) => ({
+                            ...prev,
+                            care_instructions: html,
+                          }))}
+                          minHeightClassName="min-h-[90px]"
+                          testId="product-care-instructions-input"
+                        />
+                      </div>
                     </div>
                     <div>
                       <Label htmlFor="shipping_info">Shipping Information</Label>
-                      <Textarea
-                        id="shipping_info"
-                        name="shipping_info"
-                        value={formData.shipping_info}
-                        onChange={handleChange}
-                        rows={2}
-                        className="mt-1"
-                      />
+                      <div className="mt-1">
+                        <RichTextEditor
+                          value={formData.shipping_info}
+                          onChange={(html) => setFormData((prev) => ({
+                            ...prev,
+                            shipping_info: html,
+                          }))}
+                          minHeightClassName="min-h-[90px]"
+                          testId="product-shipping-info-input"
+                        />
+                      </div>
                     </div>
                   </div>
                 </TabsContent>
@@ -3099,6 +3106,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         {product.is_featured && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                             Featured
+                          </span>
+                        )}
+                        {product.is_bestseller && (
+                          <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+                            Bestseller
                           </span>
                         )}
                         {product.is_new_arrival && (

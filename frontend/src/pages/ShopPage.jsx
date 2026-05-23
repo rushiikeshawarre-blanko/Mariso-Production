@@ -25,6 +25,8 @@ const ShopPage = () => {
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedParentSlug, setSelectedParentSlug] = useState(searchParams.get('parent') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
+  const [showFeatured, setShowFeatured] = useState(searchParams.get('featured') === 'true');
+  const [showBestsellers, setShowBestsellers] = useState(searchParams.get('bestsellers') === 'true');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [productsStatus, setProductsStatus] = useState('loading');
   const requestSequenceRef = useRef(0);
@@ -42,6 +44,8 @@ const ShopPage = () => {
     setSelectedCategory(searchParams.get('category') || '');
     setSelectedParentSlug(searchParams.get('parent') || '');
     setShowOnSale(searchParams.get('sale') === 'true');
+    setShowFeatured(searchParams.get('featured') === 'true');
+    setShowBestsellers(searchParams.get('bestsellers') === 'true');
   }, [searchParams]);
 
   const parentCategories = useMemo(() => {
@@ -162,6 +166,8 @@ const ShopPage = () => {
     try {
       const productParams = {
         on_sale: showOnSale || undefined,
+        featured: showFeatured || undefined,
+        bestseller: showBestsellers || undefined,
       };
       const productOptions = forceRefresh ? { forceRefresh: true } : {};
       const categoriesRequest = refreshCategories
@@ -223,7 +229,7 @@ const ShopPage = () => {
         setLoading(false);
       }
     }
-  }, [filterProductsForView, showOnSale]);
+  }, [filterProductsForView, showOnSale, showFeatured, showBestsellers]);
 
   useEffect(() => {
     fetchShopData();
@@ -308,10 +314,14 @@ const ShopPage = () => {
     params.delete('sale');
     params.delete('search');
     params.delete('parent');
+    params.delete('featured');
+    params.delete('bestsellers');
 
     setSelectedCategory('');
     setSelectedParentSlug('');
     setShowOnSale(false);
+    setShowFeatured(false);
+    setShowBestsellers(false);
     setSortBy('newest');
     setSearchQuery('');
 
@@ -319,13 +329,16 @@ const ShopPage = () => {
   };
 
   const activeFiltersCount =
-    (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (searchQuery ? 1 : 0);
+    (selectedCategory ? 1 : 0) + (showOnSale ? 1 : 0) + (showFeatured ? 1 : 0) +
+    (showBestsellers ? 1 : 0) + (searchQuery ? 1 : 0);
 
   const selectedCategoryName = categories.find(
     (category) => category.id === selectedCategory
   )?.name;
 
   const pageTitle =
+    (showFeatured ? 'Featured Products' : null) ||
+    (showBestsellers ? 'Bestsellers' : null) ||
     selectedCategoryName ||
     selectedParentCategory?.name ||
     'All Products';
