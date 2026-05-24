@@ -27,6 +27,16 @@ const CATEGORY_IMAGE_FALLBACK =
     </svg>
   `);
 
+const slugify = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 const AdminCategories = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +50,7 @@ const AdminCategories = () => {
   const cropFrameRef = useRef(null);
   const formDataRef = useRef(null);
   const [croppingImage, setCroppingImage] = useState(false);
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   
   const parentCategoryOptions = useMemo(() => {
     return categories
@@ -87,6 +98,9 @@ const AdminCategories = () => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'slug') {
+      setSlugManuallyEdited(true);
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -94,7 +108,8 @@ const AdminCategories = () => {
         ? checked
         : type === 'number'
           ? Number(value)
-          : value
+          : value,
+      ...(name === 'name' && !slugManuallyEdited ? { slug: slugify(value) } : {}),
     }));
   };
 
@@ -406,6 +421,7 @@ const AdminCategories = () => {
 
   const openCreateDialog = () => {
     setEditingCategory(null);
+    setSlugManuallyEdited(false);
     setFormData({
       name: '',
       description: '',
@@ -421,6 +437,7 @@ const AdminCategories = () => {
 
   const openEditDialog = (category) => {
     setEditingCategory(category);
+    setSlugManuallyEdited(Boolean(category.slug));
     setFormData({
       name: category.name || '',
       description: category.description || '',
@@ -440,6 +457,7 @@ const AdminCategories = () => {
     try {
       const payload = {
         ...formData,
+        slug: slugManuallyEdited ? formData.slug : '',
         parent_id: formData.parent_id || null
       };
       if (editingCategory) {
@@ -513,6 +531,9 @@ const AdminCategories = () => {
                   className="mt-1"
                   data-testid="category-slug-input"
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Used in category URL. Leave blank to auto-generate.
+                </p>
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>

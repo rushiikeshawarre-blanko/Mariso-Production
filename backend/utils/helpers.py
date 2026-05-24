@@ -45,12 +45,32 @@ def format_phone(phone: str) -> str:
     return normalize_phone_e164(phone) or ""
 
 def generate_slug(name: str) -> str:
-    slug = name.lower().strip()
+    slug = str(name or "").lower().strip()
     slug = slug.replace("&", "and")
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
     slug = re.sub(r"\s+", "-", slug)
     slug = re.sub(r"-+", "-", slug)
-    return slug
+    return slug.strip("-")
+
+
+async def slug_exists(collection, slug: str, exclude_id: Optional[str] = None) -> bool:
+    query = {"slug": slug}
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    return await collection.find_one(query, {"_id": 0, "id": 1}) is not None
+
+
+async def allocate_unique_slug(collection, value: str, exclude_id: Optional[str] = None) -> str:
+    base_slug = generate_slug(value)
+    if not base_slug:
+        return ""
+
+    candidate = base_slug
+    suffix = 2
+    while await slug_exists(collection, candidate, exclude_id=exclude_id):
+        candidate = f"{base_slug}-{suffix}"
+        suffix += 1
+    return candidate
 
 
 def get_selected_variant(

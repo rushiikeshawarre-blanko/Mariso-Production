@@ -5,6 +5,7 @@ import { useCart } from '../../context/CartContext';
 import { Button } from '../../components/ui/button';
 import { Heart, ShoppingBag, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { getProductCardImage, getProductPath } from '../../lib/utils';
 
 const WishlistPage = () => {
   const [wishlist, setWishlist] = useState([]);
@@ -78,6 +79,8 @@ const WishlistPage = () => {
       
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {wishlist.map((product) => {
+          const productPath = getProductPath(product) || '/shop';
+          const productImage = getProductCardImage(product);
           const price = product.is_on_sale && product.sale_price ? product.sale_price : product.price;
           
           return (
@@ -87,16 +90,16 @@ const WishlistPage = () => {
               data-testid={`wishlist-item-${product.id}`}
             >
               <div className="flex gap-4">
-                <Link to={`/product/${product.id}`}>
+                <Link to={productPath}>
                   <img
-                    src={product.images?.[0] || 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=200'}
+                    src={productImage}
                     alt={product.name}
                     className="w-24 h-32 object-cover rounded-lg"
                   />
                 </Link>
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between">
-                    <Link to={`/product/${product.id}`}>
+                    <Link to={productPath}>
                       <h3 className="font-heading hover:text-foreground/70 transition-colors">
                         {product.name}
                       </h3>

@@ -33,6 +33,18 @@ ALLOWED_MEDIA_TYPES = {
 }
 MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
+HOMEPAGE_UPLOAD_FOLDERS = {
+    "homepage/hero",
+    "homepage/category-cards",
+    "homepage/story",
+    "homepage/artisans",
+    "homepage/craft-process/images",
+    "homepage/craft-process/videos",
+    "homepage/journey",
+}
+HOMEPAGE_VIDEO_UPLOAD_FOLDERS = {
+    "homepage/craft-process/videos",
+}
 ALLOWED_UPLOAD_FOLDERS = {
     "products/default",
     "products/gallery",
@@ -40,7 +52,7 @@ ALLOWED_UPLOAD_FOLDERS = {
     "products/flavors",
     "products/videos",
     "categories/images",
-}
+} | HOMEPAGE_UPLOAD_FOLDERS
 
 def _get_s3_client():
     if not AWS_REGION or not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY or not S3_BUCKET_NAME:
@@ -79,6 +91,29 @@ def _validate_folder(folder: str) -> str:
     return normalized
 
 
+def is_homepage_upload_folder(folder: str) -> bool:
+    return (folder or "").strip().strip("/") in HOMEPAGE_UPLOAD_FOLDERS
+
+
+def _validate_homepage_media_type(folder: str, content_type: str) -> None:
+    if folder not in HOMEPAGE_UPLOAD_FOLDERS:
+        return
+
+    if folder in HOMEPAGE_VIDEO_UPLOAD_FOLDERS:
+        if content_type not in ALLOWED_VIDEO_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail="Homepage craft process videos must be MP4 files",
+            )
+        return
+
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Homepage image uploads must be JPG, PNG, GIF, or WEBP files",
+        )
+
+
 def _build_object_key(folder: str, content_type: str, filename: str | None = None) -> str:
     extension = ALLOWED_MEDIA_TYPES[content_type]
 
@@ -111,8 +146,9 @@ async def create_presigned_upload(
     max_size_bytes: int | None = None,
 ) -> dict:
     validated_content_type = _validate_content_type(content_type)
-    resolved_max_size_bytes = max_size_bytes or _resolve_max_size_bytes(validated_content_type)
     validated_folder = _validate_folder(folder)
+    _validate_homepage_media_type(validated_folder, validated_content_type)
+    resolved_max_size_bytes = max_size_bytes or _resolve_max_size_bytes(validated_content_type)
     object_key = _build_object_key(validated_folder, validated_content_type, filename)
 
     upload_url = _get_s3_client().generate_presigned_url(

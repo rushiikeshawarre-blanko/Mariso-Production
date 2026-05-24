@@ -1,6 +1,6 @@
 
 
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Response
 
@@ -12,8 +12,12 @@ from models.content import (
     FAQCreate,
     FAQUpdate,
     FAQResponse,
+    HomepageSettingsPayload,
+    HomepageSettingsResponse,
 )
 from services.content_service import (
+    get_homepage_settings,
+    upsert_homepage_settings,
     list_content_pages,
     get_content_page_by_slug,
     create_content_page,
@@ -27,6 +31,25 @@ from services.content_service import (
 
 router = APIRouter(prefix="/api/content", tags=["Content"])
 CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
+
+
+@router.get("/homepage", response_model=Optional[HomepageSettingsResponse])
+async def get_homepage(response: Response):
+    response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
+    return await get_homepage_settings()
+
+
+@router.get("/homepage/admin", response_model=Optional[HomepageSettingsResponse])
+async def get_admin_homepage(admin: dict = Depends(get_admin_user)):
+    return await get_homepage_settings()
+
+
+@router.put("/homepage/admin", response_model=HomepageSettingsResponse)
+async def update_admin_homepage(
+    settings: HomepageSettingsPayload,
+    admin: dict = Depends(get_admin_user),
+):
+    return await upsert_homepage_settings(settings)
 
 
 @router.get("/pages", response_model=List[ContentPageResponse])

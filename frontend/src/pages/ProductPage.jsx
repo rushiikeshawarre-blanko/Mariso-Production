@@ -9,12 +9,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Package, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getProduct, getProducts, addToWishlist } from '../lib/api';
+import { getProduct, getProductBySlug, getProducts, addToWishlist } from '../lib/api';
 import { htmlToPlainText, sanitizeRichContent } from '../lib/richContent';
 import { toast } from 'sonner';
 
 const ProductPage = () => {
-  const { id } = useParams();
+  const { id, slug } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
@@ -138,7 +138,7 @@ const ProductPage = () => {
       setProduct(null);
       setRelatedProducts([]);
       try {
-        const prod = await getProduct(id);
+        const prod = slug ? await getProductBySlug(slug) : await getProduct(id);
         setProduct(prod);
         setProductStatus(prod ? 'success' : 'not-found');
         
@@ -163,7 +163,7 @@ const ProductPage = () => {
     fetchProduct();
     setQuantity(1);
     window.scrollTo(0, 0);
-  }, [id, retryNonce]);
+  }, [id, slug, retryNonce]);
 
   useEffect(() => {
     if (!product) return;

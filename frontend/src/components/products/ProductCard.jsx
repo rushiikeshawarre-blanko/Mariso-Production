@@ -6,6 +6,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { addToWishlist, removeFromWishlist } from '../../lib/api';
+import { getProductCardImage, getProductPath } from '../../lib/utils';
 
 
 const hasActiveOptions = (options) => Array.isArray(options) && options.some((option) => option?.is_active !== false);
@@ -47,13 +48,9 @@ export const ProductCard = ({
   const shouldChooseOptions = requiresProductOptions(product);
   const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
   const isOutOfStock = effectiveStock <= 0;
+  const productPath = getProductPath(product);
 
-  const productCardImage =
-    (product.images || []).filter(Boolean)[0] ||
-    (product.color_options || [])
-      .flatMap((color) => color?.images || [])
-      .filter(Boolean)[0] ||
-    'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800';
+  const productCardImage = getProductCardImage(product);
 
   useEffect(() => {
     setIsWishlisted(initialIsWishlisted);
@@ -64,7 +61,9 @@ export const ProductCard = ({
     e.stopPropagation();
 
     if (shouldChooseOptions) {
-      navigate(`/product/${product.id}`);
+      if (productPath) {
+        navigate(productPath);
+      }
       return;
     }
 
@@ -132,7 +131,7 @@ export const ProductCard = ({
     <>
       <style>{wishlistAnimationStyle}</style>
       <Link 
-      to={`/product/${product.id}`}
+      to={productPath || '/shop'}
       className="group flex h-full flex-col transition-transform duration-300 hover:-translate-y-0.5"
       data-testid={`${testIdPrefix}-card-${product.id}`}
     >

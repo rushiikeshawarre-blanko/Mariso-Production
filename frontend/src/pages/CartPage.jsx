@@ -19,6 +19,7 @@ import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles, CheckCircle2 }
 import { useCart } from '../context/CartContext';
 import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
+import { getProductPath } from '../lib/utils';
 
 const CartPage = () => {
   const { items, removeItem, updateQuantity, getCartCount } = useCart();
@@ -413,6 +414,7 @@ const CartPage = () => {
             {/* Cart Items */}
             <div className="lg:col-span-2 space-y-6">
               {items.map((item) => {
+                const productPath = getProductPath(item) || '/shop';
                 const price = getItemEffectivePrice(item);
                 const originalPrice = 
                   item.is_on_sale && (item.sale_price || item.discount_price) 
@@ -427,7 +429,7 @@ const CartPage = () => {
                     data-testid={`cart-item-${getCartItemKey(item)}`}
                   >
                     {/* Image */}
-                    <Link to={`/product/${item.id}`} className="flex-shrink-0">
+                    <Link to={productPath} className="flex-shrink-0">
                       <img
                         src={getCartItemImage(item)}
                         alt={item.name}
@@ -439,7 +441,7 @@ const CartPage = () => {
                     <div className="flex flex-1 flex-col">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <Link to={`/product/${item.id}`}>
+                          <Link to={productPath}>
                             <h3 className="font-heading text-lg hover:text-foreground/70 transition-colors" data-testid={`cart-item-name-${item.id}`}>
                               {item.name}
                             </h3>
@@ -918,7 +920,7 @@ const CartPage = () => {
               onClick={continueShoppingFromDialog}
               data-testid="continue-shopping-button"
             >
-              Continue Shopping
+              Shop More
             </Button>
           </div>
         </DialogContent>

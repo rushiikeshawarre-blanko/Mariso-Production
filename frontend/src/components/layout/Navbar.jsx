@@ -21,6 +21,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { searchCatalogSuggestions, getCategories } from '../../lib/api';
+import { getProductPath } from '../../lib/utils';
 
 export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -183,7 +184,10 @@ export const Navbar = () => {
       return;
     }
 
-    navigate(`/product/${suggestion.id}`);
+    const productPath = getProductPath(suggestion);
+    if (productPath) {
+      navigate(productPath);
+    }
   };
 
   const handleMobileSearchOpenChange = (open) => {

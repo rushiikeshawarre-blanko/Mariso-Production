@@ -14,11 +14,39 @@ from models.content import (
     ContentPageUpdate,
     FAQCreate,
     FAQUpdate,
+    HomepageSettingsPayload,
 )
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+async def get_homepage_settings() -> dict | None:
+    return await db.homepage_settings.find_one({"key": "home"}, {"_id": 0})
+
+
+async def upsert_homepage_settings(settings: HomepageSettingsPayload) -> dict:
+    now = utc_now_iso()
+    settings_data = settings.model_dump()
+    updated = await db.homepage_settings.find_one_and_update(
+        {"key": "home"},
+        {
+            "$set": {
+                **settings_data,
+                "key": "home",
+                "updated_at": now,
+            },
+            "$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "created_at": now,
+            },
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    return updated
 
 
 async def list_content_pages(active_only: bool = True, footer_only: bool = False) -> List[dict]:

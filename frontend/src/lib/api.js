@@ -35,6 +35,7 @@ export const getCatalogCacheTtl = (path) => {
       return 120 * 1000;
     case '/categories':
     case '/content/pages':
+    case '/content/homepage':
     case '/content/faqs/homepage':
     case '/feedback/reviews/homepage':
       return 300 * 1000;
@@ -64,7 +65,7 @@ export const clearPublicCatalogCache = (scope = 'all') => {
   const scopePrefixes = {
     products: ['/products'],
     categories: ['/categories', '/products'],
-    content: ['/content/pages', '/content/faqs/homepage'],
+    content: ['/content/pages', '/content/homepage', '/content/faqs/homepage'],
   };
   const prefixes = scopePrefixes[scope] || [];
 
@@ -302,6 +303,15 @@ export const getProduct = async (id) => {
   }
 };
 
+export const getProductBySlug = async (slug) => {
+  try {
+    return await publicGetWithRetry(`/products/by-slug/${encodeURIComponent(slug)}`);
+  } catch (error) {
+    console.error('Error fetching product by slug:', error);
+    throw error;
+  }
+};
+
 // Categories
 export const getCategories = async () => {
   try {
@@ -372,6 +382,7 @@ export const searchCatalogSuggestions = async (query, limit = 8) => {
         type: 'product',
         id: product.id,
         name: product.name,
+        slug: product.slug || '',
       },
       rank: getSuggestionMatchRank(
         product.name,
@@ -880,7 +891,31 @@ export const deleteCategory = async (categoryId) => {
   return response.data;
 };
 
-// Content Pages & FAQs
+// Homepage Content, Content Pages & FAQs
+
+export const getHomepageContent = async () => {
+  return await publicGetWithRetry(`/content/homepage`);
+};
+
+export const getAdminHomepageContent = async () => {
+  try {
+    const response = await axiosInstance.get(`/content/homepage/admin`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin homepage content:', error);
+    throw error;
+  }
+};
+
+export const updateAdminHomepageContent = async (homepageData) => {
+  try {
+    const response = await axiosInstance.put(`/content/homepage/admin`, homepageData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating homepage content:', error);
+    throw error;
+  }
+};
 
 
 export const getAdminContentPages = async (params = {}) => {
@@ -1012,6 +1047,16 @@ export const createPresignedUpload = async (payload) => {
     return response.data;
   } catch (error) {
     console.error('Error creating presigned upload:', error);
+    throw error;
+  }
+};
+
+export const createHomepagePresignedUpload = async (payload) => {
+  try {
+    const response = await axiosInstance.post(`/uploads/homepage/presign`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating homepage presigned upload:', error);
     throw error;
   }
 };

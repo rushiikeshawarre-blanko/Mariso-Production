@@ -7,6 +7,7 @@ from services.product_service import (
     get_featured_product_cards as fetch_featured_product_cards,
     get_bestseller_product_cards as fetch_bestseller_product_cards,
     get_product as fetch_product_by_id,
+    get_product_by_slug as fetch_product_by_slug,
     create_product as create_product_doc,
     update_product as update_product_doc,
     delete_product as delete_product_doc,
@@ -76,6 +77,11 @@ async def get_featured_products(response: Response):
 async def get_bestsellers(response: Response):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await fetch_bestseller_product_cards()
+
+
+@router.get("/by-slug/{slug}", response_model=ProductResponse)
+async def get_product_by_slug(slug: str):
+    return await fetch_product_by_slug(slug)
 
 
 @router.get("/{product_id}", response_model=ProductResponse)

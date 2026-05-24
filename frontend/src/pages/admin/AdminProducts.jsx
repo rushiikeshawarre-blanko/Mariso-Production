@@ -24,6 +24,16 @@ import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft,
 import { toast } from 'sonner';
 
 
+const slugify = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -64,12 +74,14 @@ const AdminProducts = () => {
   const [uploadingProductVideo, setUploadingProductVideo] = useState(false);
   const [uploadingNewColorVideo, setUploadingNewColorVideo] = useState(false);
   const [uploadingColorVideoIndex, setUploadingColorVideoIndex] = useState(null);
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
   const colorCropSectionRef = useRef(null);
   const newColorCropSectionRef = useRef(null);
   
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     description: '',
     short_description: '',
     price: '',
@@ -130,7 +142,15 @@ const AdminProducts = () => {
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'slug') {
+      setSlugManuallyEdited(true);
+    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === 'name' && !slugManuallyEdited ? { slug: slugify(value) } : {}),
+    }));
   };
 
   const handleImagesTextChange = (e) => {
@@ -1013,6 +1033,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
   const resetForm = () => {
     setFormData({
       name: '',
+      slug: '',
       description: '',
       short_description: '',
       price: '',
@@ -1053,6 +1074,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     setActiveTab('basic');
     setEditingColorIndex(null);
     setEditingFlavorIndex(null);
+    setSlugManuallyEdited(false);
   };
 
   const openCreateDialog = () => {
@@ -1063,8 +1085,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
 
   const openEditDialog = (product) => {
     setEditingProduct(product);
+    setSlugManuallyEdited(Boolean(product.slug));
     setFormData({
       name: product.name,
+      slug: product.slug || '',
       description: product.description,
       short_description: product.short_description || '',
       price: product.price.toString(),
@@ -1356,6 +1380,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     
     const productData = {
       name: formData.name,
+      slug: slugManuallyEdited ? formData.slug : '',
       description: normalizeEditorHtml(formData.description),
       short_description: formData.short_description,
       price: parseFloat(formData.price) || 0,
@@ -1468,8 +1493,8 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
               <form onSubmit={handleSubmit}>
                 {/* ==================== BASIC INFO TAB ==================== */}
                 <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="col-span-2 md:col-span-1">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
                       <Label htmlFor="name">Product Name *</Label>
                       <Input
                         id="name"
@@ -1481,7 +1506,22 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         data-testid="product-name-input"
                       />
                     </div>
-                    <div className="col-span-2 md:col-span-1">
+                    <div>
+                      <Label htmlFor="slug">Slug</Label>
+                      <Input
+                        id="slug"
+                        name="slug"
+                        value={formData.slug}
+                        onChange={handleChange}
+                        placeholder="Auto-generated from name"
+                        className="mt-1"
+                        data-testid="product-slug-input"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Used in product URL. Leave blank to auto-generate.
+                      </p>
+                    </div>
+                    <div>
                       <Label htmlFor="sku">SKU</Label>
                       <Input
                         id="sku"

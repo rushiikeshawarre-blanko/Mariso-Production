@@ -1,5 +1,7 @@
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+import uuid
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 class ContentPageBase(BaseModel):
@@ -83,6 +85,240 @@ class FAQUpdate(BaseModel):
 
 class FAQResponse(FAQBase):
     id: str
+    created_at: str
+    updated_at: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def validate_homepage_link(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    if normalized.startswith("/") and not normalized.startswith("//"):
+        return normalized
+    if normalized.startswith("#"):
+        return normalized
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return normalized
+
+    raise ValueError("link must be an internal path, fragment, or start with http:// or https://")
+
+
+def validate_required_homepage_link(value: str) -> str:
+    normalized = validate_homepage_link(value)
+    if normalized is None:
+        raise ValueError("link is required")
+    return normalized
+
+
+def normalize_item_id(value: Optional[str]) -> str:
+    normalized = (value or "").strip()
+    return normalized or str(uuid.uuid4())
+
+
+class HomepageHeroButton(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    label: str = Field(..., min_length=1, max_length=80)
+    link: str = Field(..., min_length=1, max_length=500)
+    style: Literal["primary", "secondary"] = "primary"
+    is_active: bool = True
+    sort_order: int = 0
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def validate_id(cls, value: Optional[str]) -> str:
+        return normalize_item_id(value)
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: str) -> str:
+        return validate_required_homepage_link(value)
+
+
+class HomepageHeroSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=240)
+    subheading: str = Field(..., max_length=300)
+    background_image: str = Field(..., max_length=1000)
+    buttons: List[HomepageHeroButton] = Field(default_factory=list)
+
+
+class HomepageProductSectionSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    view_all_label: str = Field(..., max_length=80)
+    view_all_link: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+    @field_validator("view_all_link")
+    @classmethod
+    def validate_view_all_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
+class HomepageCategoryCard(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str = Field(..., min_length=1, max_length=120)
+    subtitle: str = Field(..., max_length=250)
+    image: str = Field(..., max_length=1000)
+    link: Optional[str] = Field(None, max_length=500)
+    category_id: Optional[str] = Field(None, max_length=100)
+    is_active: bool = True
+    sort_order: int = 0
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def validate_id(cls, value: Optional[str]) -> str:
+        return normalize_item_id(value)
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
+HOMEPAGE_CATEGORY_TEMPLATES = {
+    2: {"split", "feature-side"},
+    3: {"feature-two", "equal-three"},
+    4: {"grid-four", "feature-three"},
+    5: {"feature-four"},
+    6: {"grid-six", "feature-five"},
+}
+
+
+class HomepageCategorySectionSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    card_count: int = Field(..., ge=2, le=6)
+    template: str = Field(..., min_length=1, max_length=40)
+    cards: List[HomepageCategoryCard] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode="after")
+    def validate_template_for_card_count(self):
+        if self.template not in HOMEPAGE_CATEGORY_TEMPLATES[self.card_count]:
+            allowed = ", ".join(sorted(HOMEPAGE_CATEGORY_TEMPLATES[self.card_count]))
+            raise ValueError(f"template must be one of {allowed} when card_count is {self.card_count}")
+        return self
+
+
+class HomepageStorySectionSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    paragraphs: List[str] = Field(default_factory=list)
+    button_label: str = Field(..., max_length=80)
+    button_link: Optional[str] = Field(None, max_length=500)
+    image: str = Field(..., max_length=1000)
+    floating_badge_text: str = Field(..., max_length=120)
+    is_active: bool = True
+
+    @field_validator("button_link")
+    @classmethod
+    def validate_button_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
+class HomepageArtisansSectionSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    paragraphs: List[str] = Field(default_factory=list)
+    image: str = Field(..., max_length=1000)
+    is_active: bool = True
+
+
+class HomepageCraftProcessCard(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., max_length=500)
+    image: str = Field(..., max_length=1000)
+    video: Optional[str] = Field(None, max_length=1000)
+    show_play_icon: bool = False
+    link: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+    sort_order: int = 0
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def validate_id(cls, value: Optional[str]) -> str:
+        return normalize_item_id(value)
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
+class HomepageCraftProcessSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    cards: List[HomepageCraftProcessCard] = Field(default_factory=list)
+
+
+class HomepageFaqSectionSettings(HomepageProductSectionSettings):
+    subheading: str = Field(..., max_length=400)
+
+
+class HomepageReviewsSectionSettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    auto_scroll_enabled: bool = True
+    is_active: bool = True
+
+
+class HomepageJourneyCard(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    image: str = Field(..., min_length=1, max_length=1000)
+    alt_text: str = Field(..., max_length=200)
+    link: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+    sort_order: int = 0
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def validate_id(cls, value: Optional[str]) -> str:
+        return normalize_item_id(value)
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
+class HomepageJourneySettings(BaseModel):
+    eyebrow: str = Field(..., max_length=120)
+    heading: str = Field(..., min_length=1, max_length=200)
+    cards: List[HomepageJourneyCard] = Field(default_factory=list)
+
+
+class HomepageNewsletterSettings(BaseModel):
+    heading: str = Field(..., min_length=1, max_length=200)
+    subheading: str = Field(..., max_length=400)
+    input_placeholder: str = Field(..., max_length=120)
+    button_label: str = Field(..., max_length=80)
+    is_active: bool = True
+
+
+class HomepageSettingsPayload(BaseModel):
+    hero: HomepageHeroSettings
+    featured_collection: HomepageProductSectionSettings
+    shop_by_category: HomepageCategorySectionSettings
+    crafted_with_intention: HomepageStorySectionSettings
+    bestsellers: HomepageProductSectionSettings
+    supporting_artisans: HomepageArtisansSectionSettings
+    craft_process: HomepageCraftProcessSettings
+    faq_section: HomepageFaqSectionSettings
+    reviews_section: HomepageReviewsSectionSettings
+    follow_journey: HomepageJourneySettings
+    newsletter: HomepageNewsletterSettings
+
+
+class HomepageSettingsResponse(HomepageSettingsPayload):
+    id: str
+    key: Literal["home"]
     created_at: str
     updated_at: str
 

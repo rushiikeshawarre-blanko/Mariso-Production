@@ -1,5 +1,21 @@
+import logging
+
+from pymongo.errors import DuplicateKeyError, OperationFailure
+
+
+logger = logging.getLogger(__name__)
+
+
 async def create_indexes(db):
     await db.categories.create_index("id", unique=True)
+    try:
+        await db.categories.create_index(
+            "slug",
+            unique=True,
+            partialFilterExpression={"slug": {"$type": "string", "$gt": ""}},
+        )
+    except (DuplicateKeyError, OperationFailure):
+        logger.warning("Skipping unique category slug index because existing category slugs conflict")
     await db.users.create_index("id", unique=True)
     await db.users.create_index(
         "email",
@@ -48,3 +64,5 @@ async def create_indexes(db):
     await db.feedback_submissions.create_index("order_id", unique=True)
     await db.feedback_submissions.create_index("feedback_token")
     await db.feedback_submissions.create_index([("show_on_homepage", 1), ("homepage_status", 1)])
+
+    await db.homepage_settings.create_index("key", unique=True)

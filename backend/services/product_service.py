@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 from models.product import ColorOption, FlavorOption, ProductVariant
 import logging
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from core.database import db
 from models.product import ProductCreate, ProductUpdate
 from core.constants import MAX_LIMIT
 from services.category_service import ensure_category_exists, build_category_map_from_products
-from utils.helpers import generate_slug, get_selected_variant, ensure_product_defaults
+from utils.helpers import allocate_unique_slug, generate_slug, get_selected_variant, ensure_product_defaults, slug_exists
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +345,18 @@ async def get_product(product_id: str):
     return (await enrich_products([product]))[0]
 
 
+async def get_product_by_slug(slug: str):
+    normalized_slug = generate_slug(slug)
+    if not normalized_slug:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product = await db.products.find_one({"slug": normalized_slug, "is_active": True}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return (await enrich_products([product]))[0]
+
+
 async def get_product_variant_stock(product_id: str, color_id: Optional[str] = None, flavor_id: Optional[str] = None):
     """Return stock, availability, and variant details for a given product selection."""
     product = await db.products.find_one({"id": product_id, "is_active": True}, {"_id": 0})
@@ -368,6 +381,27 @@ async def get_product_variant_stock(product_id: str, color_id: Optional[str] = N
         "variant": variant
     }
 
+
+def _normalized_slug_or_error(value: str, entity_label: str) -> str:
+    slug = generate_slug(value)
+    if not slug:
+        raise HTTPException(status_code=400, detail=f"{entity_label} slug must contain letters or numbers")
+    return slug
+
+
+async def _resolve_create_product_slug(product: ProductCreate) -> tuple[str, bool]:
+    if (product.slug or "").strip():
+        slug = _normalized_slug_or_error(product.slug, "Product")
+        if await slug_exists(db.products, slug):
+            raise HTTPException(status_code=409, detail="A product with this slug already exists")
+        return slug, False
+
+    slug = await allocate_unique_slug(db.products, product.name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Product name cannot generate a valid slug")
+    return slug, True
+
+
 async def create_product(product: ProductCreate):
     price = product.price
     discount_price = product.discount_price
@@ -380,6 +414,7 @@ async def create_product(product: ProductCreate):
     product_id = str(uuid.uuid4())
 
     await ensure_category_exists(product.category_id)
+    product_slug, generated_slug = await _resolve_create_product_slug(product)
     
     # Generate IDs for color options
     color_options = normalize_color_options(product.color_options)
@@ -393,7 +428,7 @@ async def create_product(product: ProductCreate):
     product_doc = {
         "id": product_id,
         "name": product.name,
-        "slug": product.slug or generate_slug(product.name),
+        "slug": product_slug,
         "description": product.description,
         "short_description": product.short_description or "",
         "price": price,
@@ -427,7 +462,16 @@ async def create_product(product: ProductCreate):
         "burn_time": product.burn_time or "",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.products.insert_one(product_doc)
+    try:
+        await db.products.insert_one(product_doc)
+    except DuplicateKeyError:
+        if not generated_slug:
+            raise HTTPException(status_code=409, detail="A product with this slug already exists")
+        product_doc["slug"] = await allocate_unique_slug(db.products, product.name)
+        try:
+            await db.products.insert_one(product_doc)
+        except DuplicateKeyError:
+            raise HTTPException(status_code=409, detail="Unable to allocate a unique product slug")
 
    
     
@@ -460,8 +504,24 @@ async def update_product(product_id: str, product: ProductUpdate):
 
     if product.category_id is not None:
         await ensure_category_exists(product.category_id)
+
+    submitted_fields = product.model_fields_set
+    if "slug" in submitted_fields:
+        requested_slug = (product.slug or "").strip()
+        if requested_slug:
+            normalized_slug = _normalized_slug_or_error(requested_slug, "Product")
+            if await slug_exists(db.products, normalized_slug, exclude_id=product_id):
+                raise HTTPException(status_code=409, detail="A product with this slug already exists")
+            update_data["slug"] = normalized_slug
+        elif not (existing.get("slug") or "").strip():
+            generated_slug = await allocate_unique_slug(db.products, product.name or existing.get("name", ""))
+            if not generated_slug:
+                raise HTTPException(status_code=400, detail="Product name cannot generate a valid slug")
+            update_data["slug"] = generated_slug
     
     for key, value in product.model_dump(exclude_unset=True).items():
+        if key == "slug":
+            continue
         if key == 'color_options' and value:
             # Generate IDs for new color options
             update_data["color_options"] = normalize_color_options(value)
@@ -480,12 +540,15 @@ async def update_product(product_id: str, product: ProductUpdate):
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     
-    updated = await db.products.find_one_and_update(
-        {"id": product_id},
-        {"$set": update_data},
-        return_document=ReturnDocument.AFTER,
-        projection={"_id": 0}
-    )
+    try:
+        updated = await db.products.find_one_and_update(
+            {"id": product_id},
+            {"$set": update_data},
+            return_document=ReturnDocument.AFTER,
+            projection={"_id": 0}
+        )
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="A product with this slug already exists")
 
     if not updated:
         raise HTTPException(status_code=404, detail="Product not found")
