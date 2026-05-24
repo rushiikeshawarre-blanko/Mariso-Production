@@ -13,6 +13,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -34,6 +35,21 @@ const slugify = (value) =>
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const newGiftPackagingOption = (source = {}) => ({
+  id: source.id || '',
+  title: source.title || source.gift_packaging_title || 'Add Gift Packaging',
+  description: source.description || source.gift_packaging_description || 'Premium gift wrap with ribbon and a custom note card',
+  price: String(source.price ?? source.gift_packaging_price ?? 149),
+  message_enabled: source.message_enabled ?? source.gift_message_enabled ?? true,
+  is_active: source.is_active !== false,
+  sort_order: String(source.sort_order ?? 0),
+});
+
+const getEditableGiftOptions = (product = {}) => (
+  Array.isArray(product.gift_packaging_options) && product.gift_packaging_options.length > 0
+    ? product.gift_packaging_options.map((option) => newGiftPackagingOption(option))
+    : [newGiftPackagingOption(product)]
+);
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -100,6 +116,11 @@ const AdminProducts = () => {
     show_returns: true,
     show_reusable_container: true,
     show_gift_packaging: true,
+    gift_packaging_title: 'Add Gift Packaging',
+    gift_packaging_description: 'Premium gift wrap with ribbon and a custom note card',
+    gift_packaging_price: '149',
+    gift_message_enabled: true,
+    gift_packaging_options: [newGiftPackagingOption()],
     care_instructions: '',
     shipping_info: '',
     materials: '',
@@ -1052,6 +1073,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: true,
       show_reusable_container: true,
       show_gift_packaging: true,
+      gift_packaging_title: 'Add Gift Packaging',
+      gift_packaging_description: 'Premium gift wrap with ribbon and a custom note card',
+      gift_packaging_price: '149',
+      gift_message_enabled: true,
+      gift_packaging_options: [newGiftPackagingOption()],
       care_instructions: '',
       shipping_info: '',
       materials: '',
@@ -1107,6 +1133,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: product.show_returns !== false,
       show_reusable_container: product.show_reusable_container !== false,
       show_gift_packaging: product.show_gift_packaging !== false,
+      gift_packaging_title: product.gift_packaging_title || 'Add Gift Packaging',
+      gift_packaging_description: product.gift_packaging_description || 'Premium gift wrap with ribbon and a custom note card',
+      gift_packaging_price: (product.gift_packaging_price ?? 149).toString(),
+      gift_message_enabled: product.gift_message_enabled !== false,
+      gift_packaging_options: getEditableGiftOptions(product),
       care_instructions: product.care_instructions || '',
       shipping_info: product.shipping_info || '',
       materials: product.materials || '',
@@ -1355,6 +1386,32 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     toast.success('Variant removed');
   };
 
+  const addGiftPackagingOption = () => {
+    setFormData((current) => ({
+      ...current,
+      gift_packaging_options: [
+        ...current.gift_packaging_options,
+        newGiftPackagingOption({ sort_order: current.gift_packaging_options.length }),
+      ],
+    }));
+  };
+
+  const updateGiftPackagingOption = (index, field, value) => {
+    setFormData((current) => ({
+      ...current,
+      gift_packaging_options: current.gift_packaging_options.map((option, optionIndex) => (
+        optionIndex === index ? { ...option, [field]: value } : option
+      )),
+    }));
+  };
+
+  const removeGiftPackagingOption = (index) => {
+    setFormData((current) => ({
+      ...current,
+      gift_packaging_options: current.gift_packaging_options.filter((_, optionIndex) => optionIndex !== index),
+    }));
+  };
+
   // ==================== FORM SUBMISSION ====================
 
   const handleSubmit = async (e) => {
@@ -1377,6 +1434,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       images: (color.images || []).filter(url => url.trim() !== ''),
       video: color.video || ''
     }));
+    const cleanedGiftOptions = formData.gift_packaging_options.map((option) => ({
+      id: option.id || '',
+      title: option.title.trim(),
+      description: option.description.trim(),
+      price: parseFloat(option.price) || 0,
+      message_enabled: option.message_enabled,
+      is_active: option.is_active,
+      sort_order: parseInt(option.sort_order, 10) || 0,
+    }));
+    const legacyGiftOption = cleanedGiftOptions[0] || newGiftPackagingOption(formData);
     
     const productData = {
       name: formData.name,
@@ -1399,6 +1466,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: formData.show_returns,
       show_reusable_container: formData.show_reusable_container,
       show_gift_packaging: formData.show_gift_packaging,
+      gift_packaging_title: legacyGiftOption.title,
+      gift_packaging_description: legacyGiftOption.description,
+      gift_packaging_price: parseFloat(legacyGiftOption.price) || 0,
+      gift_message_enabled: legacyGiftOption.message_enabled,
+      gift_packaging_options: cleanedGiftOptions,
       care_instructions: normalizeEditorHtml(formData.care_instructions),
       shipping_info: normalizeEditorHtml(formData.shipping_info),
       materials: normalizeEditorHtml(formData.materials),
@@ -1932,6 +2004,99 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                       <Label>Gift Packaging</Label>
                     </div>
                   </div>
+                  {formData.show_gift_packaging && (
+                    <div className="rounded-md border bg-muted/20 p-4 space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-medium">Gift Options</h3>
+                          <p className="text-sm text-muted-foreground">Customers can select one active option per cart item.</p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={addGiftPackagingOption}>
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add Option
+                        </Button>
+                      </div>
+                      {formData.gift_packaging_options.length === 0 && (
+                        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                          No gift options configured. Add an option to show gift packaging in cart.
+                        </p>
+                      )}
+                      {formData.gift_packaging_options.map((option, index) => (
+                        <div key={option.id || index} className="space-y-4 rounded-md border bg-background p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium">Option {index + 1}</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeGiftPackagingOption(index)}
+                            >
+                              <Trash2 className="mr-1 h-4 w-4" />
+                              Remove
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                            <div className="md:col-span-2">
+                              <Label htmlFor={`gift-option-title-${index}`}>Title</Label>
+                              <Input
+                                id={`gift-option-title-${index}`}
+                                value={option.title}
+                                onChange={(event) => updateGiftPackagingOption(index, 'title', event.target.value)}
+                                className="mt-1"
+                                placeholder="Gift box"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`gift-option-price-${index}`}>Price (₹)</Label>
+                              <Input
+                                id={`gift-option-price-${index}`}
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={option.price}
+                                onChange={(event) => updateGiftPackagingOption(index, 'price', event.target.value)}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <Label htmlFor={`gift-option-description-${index}`}>Description</Label>
+                              <Textarea
+                                id={`gift-option-description-${index}`}
+                                value={option.description}
+                                onChange={(event) => updateGiftPackagingOption(index, 'description', event.target.value)}
+                                className="mt-1"
+                                placeholder="Describe this gift packaging option"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`gift-option-sort-${index}`}>Sort Order</Label>
+                              <Input
+                                id={`gift-option-sort-${index}`}
+                                type="number"
+                                value={option.sort_order}
+                                onChange={(event) => updateGiftPackagingOption(index, 'sort_order', event.target.value)}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div className="flex items-end gap-3 pb-2">
+                              <Switch
+                                checked={option.message_enabled}
+                                onCheckedChange={(checked) => updateGiftPackagingOption(index, 'message_enabled', checked)}
+                              />
+                              <Label>Message Enabled</Label>
+                            </div>
+                            <div className="flex items-end gap-3 pb-2">
+                              <Switch
+                                checked={option.is_active}
+                                onCheckedChange={(checked) => updateGiftPackagingOption(index, 'is_active', checked)}
+                              />
+                              <Label>Active</Label>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   
                   {/* Additional Details */}
                   <div className="pt-4 border-t space-y-4">

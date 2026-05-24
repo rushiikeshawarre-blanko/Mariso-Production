@@ -37,6 +37,60 @@ const clampRating = (rating) => {
 const carouselArrowClass = 'hidden h-11 w-11 border border-foreground/20 bg-[#FBF8F4] text-foreground shadow-[0_5px_16px_rgba(0,0,0,0.09)] transition-colors hover:border-foreground/35 hover:bg-white disabled:!opacity-35 lg:flex';
 const defaultCategoryImage = 'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800';
 
+const createAutoScrollPlugin = () => AutoScroll({
+  speed: 0.35,
+  startDelay: 800,
+  playOnInit: true,
+  stopOnInteraction: false,
+  stopOnMouseEnter: true,
+  stopOnFocusIn: true,
+  breakpoints: {
+    '(prefers-reduced-motion: reduce)': { active: false },
+  },
+});
+
+const getVisibleProductCardCount = () => {
+  if (typeof window === 'undefined') return 5;
+  if (window.matchMedia('(min-width: 1280px)').matches) return 5;
+  if (window.matchMedia('(min-width: 1024px)').matches) return 4;
+  if (window.matchMedia('(min-width: 768px)').matches) return 3;
+  if (window.matchMedia('(min-width: 640px)').matches) return 2;
+  return 1;
+};
+
+const useProductCarouselAutoScroll = (productCount) => {
+  const [visibleCardCount, setVisibleCardCount] = useState(getVisibleProductCardCount);
+  const autoScrollRef = useRef(null);
+
+  if (!autoScrollRef.current) {
+    autoScrollRef.current = createAutoScrollPlugin();
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const mediaQueries = [
+      '(min-width: 640px)',
+      '(min-width: 768px)',
+      '(min-width: 1024px)',
+      '(min-width: 1280px)',
+    ].map((query) => window.matchMedia(query));
+    const updateVisibleCardCount = () => setVisibleCardCount(getVisibleProductCardCount());
+
+    mediaQueries.forEach((mediaQuery) => mediaQuery.addEventListener('change', updateVisibleCardCount));
+    updateVisibleCardCount();
+
+    return () => {
+      mediaQueries.forEach((mediaQuery) => mediaQuery.removeEventListener('change', updateVisibleCardCount));
+    };
+  }, []);
+
+  return {
+    autoScrollPlugin: autoScrollRef.current,
+    shouldAutoScroll: productCount > visibleCardCount,
+  };
+};
+
 const CATEGORY_TEMPLATE_OPTIONS = {
   2: ['split', 'feature-side'],
   3: ['feature-two', 'equal-three'],
@@ -173,19 +227,11 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
   const [featuredStatus, setFeaturedStatus] = useState('loading');
   const [bestsellerStatus, setBestsellerStatus] = useState('loading');
   const reviewAutoScrollRef = useRef(null);
+  const featuredCarousel = useProductCarouselAutoScroll(featuredProducts.length);
+  const bestsellerCarousel = useProductCarouselAutoScroll(bestsellers.length);
 
   if (!reviewAutoScrollRef.current) {
-    reviewAutoScrollRef.current = AutoScroll({
-      speed: 0.35,
-      startDelay: 800,
-      playOnInit: true,
-      stopOnInteraction: false,
-      stopOnMouseEnter: true,
-      stopOnFocusIn: true,
-      breakpoints: {
-        '(prefers-reduced-motion: reduce)': { active: false },
-      },
-    });
+    reviewAutoScrollRef.current = createAutoScrollPlugin();
   }
 
   const initializeData = useCallback(async () => {
@@ -414,7 +460,11 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             </div>
           ) : (
             <>
-              <Carousel opts={{ align: 'start', dragFree: true }} className="w-full select-none">
+              <Carousel
+                opts={{ align: 'start', dragFree: true, loop: featuredCarousel.shouldAutoScroll }}
+                plugins={featuredCarousel.shouldAutoScroll ? [featuredCarousel.autoScrollPlugin] : []}
+                className="w-full select-none"
+              >
                 <CarouselContent className="-ml-5 select-none">
                   {featuredProducts.map((product) => (
                     <CarouselItem key={product.id} className="select-none basis-[84%] pl-5 sm:basis-[46%] md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
@@ -586,7 +636,11 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             </div>
           ) : (
             <>
-              <Carousel opts={{ align: 'start', dragFree: true }} className="w-full select-none">
+              <Carousel
+                opts={{ align: 'start', dragFree: true, loop: bestsellerCarousel.shouldAutoScroll }}
+                plugins={bestsellerCarousel.shouldAutoScroll ? [bestsellerCarousel.autoScrollPlugin] : []}
+                className="w-full select-none"
+              >
                 <CarouselContent className="-ml-5 select-none">
                   {bestsellers.map((product) => (
                     <CarouselItem key={product.id} className="select-none basis-[84%] pl-5 sm:basis-[46%] md:basis-1/3 lg:basis-1/4 xl:basis-1/5">

@@ -21,12 +21,34 @@ import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
 import { getProductPath } from '../lib/utils';
 
+const getLegacyGiftOption = (item) => ({
+  id: null,
+  title: item.gift_packaging_title || 'Add Gift Packaging',
+  description: item.gift_packaging_description || 'Premium gift wrap with ribbon and a custom note card',
+  price: item.gift_packaging_price ?? 149,
+  message_enabled: item.gift_message_enabled !== false,
+});
+
+const getActiveGiftOptions = (item) => {
+  if (item.show_gift_packaging !== true) return [];
+  if (!Array.isArray(item.gift_packaging_options) || item.gift_packaging_options.length === 0) {
+    return [getLegacyGiftOption(item)];
+  }
+  return item.gift_packaging_options
+    .filter((option) => option.is_active !== false)
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+};
+
+const getSelectedGiftOption = (item, activeOptions = getActiveGiftOptions(item)) => {
+  if (item.gift_packaging?.selected !== true) return null;
+  if (!item.gift_packaging.option_id) return getLegacyGiftOption(item);
+  return activeOptions.find((option) => option.id === item.gift_packaging.option_id) || null;
+};
+
 const CartPage = () => {
-  const { items, removeItem, updateQuantity, getCartCount } = useCart();
+  const { items, removeItem, updateQuantity, updateGiftPackaging, getCartCount } = useCart();
   const { user } = useAuth0();
   const navigate = useNavigate();
-  const [giftPackaging, setGiftPackaging] = useState(false);
-  const [giftNote, setGiftNote] = useState('');
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [stockMap, setStockMap] = useState({});
@@ -39,8 +61,6 @@ const CartPage = () => {
   const [couponMessage, setCouponMessage] = useState('');
   const [couponError, setCouponError] = useState('');
   const [appliedCouponCartSignature, setAppliedCouponCartSignature] = useState('');
-
-  const GIFT_PACKAGING_PRICE = 149;
 
   const getCartItemKey = useCallback((item) => {
     if (item.variantId) {
@@ -236,8 +256,69 @@ const CartPage = () => {
     return Math.max(getDiscountedSubtotal() - getCouponDiscountAmount(), 0);
   };
 
+  const getGiftPackagingUnitPrice = (item) => {
+    const price = Number(getSelectedGiftOption(item)?.price);
+    return Number.isFinite(price) && price >= 0 ? price : 149;
+  };
+
+  const getItemGiftPackagingAmount = (item) => {
+    if (item.gift_packaging?.selected !== true) {
+      return 0;
+    }
+
+    return getGiftPackagingUnitPrice(item) * item.gift_packaging.quantity;
+  };
+
+  const getGiftPackagingTotal = () => {
+    return items.reduce((total, item) => total + getItemGiftPackagingAmount(item), 0);
+  };
+
   const getFinalTotal = () => {
-    return getPayableItemsTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+    return getPayableItemsTotal() + getGiftPackagingTotal();
+  };
+
+  const getWordCount = (message) => {
+    const trimmedMessage = String(message || '').trim();
+    return trimmedMessage ? trimmedMessage.split(/\s+/).length : 0;
+  };
+
+  const limitGiftMessage = (message) => {
+    const words = String(message || '').trim().split(/\s+/).filter(Boolean);
+    return words.length > 150 ? words.slice(0, 150).join(' ') : message;
+  };
+
+  const selectGiftOption = (item, option) => {
+    updateGiftPackaging(getCartItemKey(item), {
+      selected: true,
+      option_id: option.id || null,
+      quantity: item.quantity,
+      message: '',
+    });
+  };
+
+  const handleGiftPackagingChange = (item, checked, option) => {
+    updateGiftPackaging(
+      getCartItemKey(item),
+      checked === true
+        ? { selected: true, option_id: option.id || null, quantity: item.quantity, message: '' }
+        : null
+    );
+  };
+
+  const handleGiftQuantityChange = (item, quantity) => {
+    updateGiftPackaging(getCartItemKey(item), {
+      ...item.gift_packaging,
+      selected: true,
+      quantity: Number(quantity),
+    });
+  };
+
+  const handleGiftMessageChange = (item, message) => {
+    updateGiftPackaging(getCartItemKey(item), {
+      ...item.gift_packaging,
+      selected: true,
+      message: limitGiftMessage(message),
+    });
   };
 
   const formatCouponDiscount = (coupon) => {
@@ -356,7 +437,7 @@ const CartPage = () => {
 
   const confirmCheckout = () => {
     setCheckoutDialogOpen(false);
-    navigate('/checkout', { state: { giftPackaging, giftNote, couponCode: appliedCoupon?.code } });
+    navigate('/checkout', { state: { couponCode: appliedCoupon?.code } });
   };
 
   const continueShoppingFromDialog = () => {
@@ -421,12 +502,17 @@ const CartPage = () => {
                   ? item.price 
                   : null;
                 const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
+                const cartItemKey = getCartItemKey(item);
+                const giftSelected = item.gift_packaging?.selected === true;
+                const activeGiftOptions = getActiveGiftOptions(item);
+                const selectedGiftOption = getSelectedGiftOption(item, activeGiftOptions);
+                const giftUnitPrice = getGiftPackagingUnitPrice(item);
                 
                 return (
                   <div 
-                    key={getCartItemKey(item)}
+                    key={cartItemKey}
                     className="flex flex-col gap-4 rounded-xl bg-white p-4 card-shadow sm:flex-row sm:gap-6 sm:p-6"
-                    data-testid={`cart-item-${getCartItemKey(item)}`}
+                    data-testid={`cart-item-${cartItemKey}`}
                   >
                     {/* Image */}
                     <Link to={productPath} className="flex-shrink-0">
@@ -470,9 +556,9 @@ const CartPage = () => {
                           )}
                         </div>
                         <button
-                          onClick={() => removeItem(getCartItemKey(item))}
+                          onClick={() => removeItem(cartItemKey)}
                           className="text-muted-foreground hover:text-foreground transition-colors"
-                          data-testid={`cart-remove-${getCartItemKey(item)}`}
+                          data-testid={`cart-remove-${cartItemKey}`}
                         >
                           <X className="h-5 w-5" strokeWidth={1.5} />
                         </button>
@@ -482,27 +568,27 @@ const CartPage = () => {
                         {/* Quantity */}
                         <div className="flex items-center rounded-full border border-border">
                           <button
-                            onClick={() => updateQuantity(getCartItemKey(item), item.quantity - 1)}
+                            onClick={() => updateQuantity(cartItemKey, item.quantity - 1)}
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
-                            data-testid={`cart-decrease-${getCartItemKey(item)}`}
+                            data-testid={`cart-decrease-${cartItemKey}`}
                           >
                             <Minus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
 
-                          <span className="w-8 text-center text-sm" data-testid={`cart-quantity-${getCartItemKey(item)}`}>
+                          <span className="w-8 text-center text-sm" data-testid={`cart-quantity-${cartItemKey}`}>
                             {item.quantity}
                           </span>
 
                           <button
                             onClick={() =>
                               updateQuantity(
-                                getCartItemKey(item),
+                                cartItemKey,
                                 Math.min(getItemAvailableStock(item), item.quantity + 1)
                               )
                             }
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
                             disabled={!isItemAvailable(item) || item.quantity >= getItemAvailableStock(item)}
-                            data-testid={`cart-increase-${getCartItemKey(item)}`}
+                            data-testid={`cart-increase-${cartItemKey}`}
                           >
                             <Plus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
@@ -510,7 +596,7 @@ const CartPage = () => {
 
                         {/* Price */}
                         <div className="text-left sm:text-right">
-                          <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${getCartItemKey(item)}`}>
+                          <p className={`font-medium ${item.is_on_sale ? 'text-terracotta' : ''}`} data-testid={`cart-item-total-${cartItemKey}`}>
                             ₹{(price * item.quantity).toLocaleString()}
                           </p>
                           {originalPrice && (
@@ -526,47 +612,124 @@ const CartPage = () => {
                           </p>
                         </div>
                       </div>
+                      {activeGiftOptions.length > 0 && (
+                        <div className="mt-5 border-t border-border pt-4" data-testid={`cart-item-gift-section-${cartItemKey}`}>
+                          {activeGiftOptions.length === 1 ? (
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`gift-packaging-${cartItemKey}`}
+                                checked={giftSelected}
+                                onCheckedChange={(checked) => handleGiftPackagingChange(item, checked, activeGiftOptions[0])}
+                                data-testid={`cart-item-gift-checkbox-${cartItemKey}`}
+                              />
+                              <label htmlFor={`gift-packaging-${cartItemKey}`} className="min-w-0 flex-1 cursor-pointer">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                                  <span className="font-medium">
+                                    {activeGiftOptions[0].title}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground">+ {formatINR(activeGiftOptions[0].price)} each</span>
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  {activeGiftOptions[0].description}
+                                </p>
+                              </label>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="mb-3 flex items-center gap-2">
+                                <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
+                                <p className="font-medium">Choose gift packaging</p>
+                              </div>
+                              <div className="space-y-2">
+                                {activeGiftOptions.map((option) => {
+                                  const optionSelected = giftSelected && item.gift_packaging.option_id === option.id;
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={option.id}
+                                      onClick={() => selectGiftOption(item, option)}
+                                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionSelected ? 'border-terracotta bg-terracotta/10' : 'border-border hover:bg-muted/40'}`}
+                                      data-testid={`cart-item-gift-option-${option.id}`}
+                                    >
+                                      <span className="flex items-center justify-between gap-3">
+                                        <span className="font-medium">{option.title}</span>
+                                        <span className="text-sm">+ {formatINR(option.price)} each</span>
+                                      </span>
+                                      {option.description && (
+                                        <span className="mt-1 block text-sm text-muted-foreground">{option.description}</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {giftSelected && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateGiftPackaging(cartItemKey, null)}
+                                  className="mt-2 text-sm text-muted-foreground underline"
+                                >
+                                  Remove gift packaging
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {giftSelected && selectedGiftOption && (
+                            <div className="mt-4 space-y-4 pl-0 sm:pl-7">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <Label htmlFor={`gift-quantity-${cartItemKey}`} className="text-sm">
+                                      Gift quantity
+                                    </Label>
+                                    <div className="flex items-center rounded-full border border-border">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGiftQuantityChange(item, item.gift_packaging.quantity - 1)}
+                                        className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted disabled:opacity-50"
+                                        disabled={item.gift_packaging.quantity <= 1}
+                                        data-testid={`cart-item-gift-decrease-${cartItemKey}`}
+                                      >
+                                        <Minus className="h-3 w-3" strokeWidth={1.5} />
+                                      </button>
+                                      <span className="w-8 text-center text-sm" data-testid={`cart-item-gift-quantity-${cartItemKey}`}>
+                                        {item.gift_packaging.quantity}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGiftQuantityChange(item, item.gift_packaging.quantity + 1)}
+                                        className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted disabled:opacity-50"
+                                        disabled={item.gift_packaging.quantity >= item.quantity}
+                                        data-testid={`cart-item-gift-increase-${cartItemKey}`}
+                                      >
+                                        <Plus className="h-3 w-3" strokeWidth={1.5} />
+                                      </button>
+                                    </div>
+                                    <span className="text-sm text-muted-foreground">
+                                      {formatINR(getItemGiftPackagingAmount(item))}
+                                    </span>
+                                  </div>
+                                  {selectedGiftOption.message_enabled !== false && (
+                                    <div>
+                                      <Textarea
+                                        placeholder="Add a personal message for the gift recipient..."
+                                        value={item.gift_packaging.message}
+                                        onChange={(event) => handleGiftMessageChange(item, event.target.value)}
+                                        className="resize-none"
+                                        rows={3}
+                                        data-testid={`cart-item-gift-message-${cartItemKey}`}
+                                      />
+                                      <p className="mt-1 text-right text-xs text-muted-foreground">
+                                        {getWordCount(item.gift_packaging.message)}/150 words
+                                      </p>
+                                    </div>
+                                  )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
-
-              {/* Gift Packaging Option */}
-              <div className="rounded-xl bg-white p-4 card-shadow sm:p-6" data-testid="gift-packaging-section">
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <Checkbox
-                    id="gift-packaging"
-                    checked={giftPackaging}
-                    onCheckedChange={setGiftPackaging}
-                    data-testid="gift-packaging-checkbox"
-                  />
-                  <div className="flex-1">
-                    <label htmlFor="gift-packaging" className="cursor-pointer">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Gift className="h-5 w-5 text-terracotta" strokeWidth={1.5} />
-                        <span className="font-medium">Add Gift Packaging</span>
-                        <span className="text-sm text-muted-foreground">+ ₹{GIFT_PACKAGING_PRICE}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Premium gift wrap with ribbon and a custom note card
-                      </p>
-                    </label>
-                    
-                    {giftPackaging && (
-                      <div className="mt-4">
-                        <Textarea
-                          placeholder="Add a personal message for the gift recipient..."
-                          value={giftNote}
-                          onChange={(e) => setGiftNote(e.target.value)}
-                          className="resize-none"
-                          rows={3}
-                          data-testid="gift-note-input"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Order Summary */}
@@ -595,10 +758,10 @@ const CartPage = () => {
                       </span>
                     </div>
                   )}
-                  {giftPackaging && (
+                  {getGiftPackagingTotal() > 0 && (
                     <div className="flex justify-between gap-4 text-sm">
                       <span className="text-muted-foreground">Gift Packaging</span>
-                      <span>{formatINR(GIFT_PACKAGING_PRICE)}</span>
+                      <span>{formatINR(getGiftPackagingTotal())}</span>
                     </div>
                   )}
                   <div className="flex justify-between gap-4 text-sm">
@@ -778,7 +941,7 @@ const CartPage = () => {
                           const offerFinalTotal = Math.max(
                             getDiscountedSubtotal() - Number(offer.discount_amount || 0),
                             0
-                          ) + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+                          ) + getGiftPackagingTotal();
 
                           return (
                           <div

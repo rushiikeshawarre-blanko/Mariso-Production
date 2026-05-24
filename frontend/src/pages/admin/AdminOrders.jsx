@@ -86,24 +86,79 @@ const getOrderSubtotal = (order) => (
 
 const hasCouponDiscount = (order) => Boolean(order?.coupon_code && Number(order?.coupon_discount_amount || 0) > 0);
 
+const getItemGiftPackaging = (item) => {
+  const giftPackaging = item?.gift_packaging || item?.gift_packaging_snapshot;
+  return giftPackaging?.selected === false ? null : giftPackaging;
+};
+
+const hasItemGiftPackaging = (items = []) => items.some((item) => Boolean(getItemGiftPackaging(item)));
+
+const hasGiftPackaging = (order) => Boolean(
+  order?.gift_packaging ||
+  hasItemGiftPackaging(order?.items) ||
+  Number(order?.gift_packaging_amount || 0) > 0
+);
+
+const getGiftPackagingAmount = (order) => {
+  if (order?.gift_packaging_amount !== undefined && order?.gift_packaging_amount !== null) {
+    return order.gift_packaging_amount;
+  }
+
+  return order?.items?.reduce(
+    (sum, item) => sum + Number(getItemGiftPackaging(item)?.line_total || 0),
+    0
+  ) || 0;
+};
+
+const getLocalDateValue = () => {
+  const now = new Date();
+  const offsetDate = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  return offsetDate.toISOString().slice(0, 10);
+};
+
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [period, setPeriod] = useState('all');
+  const [selectedDate, setSelectedDate] = useState(getLocalDateValue);
+  const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateValue().slice(0, 7));
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getAllOrders(statusFilter === 'all' ? null : statusFilter);
+      const params = {
+        ...(statusFilter !== 'all' ? { order_status: statusFilter } : {}),
+        period: 'all',
+      };
+
+      if (period === 'daily' && selectedDate) {
+        Object.assign(params, {
+          period: 'custom',
+          start_date: selectedDate,
+          end_date: selectedDate,
+        });
+      } else if (period === 'monthly' && selectedMonth) {
+        Object.assign(params, { period: 'monthly', month: selectedMonth });
+      } else if (period === 'custom' && customRange.start && customRange.end) {
+        Object.assign(params, {
+          period: 'custom',
+          start_date: customRange.start,
+          end_date: customRange.end,
+        });
+      }
+
+      const data = await getAllOrders(params);
       setOrders(data);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, period, selectedDate, selectedMonth, customRange.start, customRange.end]);
 
   useEffect(() => {
     fetchOrders();
@@ -185,9 +240,61 @@ const AdminOrders = () => {
 
   return (
     <div data-testid="admin-orders">
-      <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
         <h1 className="font-heading text-3xl">Orders</h1>
-        <div className="w-full sm:w-auto">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-full min-w-0 sm:w-[150px]" data-testid="order-period-filter">
+              <SelectValue placeholder="View" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {period === 'daily' && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              data-testid="order-daily-date"
+            />
+          )}
+
+          {period === 'monthly' && (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              data-testid="order-month"
+            />
+          )}
+
+          {period === 'custom' && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="date"
+                value={customRange.start}
+                onChange={(event) => setCustomRange((range) => ({ ...range, start: event.target.value }))}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                data-testid="order-start-date"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={customRange.end}
+                onChange={(event) => setCustomRange((range) => ({ ...range, end: event.target.value }))}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                data-testid="order-end-date"
+              />
+            </div>
+          )}
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full min-w-0 sm:w-[180px]" data-testid="order-status-filter">
               <SelectValue placeholder="Filter by status" />
@@ -243,7 +350,14 @@ const AdminOrders = () => {
                       <p className="text-xs text-muted-foreground">{order.billing_email || order.user_email}</p>
                     </div>
                   </TableCell>
-                  <TableCell>{order.items?.length} items</TableCell>
+                  <TableCell>
+                    <p>{order.items?.length} items</p>
+                    {hasGiftPackaging(order) && (
+                      <span className="mt-1 inline-flex rounded-full bg-[#faf1e7] px-2 py-0.5 text-xs font-medium text-[#855d33]">
+                        Gift
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <p className="font-medium">{formatINR(order.total_price)}</p>
                     {hasCouponDiscount(order) && (
@@ -351,26 +465,60 @@ const AdminOrders = () => {
               <div>
                 <h4 className="font-medium mb-3">Order Items</h4>
                 <div className="space-y-3">
-                  {selectedOrder.items?.map((item, index) => (
-                    <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                      <img
-                        src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
-                        alt={item.product_name || 'Order item'}
-                        className="h-20 w-16 rounded bg-muted object-cover"
-                        onError={(event) => {
-                          event.currentTarget.onerror = null;
-                          event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
-                        }}
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium">{item.product_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatINR(item.price)} × {item.quantity}
-                        </p>
+                  {selectedOrder.items?.map((item, index) => {
+                    const giftPackaging = getItemGiftPackaging(item);
+
+                    return (
+                      <div key={`${item.product_id || item.product_name}-${item.variant_id || index}`} className="rounded-lg border border-border p-3">
+                        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                          <img
+                            src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
+                            alt={item.product_name || 'Order item'}
+                            className="h-20 w-16 rounded bg-muted object-cover"
+                            onError={(event) => {
+                              event.currentTarget.onerror = null;
+                              event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
+                            }}
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium">{item.product_name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {formatINR(item.price)} × {item.quantity}
+                            </p>
+                          </div>
+                          <p className="font-medium sm:text-right">{formatINR(item.line_total ?? item.price * item.quantity)}</p>
+                        </div>
+
+                        {giftPackaging && (
+                          <div className="mt-3 rounded-lg border border-[#d9d4cc] bg-[#faf7f2] p-3 text-sm">
+                            <p className="font-medium">Gift Packaging</p>
+                            <p className="mt-1 text-muted-foreground">
+                              {giftPackaging.title || 'Gift Packaging'} × {giftPackaging.quantity ?? 1}
+                            </p>
+                            {giftPackaging.description && (
+                              <p className="text-muted-foreground">{giftPackaging.description}</p>
+                            )}
+                            {(giftPackaging.unit_price !== undefined || giftPackaging.line_total !== undefined) && (
+                              <p className="text-muted-foreground">
+                                {giftPackaging.unit_price !== undefined && `${formatINR(giftPackaging.unit_price)} each`}
+                                {giftPackaging.unit_price !== undefined && giftPackaging.line_total !== undefined && ' · '}
+                                {giftPackaging.line_total !== undefined && `${formatINR(giftPackaging.line_total)} total`}
+                              </p>
+                            )}
+                            {giftPackaging.message && (
+                              <p className="mt-1 text-muted-foreground">Message: {giftPackaging.message}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <p className="font-medium sm:text-right">{formatINR(item.line_total ?? item.price * item.quantity)}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
+
+                  {hasGiftPackaging(selectedOrder) && !hasItemGiftPackaging(selectedOrder.items) && (
+                    <p className="rounded-lg border border-[#d9d4cc] bg-[#faf7f2] p-3 text-sm font-medium">
+                      Gift Packaging Included
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -384,6 +532,12 @@ const AdminOrders = () => {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Coupon {selectedOrder.coupon_code}</span>
                     <span className="font-medium text-[#8B9D83]">-{formatINR(selectedOrder.coupon_discount_amount)}</span>
+                  </div>
+                )}
+                {hasGiftPackaging(selectedOrder) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Gift Packaging</span>
+                    <span>{formatINR(getGiftPackagingAmount(selectedOrder))}</span>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 text-base font-medium">

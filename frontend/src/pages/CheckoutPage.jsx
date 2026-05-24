@@ -12,9 +12,25 @@ import { formatINR } from '../lib/currency';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
 
+const getLegacyGiftOption = (item) => ({
+  id: null,
+  title: item.gift_packaging_title || 'Gift Packaging',
+  description: item.gift_packaging_description || '',
+  price: item.gift_packaging_price ?? 149,
+  message_enabled: item.gift_message_enabled !== false,
+});
+
+const getSelectedGiftOption = (item) => {
+  if (item.gift_packaging?.selected !== true) return null;
+  if (!item.gift_packaging.option_id) return getLegacyGiftOption(item);
+  return (item.gift_packaging_options || []).find(
+    (option) => option.id === item.gift_packaging.option_id && option.is_active !== false
+  ) || null;
+};
+
 const CheckoutPage = () => {
   const location = useLocation();
-  const { giftPackaging = false, giftNote = '', couponCode: couponCodeFromCart = '' } = location.state || {};
+  const { couponCode: couponCodeFromCart = '' } = location.state || {};
   const { items } = useCart();
   const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
@@ -32,8 +48,6 @@ const CheckoutPage = () => {
   const [availableCouponsError, setAvailableCouponsError] = useState('');
   const paymentMessage = new URLSearchParams(location.search).get('payment');
   
-  const GIFT_PACKAGING_PRICE = 149;
-
   const getCheckoutOriginalSubtotal = () => {
     return items.reduce((total, item) => total + (item.price * item.quantity), 0 );
   };
@@ -46,6 +60,21 @@ const CheckoutPage = () => {
 
   const getCheckoutDiscountSubtotal = () => {
     return items.reduce((total, item) => total + (getCheckoutEffectivePrice(item) * item.quantity), 0 );
+  };
+
+  const getGiftPackagingUnitPrice = (item) => {
+    const price = Number(getSelectedGiftOption(item)?.price);
+    return Number.isFinite(price) && price >= 0 ? price : 149;
+  };
+
+  const getItemGiftPackagingAmount = (item) => {
+    return item.gift_packaging?.selected === true
+      ? getGiftPackagingUnitPrice(item) * item.gift_packaging.quantity
+      : 0;
+  };
+
+  const getGiftPackagingTotal = () => {
+    return items.reduce((total, item) => total + getItemGiftPackagingAmount(item), 0);
   };
 
   const cartSignature = items
@@ -90,7 +119,7 @@ const CheckoutPage = () => {
   };
 
   const getCouponPreviewTotal = () => {
-    return getCouponPreviewItemsTotal() + (giftPackaging ? GIFT_PACKAGING_PRICE : 0);
+    return getCouponPreviewItemsTotal() + getGiftPackagingTotal();
   };
 
   const getCheckoutItemImage = (item) => {
@@ -287,6 +316,14 @@ const CheckoutPage = () => {
           variant_id: item.variantId ?? null,
           color_id: item.selectedColorId ?? null,
           flavor_id: item.selectedFlavorId ?? null,
+          gift_packaging: item.gift_packaging?.selected === true
+              ? {
+                selected: true,
+                option_id: item.gift_packaging.option_id || null,
+                quantity: item.gift_packaging.quantity,
+                message: item.gift_packaging.message || '',
+              }
+            : null,
         })),
         billing_name: formData.name,
         billing_phone: formData.phone,
@@ -294,7 +331,7 @@ const CheckoutPage = () => {
         billing_address: formData.address,
         billing_city: formData.city,
         billing_postal_code: formData.postalCode,
-        gift_packaging: giftPackaging,
+        gift_packaging: items.some((item) => item.gift_packaging?.selected === true),
         coupon_code: appliedCoupon?.code || undefined,
       };
 
@@ -544,6 +581,7 @@ const CheckoutPage = () => {
                   <div className="space-y-4 mb-6 max-h-64 overflow-y-auto">
                     {items.map((item) => {
                       const price = getCheckoutEffectivePrice(item);
+                      const selectedGiftOption = getSelectedGiftOption(item);
                       return (
                         <div
                           key={`${item.id}-${item.variantId || item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`}
@@ -562,23 +600,29 @@ const CheckoutPage = () => {
                               <p className="text-xs text-muted-foreground">Color: {item.selectedColor}</p>
                             )}
                             <p className="text-sm mt-1">₹{(price * item.quantity).toLocaleString()}</p>
+                            {selectedGiftOption && (
+                              <div className="mt-2 rounded-md bg-terracotta/10 p-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-1 font-medium">
+                                    <Gift className="h-3 w-3 text-terracotta" strokeWidth={1.5} />
+                                    {selectedGiftOption.title} x {item.gift_packaging.quantity}
+                                  </span>
+                                  <span>{formatINR(getItemGiftPackagingAmount(item))}</span>
+                                </div>
+                                {selectedGiftOption.description && (
+                                  <p className="mt-1 text-muted-foreground">{selectedGiftOption.description}</p>
+                                )}
+                                <p className="mt-1 text-muted-foreground">{formatINR(selectedGiftOption.price)} each</p>
+                                {selectedGiftOption.message_enabled !== false && item.gift_packaging.message && (
+                                  <p className="mt-1 truncate text-muted-foreground">"{item.gift_packaging.message}"</p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* Gift Packaging Indicator */}
-                  {giftPackaging && (
-                    <div className="flex items-center gap-2 p-3 bg-terracotta/10 rounded-lg mb-4">
-                      <Gift className="h-4 w-4 text-terracotta" strokeWidth={1.5} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">Gift Packaging</p>
-                        {giftNote && <p className="text-xs text-muted-foreground truncate">"{giftNote}"</p>}
-                      </div>
-                      <span className="text-sm">₹{GIFT_PACKAGING_PRICE}</span>
-                    </div>
-                  )}
 
                   <div className="border-t border-border pt-4 mb-4">
                     <Label htmlFor="coupon-code" className="text-sm font-medium">Have a coupon?</Label>
@@ -727,10 +771,10 @@ const CheckoutPage = () => {
                         </span>
                       </div>
                     )}
-                    {giftPackaging && (
+                    {getGiftPackagingTotal() > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Gift Packaging</span>
-                        <span>₹{GIFT_PACKAGING_PRICE}</span>
+                        <span>{formatINR(getGiftPackagingTotal())}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">

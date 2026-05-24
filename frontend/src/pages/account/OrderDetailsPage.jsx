@@ -17,6 +17,24 @@ const ORDER_ITEM_IMAGE_FALLBACK =
     </svg>
   `);
 
+const getItemGiftPackaging = (item) => {
+  const giftPackaging = item?.gift_packaging || item?.gift_packaging_snapshot;
+  return giftPackaging?.selected === false ? null : giftPackaging;
+};
+
+const hasItemGiftPackaging = (items = []) => items.some((item) => Boolean(getItemGiftPackaging(item)));
+
+const getGiftPackagingAmount = (order) => {
+  if (order?.gift_packaging_amount !== undefined && order?.gift_packaging_amount !== null) {
+    return order.gift_packaging_amount;
+  }
+
+  return order?.items?.reduce(
+    (sum, item) => sum + Number(getItemGiftPackaging(item)?.line_total || 0),
+    0
+  ) || 0;
+};
+
 const OrderDetailsPage = () => {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
@@ -124,6 +142,8 @@ const OrderDetailsPage = () => {
   const grossSubtotal = order.subtotal_before_discount ?? subtotal;
   const hasCouponDiscount = Boolean(order.coupon_code && Number(order.coupon_discount_amount || 0) > 0);
   const orderShortId = order.id?.slice(0, 8).toUpperCase();
+  const hasGiftedItems = hasItemGiftPackaging(order.items);
+  const hasGiftPackaging = Boolean(order.gift_packaging || hasGiftedItems || Number(order.gift_packaging_amount || 0) > 0);
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -219,48 +239,80 @@ const OrderDetailsPage = () => {
         <h2 className="font-heading text-xl mb-4">Items</h2>
 
         <div className="space-y-4">
-          {order.items?.map((item, index) => (
-            <div
-              key={`${item.product_id}-${item.variant_id || index}`}
-              className="flex gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
-            >
-              <img
-                src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
-                alt={item.product_name || "Order item"}
-                className="w-20 h-20 object-cover rounded-xl border border-border bg-muted"
-                onError={(event) => {
-                  event.currentTarget.onerror = null;
-                  event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
-                }}
-              />
+          {order.items?.map((item, index) => {
+            const giftPackaging = getItemGiftPackaging(item);
 
-              <div className="flex-1">
-                <p className="font-medium text-foreground">{item.product_name}</p>
+            return (
+              <div
+                key={`${item.product_id}-${item.variant_id || index}`}
+                className="flex gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
+              >
+                <img
+                  src={item.product_image || ORDER_ITEM_IMAGE_FALLBACK}
+                  alt={item.product_name || "Order item"}
+                  className="w-20 h-20 object-cover rounded-xl border border-border bg-muted"
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = ORDER_ITEM_IMAGE_FALLBACK;
+                  }}
+                />
 
-                {(item.color_name || item.color_id || item.flavor_name || item.flavor_id) && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {[
-                      item.color_name || item.color_id ? `Color: ${item.color_name || item.color_id}` : null,
-                      item.flavor_name || item.flavor_id ? `Fragrance: ${item.flavor_name || item.flavor_id}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" • ")}
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">{item.product_name}</p>
+
+                  {(item.color_name || item.color_id || item.flavor_name || item.flavor_id) && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {[
+                        item.color_name || item.color_id ? `Color: ${item.color_name || item.color_id}` : null,
+                        item.flavor_name || item.flavor_id ? `Fragrance: ${item.flavor_name || item.flavor_id}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </p>
+                  )}
+
+                  <p className="text-sm text-muted-foreground mt-1">Qty: {item.quantity}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Unit Price: {formatINR(item.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
-                )}
 
-                <p className="text-sm text-muted-foreground mt-1">Qty: {item.quantity}</p>
-                <p className="text-sm text-muted-foreground">
-                  Unit Price: {formatINR(item.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
+                  {giftPackaging && (
+                    <div className="mt-3 rounded-lg border border-[#d9d4cc] bg-[#faf7f2] p-3 text-sm">
+                      <p className="font-medium text-foreground">Gift Packaging</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {giftPackaging.title || 'Gift Packaging'} × {giftPackaging.quantity ?? 1}
+                      </p>
+                      {giftPackaging.description && (
+                        <p className="text-muted-foreground">{giftPackaging.description}</p>
+                      )}
+                      {(giftPackaging.unit_price !== undefined || giftPackaging.line_total !== undefined) && (
+                        <p className="text-muted-foreground">
+                          {giftPackaging.unit_price !== undefined && `${formatINR(giftPackaging.unit_price)} each`}
+                          {giftPackaging.unit_price !== undefined && giftPackaging.line_total !== undefined && ' · '}
+                          {giftPackaging.line_total !== undefined && `${formatINR(giftPackaging.line_total)} total`}
+                        </p>
+                      )}
+                      {giftPackaging.message && (
+                        <p className="mt-1 text-muted-foreground">Message: {giftPackaging.message}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-              <div className="text-right">
-                <p className="font-medium text-foreground">
-                  {formatINR(item.line_total ?? item.price * item.quantity)}
-                </p>
+                <div className="text-right">
+                  <p className="font-medium text-foreground">
+                    {formatINR(item.line_total ?? item.price * item.quantity)}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+
+          {hasGiftPackaging && !hasGiftedItems && (
+            <p className="rounded-lg border border-[#d9d4cc] bg-[#faf7f2] p-3 text-sm font-medium text-foreground">
+              Gift Packaging Included
+            </p>
+          )}
         </div>
       </div>
 
@@ -293,10 +345,10 @@ const OrderDetailsPage = () => {
               </div>
             )}
 
-            {order.gift_packaging && (
+            {hasGiftPackaging && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Gift Packaging</span>
-                <span>Included</span>
+                <span>{formatINR(getGiftPackagingAmount(order))}</span>
               </div>
             )}
 

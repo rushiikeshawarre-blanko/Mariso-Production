@@ -1,5 +1,19 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+class CartItemGiftPackaging(BaseModel):
+    selected: bool = True
+    option_id: Optional[str] = None
+    quantity: int = Field(1, gt=0)
+    message: str = ""
+
+    @field_validator("message")
+    @classmethod
+    def validate_message_word_count(cls, value: str) -> str:
+        if len(str(value or "").split()) > 150:
+            raise ValueError("Gift message cannot exceed 150 words")
+        return value
 
 class CartItem(BaseModel):
     product_id: str
@@ -7,6 +21,7 @@ class CartItem(BaseModel):
     variant_id: Optional[str] = None
     color_id: Optional[str] = None
     flavor_id: Optional[str] = None
+    gift_packaging: Optional[CartItemGiftPackaging] = None
 
 class OrderCreate(BaseModel):
     items: List[CartItem]

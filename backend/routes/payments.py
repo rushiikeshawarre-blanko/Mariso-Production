@@ -126,6 +126,7 @@ async def create_cashfree_session_route(
             customer_name=pending_order["billing_name"],
             customer_email=pending_order["billing_email"],
             customer_phone=pending_order["billing_phone"],
+            order_expiry_time=pending_order.get("stock_reserved_until"),
         )
     except HTTPException as exc:
         error_context = _cashfree_error_context(exc)

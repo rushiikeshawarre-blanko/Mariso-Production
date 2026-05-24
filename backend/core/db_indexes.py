@@ -31,6 +31,12 @@ async def create_indexes(db):
     await db.orders.create_index("user_id")
     await db.orders.create_index("created_at")
     await db.orders.create_index("status")
+    await db.orders.create_index([
+        ("payment_provider", 1),
+        ("payment_status", 1),
+        ("status", 1),
+        ("stock_reserved_until", 1),
+    ])
 
     await db.products.create_index("id", unique=True)
     await db.products.create_index([("is_active", 1), ("category_id", 1)])

@@ -28,6 +28,8 @@ from core.constants import (
     VALID_PAYMENT_METHODS,
 )
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
+from services.admin_service import build_order_period_filter
+from services.cashfree_service import get_cashfree_order
 from services.coupon_service import increment_coupon_usage, validate_coupon
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
@@ -37,6 +39,7 @@ import secrets
 import uuid
 
 logger = logging.getLogger(__name__)
+STALE_PENDING_SYNC_LIMIT = 25
 
 
 def _now_iso() -> str:
@@ -66,6 +69,24 @@ def _payment_event(event_type: str, source: str = "system", **details) -> dict:
 
 def _round_money(value: float) -> float:
     return round(max(float(value or 0), 0), 2)
+
+
+def _item_gift_packaging_total(items_with_details: List[dict]) -> float:
+    return _round_money(sum(
+        item.get("gift_packaging", {}).get("line_total", 0)
+        for item in items_with_details
+        if item.get("gift_packaging")
+    ))
+
+
+def _has_item_gift_packaging(items_with_details: List[dict]) -> bool:
+    return any(item.get("gift_packaging") for item in items_with_details)
+
+
+def _gift_packaging_total(order_payload, items_with_details: List[dict]) -> float:
+    if _has_item_gift_packaging(items_with_details):
+        return _item_gift_packaging_total(items_with_details)
+    return _round_money(GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
 
 
 async def _generate_tracking_token() -> str:
@@ -322,6 +343,10 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("coupon_snapshot", None)
     order.setdefault("coupon_usage_recorded", False)
     order.setdefault("payment_events", [])
+    order.setdefault(
+        "gift_packaging_amount",
+        GIFT_PACKAGING_PRICE if order.get("gift_packaging") else 0,
+    )
 
     return order
 
@@ -420,6 +445,59 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                     detail=f"Insufficient stock for product {product['name']}"
                 )
 
+        gift_packaging = None
+        if item.gift_packaging and item.gift_packaging.selected:
+            if product.get("show_gift_packaging", True) is not True:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Gift packaging is not available for product {product['name']}"
+                )
+            if item.gift_packaging.quantity > item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Gift packaging quantity exceeds product quantity for {product['name']}"
+                )
+
+            option_id = item.gift_packaging.option_id
+            selected_option = None
+            if option_id:
+                selected_option = next(
+                    (
+                        option for option in product.get("gift_packaging_options", [])
+                        if option.get("id") == option_id and option.get("is_active", True) is not False
+                    ),
+                    None,
+                )
+                if not selected_option:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Selected gift packaging option is not available for product {product['name']}"
+                    )
+
+            gift_quantity = item.gift_packaging.quantity
+            gift_price = _round_money(
+                selected_option.get("price") if selected_option else product.get("gift_packaging_price", GIFT_PACKAGING_PRICE)
+            )
+            message_enabled = (
+                selected_option.get("message_enabled", True)
+                if selected_option
+                else product.get("gift_message_enabled", True)
+            )
+            message = item.gift_packaging.message.strip() if message_enabled else ""
+            gift_packaging = {
+                "selected": True,
+                "option_id": selected_option.get("id") if selected_option else None,
+                "title": selected_option.get("title") if selected_option else product.get("gift_packaging_title", "Add Gift Packaging"),
+                "description": selected_option.get("description", "") if selected_option else product.get(
+                    "gift_packaging_description", "Premium gift wrap with ribbon and a custom note card"
+                ),
+                "unit_price": gift_price,
+                "quantity": gift_quantity,
+                "message_enabled": message_enabled,
+                "message": message,
+                "line_total": _round_money(gift_price * gift_quantity),
+            }
+
         items_with_details.append({
             "product_id": item.product_id,
             "category_id": product.get("category_id", ""),
@@ -435,6 +513,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
             "quantity": item.quantity,
             "line_total": price * item.quantity,
             "sku": variant_sku or product.get("sku", ""),
+            "gift_packaging": gift_packaging,
         })
 
     return items_with_details, product_map
@@ -446,6 +525,7 @@ async def _calculate_coupon_adjustment(
     items_with_details: List[dict],
     calculated_total: float,
 ) -> dict:
+    gift_packaging_total = _gift_packaging_total(order_payload, items_with_details)
     base_amounts = {
         "coupon_code": None,
         "coupon_id": None,
@@ -453,7 +533,7 @@ async def _calculate_coupon_adjustment(
         "eligible_subtotal": None,
         "subtotal_before_discount": _round_money(calculated_total),
         "total_after_discount": _round_money(
-            calculated_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+            calculated_total + gift_packaging_total
         ),
         "coupon_snapshot": None,
     }
@@ -490,7 +570,7 @@ async def _calculate_coupon_adjustment(
 
     discounted_items_total = _round_money(validation.get("final_total", calculated_total))
     final_payable = _round_money(
-        discounted_items_total + (GIFT_PACKAGING_PRICE if order_payload.gift_packaging else 0)
+        discounted_items_total + gift_packaging_total
     )
 
     return {
@@ -789,6 +869,30 @@ async def release_reserved_stock(order: dict, source: str = "system") -> dict:
     return await _fetch_normalized_order(order_id, order)
 
 
+async def _release_stock_for_terminal_payment(order: dict, source: str) -> tuple[dict, dict]:
+    try:
+        return await release_reserved_stock(order, source), {}
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+
+        failed_at = _now_iso()
+        error_detail = str(exc.detail)
+        logger.warning(
+            "Reserved stock could not be safely released for terminal payment order_id=%s "
+            "source=%s detail=%s; recording reconciliation requirement",
+            order.get("id"),
+            source,
+            error_detail,
+        )
+        current_order = await _fetch_normalized_order(order["id"], order)
+        return current_order, {
+            "stock_release_failed": True,
+            "stock_release_error": error_detail,
+            "stock_release_failed_at": failed_at,
+        }
+
+
 async def confirm_reserved_stock(order: dict, source: str = "system") -> tuple[dict, bool]:
     order_id = order.get("id")
     if not order_id:
@@ -854,7 +958,8 @@ async def confirm_reserved_stock(order: dict, source: str = "system") -> tuple[d
 
 
 async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items_with_details: List[dict], calculated_total: float) -> dict:
-    final_total = calculated_total + (GIFT_PACKAGING_PRICE if order.gift_packaging else 0)
+    gift_packaging_total = _gift_packaging_total(order, items_with_details)
+    final_total = _round_money(calculated_total + gift_packaging_total)
     formatted_phone = format_phone(order.billing_phone or "")
     created_at = _now_iso()
     tracking_token = await _generate_tracking_token()
@@ -886,7 +991,8 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
         "payment_events": [],
-        "gift_packaging": order.gift_packaging,
+        "gift_packaging": bool(order.gift_packaging or _has_item_gift_packaging(items_with_details)),
+        "gift_packaging_amount": gift_packaging_total,
         "total_price": final_total,
         "status": ORDER_STATUS_CONFIRMED,
         "created_at": created_at,
@@ -978,6 +1084,7 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
     created_at = now_dt.isoformat()
     reserved_until = (now_dt + timedelta(minutes=STOCK_RESERVATION_MINUTES)).isoformat()
     final_total = coupon_amounts["total_after_discount"]
+    gift_packaging_total = _gift_packaging_total(order_payload, items_with_details)
     formatted_phone = format_phone(order_payload.billing_phone or "")
     tracking_token = await _generate_tracking_token()
 
@@ -1018,7 +1125,8 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
                 stock_reserved_until=reserved_until,
             )
         ],
-        "gift_packaging": order_payload.gift_packaging,
+        "gift_packaging": bool(order_payload.gift_packaging or _has_item_gift_packaging(items_with_details)),
+        "gift_packaging_amount": gift_packaging_total,
         "coupon_code": coupon_amounts["coupon_code"],
         "coupon_id": coupon_amounts["coupon_id"],
         "coupon_discount_amount": coupon_amounts["coupon_discount_amount"],
@@ -1144,11 +1252,15 @@ async def _expire_local_reservation(order: dict, metadata_update: dict, source: 
     if _is_paid_or_confirmed(order):
         return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
-    order = await release_reserved_stock(order, source)
+    order, release_failure_fields = await _release_stock_for_terminal_payment(order, source)
     if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
         return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
     now = _now_iso()
+    release_update = release_failure_fields or {
+        "stock_reserved": False,
+        "stock_released_at": order.get("stock_released_at") or now,
+    }
     result = await db.orders.update_one(
         _unpaid_unconfirmed_order_filter(order_id),
         {
@@ -1156,8 +1268,7 @@ async def _expire_local_reservation(order: dict, metadata_update: dict, source: 
                 **metadata_update,
                 "payment_status": PAYMENT_STATUS_EXPIRED,
                 "status": ORDER_STATUS_PAYMENT_EXPIRED,
-                "stock_reserved": False,
-                "stock_released_at": order.get("stock_released_at") or now,
+                **release_update,
                 "updated_at": now,
             },
             "$push": {
@@ -1357,7 +1468,7 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
     elif cashfree_order_status == CASHFREE_ORDER_STATUS_EXPIRED:
         if _is_paid_or_confirmed(order):
             return serialize_mongo_value(order)
-        order = await release_reserved_stock(order, source)
+        order, release_failure_fields = await _release_stock_for_terminal_payment(order, source)
         if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
             return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
@@ -1366,6 +1477,7 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
             {
                 "$set": {
                     **metadata_update,
+                    **release_failure_fields,
                     "payment_status": PAYMENT_STATUS_EXPIRED,
                     "status": ORDER_STATUS_PAYMENT_EXPIRED,
                 },
@@ -1380,7 +1492,7 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
     elif cashfree_order_status == CASHFREE_ORDER_STATUS_TERMINATED:
         if _is_paid_or_confirmed(order):
             return serialize_mongo_value(order)
-        order = await release_reserved_stock(order, source)
+        order, release_failure_fields = await _release_stock_for_terminal_payment(order, source)
         if _is_paid_or_confirmed(order) or order.get("stock_reservation_transition"):
             return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
@@ -1389,6 +1501,7 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
             {
                 "$set": {
                     **metadata_update,
+                    **release_failure_fields,
                     "payment_status": PAYMENT_STATUS_FAILED,
                     "status": ORDER_STATUS_PAYMENT_FAILED,
                 },
@@ -1403,6 +1516,8 @@ async def finalize_paid_cashfree_order(order_id: str, cashfree_data: dict, sourc
     elif cashfree_order_status in {CASHFREE_ORDER_STATUS_ACTIVE, CASHFREE_ORDER_STATUS_TERMINATION_REQUESTED}:
         if not _is_paid_or_confirmed(order) and _is_local_reservation_expired(order):
             return await _expire_local_reservation(order, metadata_update, source)
+        if order.get("status") in {ORDER_STATUS_PAYMENT_EXPIRED, ORDER_STATUS_PAYMENT_FAILED}:
+            return serialize_mongo_value(order)
 
         result = await db.orders.update_one(
             _unpaid_unconfirmed_order_filter(order_id),
@@ -1482,7 +1597,42 @@ async def mark_cashfree_order_failed(order_id: str, reason: str, source: str = "
     failed_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return serialize_mongo_value(_normalize_order_payment_defaults(failed_order))
 
+
+async def sync_stale_pending_orders(extra_filter: Optional[dict] = None, limit: int = STALE_PENDING_SYNC_LIMIT) -> None:
+    query = {
+        "payment_provider": PAYMENT_PROVIDER_CASHFREE,
+        "payment_status": PAYMENT_STATUS_PENDING,
+        "status": ORDER_STATUS_PENDING_PAYMENT,
+        "stock_reserved_until": {"$lte": _now_iso()},
+    }
+    if extra_filter:
+        query = {"$and": [query, extra_filter]}
+
+    stale_orders = await db.orders.find(
+        query,
+        {"_id": 0, "id": 1},
+    ).sort("stock_reserved_until", 1).to_list(min(max(limit, 1), STALE_PENDING_SYNC_LIMIT))
+
+    for stale_order in stale_orders:
+        order_id = stale_order.get("id")
+        if not order_id:
+            continue
+        try:
+            cashfree_data = get_cashfree_order(order_id)
+            await finalize_paid_cashfree_order(order_id, cashfree_data, source="stale_pending_sync")
+        except HTTPException as exc:
+            logger.warning(
+                "Cashfree stale pending sync deferred for order_id=%s status_code=%s detail=%s",
+                order_id,
+                exc.status_code,
+                exc.detail,
+            )
+        except Exception:
+            logger.exception("Cashfree stale pending sync failed for order_id=%s", order_id)
+
+
 async def get_user_orders(user_id: str, limit: int = 100):
+    await sync_stale_pending_orders({"user_id": user_id})
     limit = min(limit, MAX_LIMIT)
     orders = await db.orders.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(limit)
 
@@ -1515,12 +1665,22 @@ async def get_order(order_id: str, user: dict):
 
     if not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to view this order")
-    
+
+    await sync_stale_pending_orders({"id": order_id}, limit=1)
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     order["billing_phone"] = format_phone(order.get("billing_phone") or "")
     return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
-async def get_all_orders(order_status: Optional[str] = None, limit: int = MAX_LIMIT):
-    query = {}
+async def get_all_orders(
+    order_status: Optional[str] = None,
+    period: str = "all",
+    month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = MAX_LIMIT,
+):
+    query = build_order_period_filter(period, start_date, end_date, month)
+    await sync_stale_pending_orders(query)
     if order_status:
         query["status"] = order_status
 

@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 from fastapi import HTTPException
 from datetime import datetime, timezone
-from models.product import ColorOption, FlavorOption, ProductVariant
+from models.product import ColorOption, FlavorOption, GiftPackagingOption, ProductVariant
 import logging
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -37,6 +37,12 @@ PRODUCT_CARD_PROJECTION = {
     "is_featured": 1,
     "is_bestseller": 1,
     "is_new_arrival": 1,
+    "show_gift_packaging": 1,
+    "gift_packaging_title": 1,
+    "gift_packaging_description": 1,
+    "gift_packaging_price": 1,
+    "gift_message_enabled": 1,
+    "gift_packaging_options": 1,
     "created_at": 1,
 }
 
@@ -90,6 +96,15 @@ def normalize_variants(variants: List[ProductVariant]) -> List[dict]:
         if not variant_dict.get("id"):
             variant_dict["id"] = str(uuid.uuid4())
         normalized.append(variant_dict)
+    return normalized
+
+def normalize_gift_packaging_options(options: List[GiftPackagingOption]) -> List[dict]:
+    normalized = []
+    for option in options:
+        option_dict = option.model_dump() if hasattr(option, "model_dump") else option
+        if not option_dict.get("id"):
+            option_dict["id"] = str(uuid.uuid4())
+        normalized.append(option_dict)
     return normalized
 
 def enrich_product(product: dict, category_map: Optional[dict] = None) -> dict:
@@ -164,6 +179,15 @@ def map_product_to_card_response(product: dict) -> dict:
         "is_featured": product.get("is_featured", False),
         "is_bestseller": product.get("is_bestseller", False),
         "is_new_arrival": product.get("is_new_arrival", False),
+        "show_gift_packaging": product.get("show_gift_packaging", True),
+        "gift_packaging_title": product.get("gift_packaging_title", "Add Gift Packaging"),
+        "gift_packaging_description": product.get(
+            "gift_packaging_description",
+            "Premium gift wrap with ribbon and a custom note card",
+        ),
+        "gift_packaging_price": product.get("gift_packaging_price", 149),
+        "gift_message_enabled": product.get("gift_message_enabled", True),
+        "gift_packaging_options": product.get("gift_packaging_options", []),
         "created_at": product.get("created_at", ""),
     }
 
@@ -424,6 +448,7 @@ async def create_product(product: ProductCreate):
     
     # Generate IDs for variants
     variants = normalize_variants(product.variants)
+    gift_packaging_options = normalize_gift_packaging_options(product.gift_packaging_options)
 
     product_doc = {
         "id": product_id,
@@ -455,6 +480,11 @@ async def create_product(product: ProductCreate):
         "show_returns": product.show_returns,
         "show_reusable_container": product.show_reusable_container,
         "show_gift_packaging": product.show_gift_packaging,
+        "gift_packaging_title": product.gift_packaging_title,
+        "gift_packaging_description": product.gift_packaging_description,
+        "gift_packaging_price": product.gift_packaging_price,
+        "gift_message_enabled": product.gift_message_enabled,
+        "gift_packaging_options": gift_packaging_options,
         "care_instructions": product.care_instructions or "",
         "shipping_info": product.shipping_info or "",
         "materials": product.materials or "",
@@ -531,6 +561,8 @@ async def update_product(product_id: str, product: ProductUpdate):
         elif key == 'variants' and value:
             # Generate IDs for new variants
             update_data["variants"] = normalize_variants(value)
+        elif key == 'gift_packaging_options':
+            update_data["gift_packaging_options"] = normalize_gift_packaging_options(value or [])
         else:
             update_data[key] = value
     

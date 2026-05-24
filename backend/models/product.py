@@ -27,6 +27,16 @@ class ProductVariant(BaseModel):
     images: List[str] = Field(default_factory=list)
     is_active: bool = True
 
+
+class GiftPackagingOption(BaseModel):
+    id: str = ""
+    title: str
+    description: str = ""
+    price: float = Field(0, ge=0)
+    message_enabled: bool = True
+    is_active: bool = True
+    sort_order: int = 0
+
 # ==================== VARIANT MODELS ====================
 
 class ProductCreate(BaseModel):
@@ -61,6 +71,11 @@ class ProductCreate(BaseModel):
     show_returns: bool = True
     show_reusable_container: bool = True
     show_gift_packaging: bool = True
+    gift_packaging_title: str = "Add Gift Packaging"
+    gift_packaging_description: str = "Premium gift wrap with ribbon and a custom note card"
+    gift_packaging_price: float = Field(149, ge=0)
+    gift_message_enabled: bool = True
+    gift_packaging_options: List[GiftPackagingOption] = Field(default_factory=list)
     # Additional details
     care_instructions: Optional[str] = ""
     shipping_info: Optional[str] = ""
@@ -107,6 +122,11 @@ class ProductUpdate(BaseModel):
     show_returns: Optional[bool] = None
     show_reusable_container: Optional[bool] = None
     show_gift_packaging: Optional[bool] = None
+    gift_packaging_title: Optional[str] = None
+    gift_packaging_description: Optional[str] = None
+    gift_packaging_price: Optional[float] = Field(None, ge=0)
+    gift_message_enabled: Optional[bool] = None
+    gift_packaging_options: Optional[List[GiftPackagingOption]] = None
     care_instructions: Optional[str] = None
     shipping_info: Optional[str] = None
     materials: Optional[str] = None
@@ -153,6 +173,11 @@ class ProductResponse(BaseModel):
     show_returns: bool = True
     show_reusable_container: bool = True
     show_gift_packaging: bool = True
+    gift_packaging_title: str = "Add Gift Packaging"
+    gift_packaging_description: str = "Premium gift wrap with ribbon and a custom note card"
+    gift_packaging_price: float = 149
+    gift_message_enabled: bool = True
+    gift_packaging_options: List[GiftPackagingOption] = Field(default_factory=list)
     care_instructions: str
     shipping_info: str
     materials: str
@@ -208,6 +233,12 @@ class ProductCardResponse(BaseModel):
     is_featured: bool
     is_bestseller: bool
     is_new_arrival: bool
+    show_gift_packaging: bool = True
+    gift_packaging_title: str = "Add Gift Packaging"
+    gift_packaging_description: str = "Premium gift wrap with ribbon and a custom note card"
+    gift_packaging_price: float = 149
+    gift_message_enabled: bool = True
+    gift_packaging_options: List[GiftPackagingOption] = Field(default_factory=list)
     created_at: str
 
 

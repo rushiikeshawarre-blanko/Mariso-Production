@@ -139,6 +139,7 @@ def _build_cashfree_order_payload(
     customer_name: str,
     customer_email: str,
     customer_phone: str,
+    order_expiry_time: Optional[str] = None,
 ) -> dict:
     payload = {
         "order_id": order_id,
@@ -151,6 +152,8 @@ def _build_cashfree_order_payload(
             "customer_phone": customer_phone,
         },
     }
+    if order_expiry_time:
+        payload["order_expiry_time"] = order_expiry_time
 
     order_meta = {}
     return_url = _format_return_url(order_id)
@@ -227,7 +230,8 @@ def _raise_cashfree_error(
     response: requests.Response,
     *,
     order_id: str,
-    order_amount: float,
+    order_amount: Optional[float] = None,
+    operation: str = "create order",
 ) -> None:
     try:
         error_body = response.json()
@@ -237,8 +241,9 @@ def _raise_cashfree_error(
     safe_error_body = _sanitize_for_log(error_body)
     error_code, error_message = _extract_cashfree_error_fields(safe_error_body)
     logger.warning(
-        "Cashfree create order failed: order_id=%s order_amount=%s cashfree_status_code=%s "
+        "Cashfree %s failed: order_id=%s order_amount=%s cashfree_status_code=%s "
         "cashfree_error_code=%s cashfree_error_message=%s cashfree_error=%s exception_type=%s",
+        operation,
         order_id,
         order_amount,
         response.status_code,
@@ -250,7 +255,7 @@ def _raise_cashfree_error(
     raise HTTPException(
         status_code=502,
         detail={
-            "message": "Cashfree create order failed",
+            "message": f"Cashfree {operation} failed",
             "cashfree_status_code": response.status_code,
             "cashfree_error_code": error_code,
             "cashfree_error_message": error_message,
@@ -265,6 +270,7 @@ def create_cashfree_order_session(
     customer_name: str,
     customer_email: str,
     customer_phone: str,
+    order_expiry_time: Optional[str] = None,
 ) -> dict:
     idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mariso:cashfree:create-order:{order_id}"))
     headers = _build_cashfree_headers(idempotency_key)
@@ -275,6 +281,7 @@ def create_cashfree_order_session(
         customer_name=customer_name,
         customer_email=customer_email,
         customer_phone=customer_phone,
+        order_expiry_time=order_expiry_time,
     )
 
     try:
@@ -356,7 +363,11 @@ def get_cashfree_order(order_id: str) -> dict:
         raise HTTPException(status_code=502, detail="Cashfree get order request failed")
 
     if response.status_code >= 400:
-        _raise_cashfree_error(response)
+        _raise_cashfree_error(
+            response,
+            order_id=order_id,
+            operation="get order",
+        )
 
     try:
         data = response.json()

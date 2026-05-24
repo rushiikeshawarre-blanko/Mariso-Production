@@ -648,9 +648,8 @@ export const exportOrdersExcel = async (params = {}) => {
   }
 };
 
-export const getAllOrders = async (status = null) => {
+export const getAllOrders = async (params = {}) => {
   try {
-    const params = status ? { order_status: status } : {};
     const response = await axiosInstance.get(`/admin/orders`, { params });
     return response.data;
   } catch (error) {
