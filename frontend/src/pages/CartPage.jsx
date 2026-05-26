@@ -559,6 +559,7 @@ const CartPage = () => {
                           onClick={() => removeItem(cartItemKey)}
                           className="text-muted-foreground hover:text-foreground transition-colors"
                           data-testid={`cart-remove-${cartItemKey}`}
+                          aria-label={`Remove ${item.name} from cart`}
                         >
                           <X className="h-5 w-5" strokeWidth={1.5} />
                         </button>
@@ -571,6 +572,7 @@ const CartPage = () => {
                             onClick={() => updateQuantity(cartItemKey, item.quantity - 1)}
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors"
                             data-testid={`cart-decrease-${cartItemKey}`}
+                            aria-label={`Decrease quantity of ${item.name}`}
                           >
                             <Minus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
@@ -589,6 +591,7 @@ const CartPage = () => {
                             className="w-8 h-8 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
                             disabled={!isItemAvailable(item) || item.quantity >= getItemAvailableStock(item)}
                             data-testid={`cart-increase-${cartItemKey}`}
+                            aria-label={`Increase quantity of ${item.name}`}
                           >
                             <Plus className="h-3 w-3" strokeWidth={1.5} />
                           </button>
@@ -687,6 +690,7 @@ const CartPage = () => {
                                         className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted disabled:opacity-50"
                                         disabled={item.gift_packaging.quantity <= 1}
                                         data-testid={`cart-item-gift-decrease-${cartItemKey}`}
+                                        aria-label={`Decrease gift packaging quantity for ${item.name}`}
                                       >
                                         <Minus className="h-3 w-3" strokeWidth={1.5} />
                                       </button>
@@ -699,6 +703,7 @@ const CartPage = () => {
                                         className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-muted disabled:opacity-50"
                                         disabled={item.gift_packaging.quantity >= item.quantity}
                                         data-testid={`cart-item-gift-increase-${cartItemKey}`}
+                                        aria-label={`Increase gift packaging quantity for ${item.name}`}
                                       >
                                         <Plus className="h-3 w-3" strokeWidth={1.5} />
                                       </button>
@@ -710,6 +715,7 @@ const CartPage = () => {
                                   {selectedGiftOption.message_enabled !== false && (
                                     <div>
                                       <Textarea
+                                        aria-label={`Gift message for ${item.name}`}
                                         placeholder="Add a personal message for the gift recipient..."
                                         value={item.gift_packaging.message}
                                         onChange={(event) => handleGiftMessageChange(item, event.target.value)}

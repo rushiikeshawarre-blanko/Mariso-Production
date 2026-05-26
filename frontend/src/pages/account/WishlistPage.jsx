@@ -108,6 +108,7 @@ const WishlistPage = () => {
                       onClick={() => handleRemove(product.id)}
                       className="text-muted-foreground hover:text-foreground"
                       data-testid={`remove-wishlist-${product.id}`}
+                      aria-label={`Remove ${product.name} from wishlist`}
                     >
                       <X className="h-4 w-4" strokeWidth={1.5} />
                     </button>

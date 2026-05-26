@@ -946,6 +946,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
           <form className="flex flex-col sm:flex-row gap-4 justify-center max-w-xl mx-auto" onSubmit={(e) => e.preventDefault()}>
             <input
               type="email"
+              aria-label="Email address for newsletter"
               placeholder={homepageContent.newsletter.input_placeholder}
               className="flex-1 h-12 px-6 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder:text-white/50 focus:outline-none focus:border-white/40"
               data-testid="newsletter-email-home"

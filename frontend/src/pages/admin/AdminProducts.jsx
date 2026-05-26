@@ -1840,6 +1840,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                   disabled={uploadingDefaultImage || imageIndex === 0}
                                   onClick={() => moveDefaultImage(imageIndex, imageIndex - 1)}
                                   title="Move image left"
+                                  aria-label={`Move product image ${imageIndex + 1} left`}
                                 >
                                   <ChevronLeft className="h-4 w-4" />
                                 </Button>
@@ -1850,6 +1851,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                   disabled={uploadingDefaultImage || imageIndex >= imageCount - 1}
                                   onClick={() => moveDefaultImage(imageIndex, imageIndex + 1)}
                                   title="Move image right"
+                                  aria-label={`Move product image ${imageIndex + 1} right`}
                                 >
                                   <ChevronRight className="h-4 w-4" />
                                 </Button>                            
@@ -2346,6 +2348,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setEditingColorIndex(editingColorIndex === colorIndex ? null : colorIndex)}
+                                aria-label={`Edit color ${color.name}`}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -2355,6 +2358,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                 size="sm"
                                 onClick={() => removeColorOption(colorIndex)}
                                 className="text-destructive hover:text-destructive"
+                                aria-label={`Remove color ${color.name}`}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -2405,6 +2409,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                                 type="button"
                                                 onClick={() => moveColorImage(colorIndex, imageIndex, 'up')}
                                                 className="p-1 bg-white rounded"
+                                                aria-label={`Move ${color.name} image ${imageIndex + 1} left`}
                                               >
                                                 <ChevronLeft className="h-3 w-3" />
                                               </button>
@@ -2414,6 +2419,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                                 type="button"
                                                 onClick={() => moveColorImage(colorIndex, imageIndex, 'down')}
                                                 className="p-1 bg-white rounded"
+                                                aria-label={`Move ${color.name} image ${imageIndex + 1} right`}
                                               >
                                                 <ChevronRight className="h-3 w-3" />
                                               </button>
@@ -2450,6 +2456,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                               disabled={uploadingColorImage || imageIndex === 0}
                                               onClick={() => moveColorImage(colorIndex, imageIndex, 'up')}
                                               title="Move image left"
+                                              aria-label={`Move ${color.name} image ${imageIndex + 1} left`}
                                             >
                                               <ChevronLeft className="h-3 w-3" />
                                             </Button>
@@ -2461,6 +2468,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                               disabled={uploadingColorImage || imageIndex >= ((color.images || []).filter(Boolean).length - 1)}
                                               onClick={() => moveColorImage(colorIndex, imageIndex, 'down')}
                                               title="Move image right"
+                                              aria-label={`Move ${color.name} image ${imageIndex + 1} right`}
                                             >
                                               <ChevronRight className="h-3 w-3" />
                                             </Button>
@@ -2752,6 +2760,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                           disabled={uploadingColorImage || imageIndex === 0}
                                           onClick={() => moveNewColorImage(imageIndex, imageIndex - 1)}
                                           title="Move image left"
+                                          aria-label={`Move new color image ${imageIndex + 1} left`}
                                         >
                                           <ChevronLeft className="h-3 w-3" />
                                         </Button>
@@ -2763,6 +2772,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                           disabled={uploadingColorImage || imageIndex >= ((newColor.images || []).filter(Boolean).length - 1)}
                                           onClick={() => moveNewColorImage(imageIndex, imageIndex + 1)}
                                           title="Move image right"
+                                          aria-label={`Move new color image ${imageIndex + 1} right`}
                                         >
                                           <ChevronRight className="h-3 w-3" />
                                         </Button>
@@ -2938,6 +2948,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                               variant="ghost"
                               size="sm"
                               onClick={() => setEditingFlavorIndex(editingFlavorIndex === index ? null : index)}
+                              aria-label={`Edit fragrance ${flavor.name}`}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -2947,6 +2958,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                               size="sm"
                               onClick={() => removeFlavorOption(index)}
                               className="text-destructive hover:text-destructive"
+                              aria-label={`Remove fragrance ${flavor.name}`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -3117,6 +3129,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                   size="sm"
                                   onClick={() => removeVariant(index)}
                                   className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  aria-label={`Remove variant ${colorName} ${flavorName}`}
                                 >
                                   <X className="h-4 w-4" />
                                 </Button>
@@ -3180,6 +3193,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       <div className="relative mb-6">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
         <Input
+          aria-label="Search products"
           placeholder="Search products..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -3331,6 +3345,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         size="sm"
                         onClick={() => openEditDialog(product)}
                         data-testid={`edit-product-${product.id}`}
+                        aria-label={`Edit ${product.name}`}
                       >
                         <Pencil className="h-4 w-4" strokeWidth={1.5} />
                       </Button>
@@ -3340,6 +3355,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         onClick={() => handleDelete(product.id)}
                         className="text-destructive hover:text-destructive"
                         data-testid={`delete-product-${product.id}`}
+                        aria-label={`Delete ${product.name}`}
                       >
                         <Trash2 className="h-4 w-4" strokeWidth={1.5} />
                       </Button>

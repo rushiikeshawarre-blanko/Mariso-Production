@@ -161,6 +161,7 @@ export const ProductCard = ({
                 : ''
             }`}
             title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+            aria-label={isWishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
             data-testid={`${testIdPrefix}-wishlist-icon-${product.id}`}
             disabled={isWishlistBusy}
             aria-pressed={isWishlisted}
@@ -174,6 +175,7 @@ export const ProductCard = ({
             onClick={handleAddToCart}
             className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
             title={shouldChooseOptions ? 'Choose Options' : 'Quick Add to Cart'}
+            aria-label={shouldChooseOptions ? `Choose options for ${product.name}` : `Add ${product.name} to cart`}
             data-testid={`${testIdPrefix}-quick-cart-icon-${product.id}`}
           >
             <ShoppingBag className="h-4 w-4" strokeWidth={1.5} />
@@ -196,7 +198,7 @@ export const ProductCard = ({
 
       {/* Content */}
       <div className="flex flex-1 flex-col pt-3.5 mt-3">
-        <p className="mb-1 text-[10px] uppercase tracking-[0.24em] text-foreground/35 transition-colors duration-300">
+        <p className="mb-1 text-[10px] uppercase tracking-[0.24em] text-foreground/60 transition-colors duration-300">
           {product.category_name}
         </p>
         <h3 className="mt-1 font-heading text-[1.08rem] leading-[1.3] tracking-[-0.01em] text-foreground group-hover:text-foreground/80 transition-colors duration-300" data-testid={`${testIdPrefix}-name`}>

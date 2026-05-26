@@ -294,6 +294,7 @@ export const Navbar = () => {
                 <div className="flex items-center gap-2 rounded-lg bg-background/95 backdrop-blur-sm">
                   <Input
                     autoFocus
+                    aria-label="Search products and categories"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -336,6 +337,7 @@ export const Navbar = () => {
               className="hidden lg:flex"
               data-testid="search-button"
               onClick={toggleDesktopSearch}
+              aria-label={searchOpen ? 'Close search' : 'Open search'}
             >
               {searchOpen ? <X className="h-5 w-5" strokeWidth={1.5} /> : <Search className="h-5 w-5" strokeWidth={1.5} />}
             </Button>
@@ -346,6 +348,7 @@ export const Navbar = () => {
               className="lg:hidden"
               data-testid="mobile-search-button"
               onClick={() => setMobileSearchOpen(true)}
+              aria-label="Open search"
             >
               <Search className="h-5 w-5" strokeWidth={1.5} />
             </Button>
@@ -357,6 +360,7 @@ export const Navbar = () => {
                   variant="ghost" 
                   size="icon"
                   data-testid="wishlist-button"
+                  aria-label="View wishlist"
                 >
                   <Heart className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
@@ -369,6 +373,7 @@ export const Navbar = () => {
                 variant="ghost" 
                 size="icon"
                 data-testid="cart-button"
+                aria-label="View cart"
               >
                 <ShoppingBag className="h-5 w-5" strokeWidth={1.5} />
                 {getCartCount() > 0 && (
@@ -387,6 +392,7 @@ export const Navbar = () => {
                     variant="ghost" 
                     size="icon"
                     data-testid="user-menu-button"
+                    aria-label="Open account menu"
                   >
                     <User className="h-5 w-5" strokeWidth={1.5} />
                   </Button>
@@ -426,6 +432,7 @@ export const Navbar = () => {
                   variant="ghost" 
                   size="icon"
                   data-testid="login-button"
+                  aria-label="Sign in"
                 >
                   <User className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
@@ -440,6 +447,7 @@ export const Navbar = () => {
                   size="icon" 
                   className="lg:hidden"
                   data-testid="mobile-menu-button"
+                  aria-label="Open navigation menu"
                 >
                   <Menu className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
@@ -490,6 +498,7 @@ export const Navbar = () => {
             <div className="flex gap-2">
               <Input
                 autoFocus
+                aria-label="Search products and categories"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {

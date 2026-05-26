@@ -445,6 +445,7 @@ const ProductPage = () => {
               {/* Wishlist Button */}
               <button
                 onClick={handleAddToWishlist}
+                aria-label={isWishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
                 className={`absolute top-4 right-4 md:top-6 md:right-7 xl:top-4 xl:right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${
                   isWishlisted 
                     ? 'bg-terracotta text-white' 
@@ -636,6 +637,7 @@ const ProductPage = () => {
                 <div className="flex items-center border border-border/80 rounded-full bg-[#FBF8F4] shadow-sm">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    aria-label={`Decrease quantity of ${product.name}`}
                     className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
                     disabled={quantity <= 1 || !isAvailable || !isVariantSelectionComplete}
                     data-testid="quantity-decrease"
@@ -647,6 +649,7 @@ const ProductPage = () => {
                   </span>
                   <button
                     onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
+                    aria-label={`Increase quantity of ${product.name}`}
                     className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
                     disabled={!isAvailable || !isVariantSelectionComplete || currentStock <= 0 || quantity >= currentStock}
                     data-testid="quantity-increase"

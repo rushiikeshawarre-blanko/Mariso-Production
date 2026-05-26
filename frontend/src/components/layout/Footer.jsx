@@ -154,6 +154,7 @@ export const Footer = () => {
             <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => e.preventDefault()}>
               <Input
                 type="email"
+                aria-label="Email address for newsletter"
                 placeholder="Your email"
                 className="flex-1 bg-white/50 border-border"
                 data-testid="newsletter-email"

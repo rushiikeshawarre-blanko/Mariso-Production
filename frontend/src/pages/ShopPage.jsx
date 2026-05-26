@@ -505,7 +505,7 @@ const ShopPage = () => {
                 {searchQuery && (
                   <span className="inline-flex items-center gap-1 bg-sage/30 text-sm px-3 py-1 rounded-full">
                     Search: {searchQuery}
-                    <button onClick={clearSearch} data-testid="remove-search-filter">
+                    <button onClick={clearSearch} data-testid="remove-search-filter" aria-label="Remove search filter">
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -520,7 +520,7 @@ const ShopPage = () => {
                 {selectedCategory && (
                   <span className="inline-flex items-center gap-1 bg-clay/30 text-sm px-3 py-1 rounded-full">
                     {selectedCategoryName}
-                    <button onClick={() => handleCategoryChange('')} data-testid="remove-category-filter">
+                    <button onClick={() => handleCategoryChange('')} data-testid="remove-category-filter" aria-label="Remove category filter">
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -529,7 +529,7 @@ const ShopPage = () => {
                 {showOnSale && (
                   <span className="inline-flex items-center gap-1 bg-terracotta/20 text-terracotta text-sm px-3 py-1 rounded-full">
                     On Sale
-                    <button onClick={() => handleSaleToggle(false)} data-testid="remove-sale-filter">
+                    <button onClick={() => handleSaleToggle(false)} data-testid="remove-sale-filter" aria-label="Remove sale filter">
                       <X className="h-3 w-3" />
                     </button>
                   </span>

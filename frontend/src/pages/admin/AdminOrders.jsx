@@ -244,7 +244,7 @@ const AdminOrders = () => {
         <h1 className="font-heading text-3xl">Orders</h1>
         <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-full min-w-0 sm:w-[150px]" data-testid="order-period-filter">
+            <SelectTrigger className="w-full min-w-0 sm:w-[150px]" data-testid="order-period-filter" aria-label="Order period">
               <SelectValue placeholder="View" />
             </SelectTrigger>
             <SelectContent>
@@ -258,6 +258,7 @@ const AdminOrders = () => {
           {period === 'daily' && (
             <input
               type="date"
+              aria-label="Order date"
               value={selectedDate}
               onChange={(event) => setSelectedDate(event.target.value)}
               className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -268,6 +269,7 @@ const AdminOrders = () => {
           {period === 'monthly' && (
             <input
               type="month"
+              aria-label="Order month"
               value={selectedMonth}
               onChange={(event) => setSelectedMonth(event.target.value)}
               className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -279,6 +281,7 @@ const AdminOrders = () => {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 type="date"
+                aria-label="Order range start date"
                 value={customRange.start}
                 onChange={(event) => setCustomRange((range) => ({ ...range, start: event.target.value }))}
                 className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -287,6 +290,7 @@ const AdminOrders = () => {
               <span className="text-sm text-muted-foreground">to</span>
               <input
                 type="date"
+                aria-label="Order range end date"
                 value={customRange.end}
                 onChange={(event) => setCustomRange((range) => ({ ...range, end: event.target.value }))}
                 className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -296,7 +300,7 @@ const AdminOrders = () => {
           )}
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full min-w-0 sm:w-[180px]" data-testid="order-status-filter">
+            <SelectTrigger className="w-full min-w-0 sm:w-[180px]" data-testid="order-status-filter" aria-label="Filter orders by status">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
@@ -405,6 +409,7 @@ const AdminOrders = () => {
                       size="sm"
                       onClick={() => viewOrder(order)}
                       data-testid={`view-order-${order.id}`}
+                      aria-label={`View order ${order.id.slice(0, 8).toUpperCase()}`}
                     >
                       <Eye className="h-4 w-4" strokeWidth={1.5} />
                     </Button>
