@@ -379,7 +379,6 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             alt="Luxury candles"
             className="w-full h-full object-cover object-center"
             loading="eager"
-            fetchPriority="high"
             decoding="async"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#F8F5F1]/35 via-[#F8F5F1]/45 to-[#F8F5F1]/70" />

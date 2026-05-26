@@ -1,42 +1,43 @@
-import React, { useEffect } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import { setAccessTokenGetter } from './lib/api';
 import { CartProvider } from "./context/CartContext";
+import Layout from "./components/layout/Layout";
+import MarisoLoader from "./components/ui/MarisoLoader";
 
 // Pages
-import HomePage from "./pages/HomePage";
-import ShopPage from "./pages/ShopPage";
-import ProductPage from "./pages/ProductPage";
-import CartPage from "./pages/CartPage";
-import CheckoutPage from "./pages/CheckoutPage";
-import OrderSuccessPage from "./pages/OrderSuccessPage";
-import PaymentReturnPage from "./pages/PaymentReturnPage";
-import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-import AccountPage from "./pages/AccountPage";
-import OrderDetailsPage from "./pages/account/OrderDetailsPage";
-import OrdersPage from "./pages/account/OrdersPage";
-import WishlistPage from "./pages/account/WishlistPage";
-import AddressesPage from "./pages/account/AddressesPage";
-import FaqPage from "./pages/FaqPage";
-import ContentPage from "./pages/ContentPage";
-import TrackOrderPage from "./pages/TrackOrderPage";
-import FeedbackPage from "./pages/FeedbackPage";
-import Layout from "./components/layout/Layout";
+const HomePage = lazy(() => import("./pages/HomePage"));
+const ShopPage = lazy(() => import("./pages/ShopPage"));
+const ProductPage = lazy(() => import("./pages/ProductPage"));
+const CartPage = lazy(() => import("./pages/CartPage"));
+const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
+const OrderSuccessPage = lazy(() => import("./pages/OrderSuccessPage"));
+const PaymentReturnPage = lazy(() => import("./pages/PaymentReturnPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const AccountPage = lazy(() => import("./pages/AccountPage"));
+const OrderDetailsPage = lazy(() => import("./pages/account/OrderDetailsPage"));
+const OrdersPage = lazy(() => import("./pages/account/OrdersPage"));
+const WishlistPage = lazy(() => import("./pages/account/WishlistPage"));
+const AddressesPage = lazy(() => import("./pages/account/AddressesPage"));
+const FaqPage = lazy(() => import("./pages/FaqPage"));
+const ContentPage = lazy(() => import("./pages/ContentPage"));
+const TrackOrderPage = lazy(() => import("./pages/TrackOrderPage"));
+const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
 
 // Admin Pages
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminProducts from "./pages/admin/AdminProducts";
-import AdminCategories from "./pages/admin/AdminCategories";
-import AdminOrders from "./pages/admin/AdminOrders";
-import AdminCustomers from "./pages/admin/AdminCustomers";
-import AdminContentPages from "./pages/admin/AdminContentPages";
-import AdminFaqs from "./pages/admin/AdminFaqs";
-import AdminCoupons from "./pages/admin/AdminCoupons";
-import AdminFeedback from "./pages/admin/AdminFeedback";
-import AdminHomePage from "./pages/admin/AdminHomePage";
-import AdminHomePagePreview from "./pages/admin/AdminHomePagePreview";
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminProducts = lazy(() => import("./pages/admin/AdminProducts"));
+const AdminCategories = lazy(() => import("./pages/admin/AdminCategories"));
+const AdminOrders = lazy(() => import("./pages/admin/AdminOrders"));
+const AdminCustomers = lazy(() => import("./pages/admin/AdminCustomers"));
+const AdminContentPages = lazy(() => import("./pages/admin/AdminContentPages"));
+const AdminFaqs = lazy(() => import("./pages/admin/AdminFaqs"));
+const AdminCoupons = lazy(() => import("./pages/admin/AdminCoupons"));
+const AdminFeedback = lazy(() => import("./pages/admin/AdminFeedback"));
+const AdminHomePage = lazy(() => import("./pages/admin/AdminHomePage"));
+const AdminHomePagePreview = lazy(() => import("./pages/admin/AdminHomePagePreview"));
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
@@ -115,9 +116,16 @@ const Auth0TokenBridge = () => {
   return null;
 };
 
+const RouteLoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[#F8F5F1]">
+    <MarisoLoader label="Loading page..." className="py-0" />
+  </div>
+);
+
 function AppRoutes() {
   return (
-    <Routes>
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <Routes>
       {/* Public Routes */}
       <Route path="/" element={<HomePage />} />
       <Route path="/shop" element={<ShopPage />} />
@@ -201,7 +209,8 @@ function AppRoutes() {
 
       {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
 
