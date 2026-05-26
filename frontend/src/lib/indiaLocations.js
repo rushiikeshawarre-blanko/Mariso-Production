@@ -43,6 +43,8 @@ export const getCitiesForState = (state) => INDIA_STATE_CITIES[state] || [];
 
 export const withStoredOption = (options, storedValue) => (
   storedValue && !options.includes(storedValue)
-    ? [...options.slice(0, -1), storedValue, options[options.length - 1]]
+    ? options[options.length - 1] === 'Other'
+      ? [...options.slice(0, -1), storedValue, 'Other']
+      : [...options, storedValue]
     : options
 );

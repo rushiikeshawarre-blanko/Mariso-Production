@@ -1,4 +1,5 @@
 import os
+import logging
 from html import escape
 from typing import Iterable
 import resend
@@ -6,6 +7,7 @@ import resend
 FRONTEND_URL = (os.getenv("FRONTEND_URL", "").strip().rstrip("/") or "https://mariso.store")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").strip().lower() == "true"
+logger = logging.getLogger(__name__)
 
 def _get_email_config() -> tuple[str | None, str]:
     api_key = os.getenv("RESEND_API_KEY", "").strip()
@@ -223,7 +225,16 @@ def send_order_status_email(order: dict) -> None:
     order_id = order.get("id")
     order_short_id = str(order_id)[:8].upper()
     order_link = _order_tracking_link(order)
-    feedback_link = f"{FRONTEND_URL}/feedback/{order_id}"
+    feedback_link = None
+    if status == "Delivered":
+        feedback_token = str(order.get("feedback_token") or "").strip()
+        if not feedback_token:
+            logger.error(
+                "Delivered status email skipped because feedback_token is missing for order_id=%s",
+                order_id,
+            )
+            return
+        feedback_link = f"{FRONTEND_URL}/feedback/{feedback_token}"
 
     items_list = build_order_items_html(order.get("items", [])) or "<li>No item details available</li>"
 

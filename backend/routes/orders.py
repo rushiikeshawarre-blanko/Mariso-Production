@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api", tags=["orders"])
 
 
 @router.post("/orders", response_model=dict)
-async def create_order_route(order: OrderCreate, user: dict = Depends(get_current_user)):
-    return await create_order(order, user)
+async def create_order_route(order: OrderCreate, admin: dict = Depends(get_admin_user)):
+    return await create_order(order, admin, allow_manual_paid=True)
 
 
 @router.get("/orders", response_model=List[dict])

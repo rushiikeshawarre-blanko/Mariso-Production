@@ -140,7 +140,18 @@ async def ensure_order_feedback_token(order: dict) -> str:
     if not order_id:
         raise HTTPException(status_code=400, detail="Order is missing an id")
 
-    token = await _generate_feedback_token()
+    existing_submission = await db.feedback_submissions.find_one(
+        {
+            "order_id": order_id,
+            "feedback_token": {"$exists": True, "$nin": [None, ""]},
+        },
+        {"_id": 0, "feedback_token": 1},
+    )
+    token = (
+        str(existing_submission.get("feedback_token")).strip()
+        if existing_submission and existing_submission.get("feedback_token")
+        else await _generate_feedback_token()
+    )
     await db.orders.update_one(
         {
             "id": order_id,
@@ -154,6 +165,8 @@ async def ensure_order_feedback_token(order: dict) -> str:
     )
 
     updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "feedback_token": 1})
+    if not updated_order:
+        raise HTTPException(status_code=404, detail="Order not found")
     return updated_order.get("feedback_token") or token
 
 
@@ -1037,7 +1050,13 @@ async def _send_order_notifications(created_order: dict) -> dict:
     return notification_fields
 
 
-async def create_order(order: OrderCreate, user: dict):
+async def create_order(order: OrderCreate, user: dict, *, allow_manual_paid: bool = False):
+    if not allow_manual_paid or str(user.get("role", "")).lower() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Paid confirmed orders can only be created manually by an admin; use Cashfree checkout",
+        )
+
     order_id = str(uuid.uuid4())
 
     if not order.items:
@@ -1763,14 +1782,22 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         logger.info("DEBUG status changed, applying notification strategy")
 
         status = status_update.status
+        feedback_email_ready = True
         if status in ["packed", "shipped", "delivered"]:
             order["tracking_token"] = await ensure_order_tracking_token(order)
         if status == "delivered":
-            order["feedback_token"] = await ensure_order_feedback_token(order)
+            try:
+                order["feedback_token"] = await ensure_order_feedback_token(order)
+            except Exception:
+                feedback_email_ready = False
+                logger.exception(
+                    "Delivered feedback email skipped because a feedback token could not be prepared for order_id=%s",
+                    order_id,
+                )
 
         # EMAIL → send only for shipped and delivered from admin status updates.
         # Confirmed is already sent at checkout.
-        if status in ["shipped", "delivered"]:
+        if status in ["shipped", "delivered"] and feedback_email_ready:
             try:
                 send_order_status_email(order)
             except Exception as e:

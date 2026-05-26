@@ -133,8 +133,8 @@ def test_admin_get_customers(admin_client):
     assert isinstance(data, list)
 
 
-def test_create_order_authenticated():
-    """Test authenticated user can create an order"""
+def test_customer_cannot_create_paid_confirmed_order_directly():
+    """Customer order creation must go through the Cashfree checkout flow."""
     # Login as user
     login_resp = requests.post(f"{BASE_URL}/api/auth/login", json={
         "email": "aisha@test.com",
@@ -161,9 +161,8 @@ def test_create_order_authenticated():
         "total_price": product["price"]
     }
     resp = requests.post(f"{BASE_URL}/api/orders", json=order_data, headers=headers)
-    assert resp.status_code in [200, 201]
-    data = resp.json()
-    assert "id" in data
+    assert resp.status_code == 403
+    assert "Admin access required" in resp.json().get("detail", "")
 
 
 def test_wishlist_add_remove():
