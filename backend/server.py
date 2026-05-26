@@ -17,7 +17,8 @@ from routes.coupons import router as coupons_router
 from routes.feedback import router as feedback_router
 
 from core.config import (
-    FRONTEND_URL
+    ENVIRONMENT,
+    FRONTEND_URL,
 )
 from core.database import db, close_mongo_connection
 
@@ -76,7 +77,8 @@ async def health():
 app.include_router(content_router)
 app.include_router(auth_router)
 app.include_router(upload_router)
-app.include_router(seed_router)
+if ENVIRONMENT == "development":
+    app.include_router(seed_router)
 app.include_router(addresses_router)
 app.include_router(admins_router)
 app.include_router(wishlists_router)

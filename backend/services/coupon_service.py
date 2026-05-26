@@ -69,6 +69,16 @@ def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
     return format_phone(str(value or "")) or None
 
 
+def _reward_validation_request(
+    request: CouponValidationRequest,
+    current_user: Optional[dict],
+) -> Optional[CouponValidationRequest]:
+    user_id = str((current_user or {}).get("id") or "").strip()
+    if not user_id:
+        return None
+    return request.model_copy(update={"user_id": user_id, "email": None, "phone": None})
+
+
 def _validate_coupon_dates(start_date: Optional[str], end_date: Optional[str]) -> None:
     start = _parse_iso_datetime(start_date)
     end = _parse_iso_datetime(end_date)
@@ -403,10 +413,17 @@ async def _evaluate_coupon(coupon: dict, request: CouponValidationRequest, *, lo
     }
 
 
-async def validate_coupon(request: CouponValidationRequest) -> dict:
+async def validate_coupon(request: CouponValidationRequest, *, current_user: Optional[dict] = None) -> dict:
     coupon = await db.coupons.find_one({"code": request.code, "deleted_at": {"$exists": False}}, {"_id": 0})
     if not coupon:
         return {"valid": False, "message": "Coupon not found"}
+
+    if coupon.get("source") == "feedback_reward":
+        if not coupon.get("assigned_user_id"):
+            return {"valid": False, "message": "Coupon is not available"}
+        request = _reward_validation_request(request, current_user)
+        if request is None:
+            return {"valid": False, "message": "Coupon is not available"}
 
     return await _evaluate_coupon(coupon, request)
 
@@ -446,31 +463,23 @@ def _feedback_reward_sort_date(coupon: dict) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
-async def get_available_coupons(request: AvailableCouponsRequest) -> List[dict]:
+async def get_available_coupons(request: AvailableCouponsRequest, *, current_user: Optional[dict] = None) -> List[dict]:
     surface_field = "show_on_cart" if request.surface == "cart" else "show_on_checkout"
-    request_email = _normalize_optional_email(request.email)
-    request_phone = _normalize_optional_phone(request.phone)
-
-    personal_reward_matchers = []
-    if request.user_id:
-        personal_reward_matchers.append({"assigned_user_id": request.user_id})
-    if request_email:
-        personal_reward_matchers.append({"assigned_email": request_email})
-    if request_phone:
-        personal_reward_matchers.append({"assigned_phone": request_phone})
+    authenticated_user_id = str((current_user or {}).get("id") or "").strip()
 
     visibility_filters = [
         {
             "visibility": "public",
+            "source": {"$ne": "feedback_reward"},
             "$or": [{surface_field: True}, {surface_field: {"$exists": False}}],
         }
     ]
-    if personal_reward_matchers:
+    if authenticated_user_id:
         visibility_filters.append({
             "visibility": "private",
             "coupon_type": "personal",
             "source": "feedback_reward",
-            "$or": personal_reward_matchers,
+            "assigned_user_id": authenticated_user_id,
         })
 
     query = {
@@ -490,6 +499,10 @@ async def get_available_coupons(request: AvailableCouponsRequest) -> List[dict]:
             email=request.email,
             phone=request.phone,
         )
+        if coupon.get("source") == "feedback_reward":
+            validation_request = _reward_validation_request(validation_request, current_user)
+            if validation_request is None or not coupon.get("assigned_user_id"):
+                continue
         result = await _evaluate_coupon(coupon, validation_request, locked_minimum=True)
         if result.get("hide_from_available"):
             continue

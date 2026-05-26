@@ -377,6 +377,21 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
         if not product:
             raise HTTPException(status_code=404, detail=f"Product with ID {item.product_id} not found")
 
+        if not product.get("is_active", True):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Product {product.get('name', item.product_id)} is inactive and cannot be purchased",
+            )
+
+        category_id = product.get("category_id")
+        if category_id:
+            category = await db.categories.find_one({"id": category_id}, {"_id": 0, "is_active": 1})
+            if category and not category.get("is_active", True):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Product {product.get('name', item.product_id)} belongs to an inactive category and cannot be purchased",
+                )
+
         product_map[item.product_id] = product
         variant_image = None
         variant_sku = None
@@ -400,6 +415,16 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                 raise HTTPException(
                     status_code=400,
                     detail=f"Variant selection is required for product {product['name']}"
+                )
+
+            submitted_variant = next(
+                (variant for variant in variants if variant.get("id") == item.variant_id),
+                None,
+            )
+            if submitted_variant and not submitted_variant.get("is_active", True):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Selected variant is inactive for product {product['name']}"
                 )
 
             if not selected_variant:
@@ -575,7 +600,8 @@ async def _calculate_coupon_adjustment(
             user_id=user.get("id"),
             email=order_payload.billing_email,
             phone=order_payload.billing_phone,
-        )
+        ),
+        current_user=user,
     )
 
     if not validation.get("valid"):

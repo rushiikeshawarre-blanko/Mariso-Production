@@ -322,6 +322,16 @@ export const getCategories = async () => {
   }
 };
 
+export const getAdminCategories = async () => {
+  try {
+    const response = await axiosInstance.get(`/categories/admin`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching admin categories:', error);
+    throw error;
+  }
+};
+
 const normalizeSearchText = (value) => String(value || '').toLowerCase();
 
 const stripHtmlForSearch = (value) => {

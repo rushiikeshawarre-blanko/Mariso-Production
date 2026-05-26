@@ -6,7 +6,7 @@ import {
   clearPublicCatalogCache,
   createHomepagePresignedUpload,
   getAdminHomepageContent,
-  getCategories,
+  getAdminCategories,
   updateAdminHomepageContent,
   uploadFileToPresignedUrl,
 } from '../../lib/api';
@@ -723,7 +723,7 @@ const AdminHomePage = () => {
     const loadContent = async () => {
       const [contentResult, categoriesResult] = await Promise.allSettled([
         getAdminHomepageContent(),
-        getCategories(),
+        getAdminCategories(),
       ]);
 
       if (contentResult.status === 'fulfilled') {

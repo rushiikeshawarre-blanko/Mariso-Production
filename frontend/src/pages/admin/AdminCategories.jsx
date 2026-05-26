@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  getCategories,
+  getAdminCategories,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -87,7 +87,7 @@ const AdminCategories = () => {
 
   const fetchCategories = async () => {
     try {
-      const data = await getCategories();
+      const data = await getAdminCategories();
       setCategories(data);
     } catch (error) {
       console.error('Error fetching categories:', error);

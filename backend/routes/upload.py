@@ -18,7 +18,7 @@ class PresignUploadRequest(BaseModel):
 @router.post("/uploads/presign", response_model=dict)
 async def create_presigned_upload_route(
     payload: PresignUploadRequest,
-    user: dict = Depends(get_current_user),
+    admin: dict = Depends(get_admin_user),
 ):
     if is_homepage_upload_folder(payload.folder):
         raise HTTPException(status_code=403, detail="Homepage media uploads require admin access")

@@ -1,10 +1,12 @@
 import asyncio
+import inspect
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from models.product import ProductCreate, ProductUpdate
+from routes import categories as category_routes, products as product_routes
 from services import category_service, product_service
 
 
@@ -137,6 +139,75 @@ def test_product_slug_lookup_returns_not_found_for_invalid_slug(monkeypatch):
         run(product_service.get_product_by_slug("***"))
 
     assert error.value.status_code == 404
+
+
+def test_public_product_detail_rejects_inactive_product(monkeypatch):
+    configure_product_service(
+        monkeypatch,
+        [{"id": "product-1", "name": "Hidden", "slug": "hidden", "is_active": False}],
+    )
+
+    with pytest.raises(HTTPException) as by_id_error:
+        run(product_service.get_product("product-1"))
+    with pytest.raises(HTTPException) as by_slug_error:
+        run(product_service.get_product_by_slug("hidden"))
+
+    assert by_id_error.value.status_code == 404
+    assert by_slug_error.value.status_code == 404
+
+
+def test_public_product_list_always_requests_active_products(monkeypatch):
+    requested = {}
+
+    async def fetch_cards(**kwargs):
+        requested.update(kwargs)
+        return []
+
+    monkeypatch.setattr(product_routes, "fetch_product_cards", fetch_cards)
+
+    run(product_routes.get_products(Response()))
+
+    assert "active_only" not in inspect.signature(product_routes.get_products).parameters
+    assert requested["active_only"] is True
+
+
+def test_public_categories_filter_active_while_admin_categories_do_not(monkeypatch):
+    requested = []
+
+    async def fetch_categories(active_only=False):
+        requested.append(active_only)
+        return []
+
+    monkeypatch.setattr(category_routes, "get_all_categories", fetch_categories)
+
+    run(category_routes.get_categories(Response()))
+    run(category_routes.get_admin_categories({"role": "admin"}))
+
+    assert requested == [True, False]
+
+
+def test_public_category_detail_rejects_inactive_category(monkeypatch):
+    configure_category_service(
+        monkeypatch,
+        [{"id": "category-1", "name": "Hidden", "is_active": False}],
+    )
+
+    with pytest.raises(HTTPException) as public_error:
+        run(category_service.get_category_by_id("category-1", active_only=True))
+
+    assert public_error.value.status_code == 404
+    assert run(category_service.get_category_by_id("category-1"))["id"] == "category-1"
+
+
+def test_public_category_detail_keeps_legacy_default_active_category(monkeypatch):
+    configure_category_service(
+        monkeypatch,
+        [{"id": "category-1", "name": "Legacy"}],
+    )
+
+    category = run(category_service.get_category_by_id("category-1", active_only=True))
+
+    assert category["is_active"] is True
 
 
 def test_category_create_blank_slug_generates_slug(monkeypatch):

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import {
   getAdminProducts,
-  getCategories,
+  getAdminCategories,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -151,7 +151,7 @@ const AdminProducts = () => {
     try {
       const [prods, cats] = await Promise.all([
         getAdminProducts(),
-        getCategories()
+        getAdminCategories()
       ]);
       setProducts(prods);
       setCategories(cats);

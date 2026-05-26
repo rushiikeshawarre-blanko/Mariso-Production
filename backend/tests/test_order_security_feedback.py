@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 import email_service
+from models.order import CashfreeCheckoutCreate
 from services import feedback_service, order_service
 
 
@@ -51,12 +52,88 @@ class EmptyCoupons:
         return None
 
 
+class CheckoutCollection:
+    def __init__(self, document=None):
+        self.document = dict(document) if document else None
+
+    async def find_one(self, query, projection=None):
+        if self.document and all(self.document.get(key) == value for key, value in query.items()):
+            return dict(self.document)
+        return None
+
+
+def checkout_payload(**item_fields):
+    return CashfreeCheckoutCreate(
+        items=[{"product_id": "product-1", "quantity": 1, **item_fields}],
+        billing_name="Customer",
+        billing_phone="9876543210",
+        billing_email="customer@example.com",
+        billing_address="Address",
+        billing_city="Mumbai",
+        billing_state="Maharashtra",
+        billing_postal_code="400001",
+    )
+
+
 def test_customer_cannot_invoke_manual_paid_order_creation():
     with pytest.raises(HTTPException) as error:
         asyncio.run(order_service.create_order(None, {"role": "user"}))
 
     assert error.value.status_code == 403
     assert "Cashfree checkout" in error.value.detail
+
+
+def test_checkout_rejects_inactive_product(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({"id": "product-1", "name": "Hidden Candle", "is_active": False}),
+        categories=CheckoutCollection(),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(order_service._build_order_items(checkout_payload()))
+
+    assert error.value.status_code == 400
+    assert "inactive" in error.value.detail
+
+
+def test_checkout_rejects_product_in_inactive_category(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({
+            "id": "product-1",
+            "name": "Hidden Category Candle",
+            "is_active": True,
+            "category_id": "category-1",
+        }),
+        categories=CheckoutCollection({"id": "category-1", "is_active": False}),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(order_service._build_order_items(checkout_payload()))
+
+    assert error.value.status_code == 400
+    assert "inactive category" in error.value.detail
+
+
+def test_checkout_rejects_inactive_variant(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({
+            "id": "product-1",
+            "name": "Variant Candle",
+            "is_active": True,
+            "price": 100,
+            "variants": [{"id": "variant-1", "stock": 5, "is_active": False}],
+        }),
+        categories=CheckoutCollection(),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(order_service._build_order_items(checkout_payload(variant_id="variant-1")))
+
+    assert error.value.status_code == 400
+    assert "Selected variant is inactive" in error.value.detail
 
 
 def test_feedback_token_is_recovered_from_submission_and_reused(monkeypatch):

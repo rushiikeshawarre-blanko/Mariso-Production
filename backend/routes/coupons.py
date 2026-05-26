@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
-from typing import List
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from typing import List, Optional
 
-from core.auth import get_admin_user
+from core.auth import get_admin_user, get_current_user
 from models.coupon import (
     AvailableCouponResponse,
     AvailableCouponsRequest,
@@ -25,6 +26,15 @@ from services.coupon_service import (
 
 
 router = APIRouter(prefix="/api", tags=["Coupons"])
+optional_security = HTTPBearer(auto_error=False)
+
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+) -> Optional[dict]:
+    if credentials is None:
+        return None
+    return await get_current_user(credentials)
 
 
 @router.get("/admin/coupons", response_model=List[CouponResponse])
@@ -62,10 +72,16 @@ async def delete_admin_coupon(coupon_id: str, admin: dict = Depends(get_admin_us
 
 
 @router.post("/coupons/validate", response_model=CouponValidationResponse, response_model_exclude_none=True)
-async def validate_coupon(coupon: CouponValidationRequest):
-    return await validate_coupon_doc(coupon)
+async def validate_coupon(
+    coupon: CouponValidationRequest,
+    user: Optional[dict] = Depends(get_optional_current_user),
+):
+    return await validate_coupon_doc(coupon, current_user=user)
 
 
 @router.post("/coupons/available", response_model=List[AvailableCouponResponse], response_model_exclude_none=True)
-async def get_available_coupons(payload: AvailableCouponsRequest):
-    return await fetch_available_coupons(payload)
+async def get_available_coupons(
+    payload: AvailableCouponsRequest,
+    user: Optional[dict] = Depends(get_optional_current_user),
+):
+    return await fetch_available_coupons(payload, current_user=user)

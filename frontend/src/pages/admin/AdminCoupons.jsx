@@ -4,7 +4,7 @@ import {
   deleteAdminCoupon,
   getAdminCoupons,
   getAdminProducts,
-  getCategories,
+  getAdminCategories,
   toggleAdminCoupon,
   updateAdminCoupon,
 } from '../../lib/api';
@@ -149,7 +149,7 @@ const AdminCoupons = () => {
     try {
       const [couponData, categoryData, productData] = await Promise.all([
         getAdminCoupons(),
-        getCategories(),
+        getAdminCategories(),
         getAdminProducts(),
       ]);
 

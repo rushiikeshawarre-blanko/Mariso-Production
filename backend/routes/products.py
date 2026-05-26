@@ -31,7 +31,6 @@ async def get_products(
     featured: Optional[bool] = None,
     bestseller: Optional[bool] = None,
     new_arrival: Optional[bool] = None,
-    active_only: Optional[bool] = True,
 ):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await fetch_product_cards(
@@ -41,7 +40,7 @@ async def get_products(
         featured=featured,
         bestseller=bestseller,
         new_arrival=new_arrival,
-        active_only=active_only,
+        active_only=True,
     )
 
 

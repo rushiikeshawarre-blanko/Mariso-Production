@@ -59,23 +59,27 @@ class CategoryUpdate(BaseModel):
 @router.get("", response_model=List[CategoryResponse])
 async def get_categories(response: Response):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
-    return await get_all_categories()
+    return await get_all_categories(active_only=True)
 
 @router.get("/parents", response_model=List[CategoryResponse])
 async def get_parent_category_list():
-    return await get_parent_categories()
+    return await get_parent_categories(active_only=True)
 
 @router.get("/tree", response_model=List[dict])
 async def get_category_tree():
-    return await get_category_tree_data()
+    return await get_category_tree_data(active_only=True)
 
 @router.get("/{parent_id}/children", response_model=List[CategoryResponse])
 async def get_child_category_list(parent_id: str):
-    return await get_child_categories(parent_id)
+    return await get_child_categories(parent_id, active_only=True)
+
+@router.get("/admin", response_model=List[CategoryResponse])
+async def get_admin_categories(admin: dict = Depends(get_admin_user)):
+    return await get_all_categories()
 
 @router.get("/{category_id}", response_model=CategoryResponse)
 async def get_category(category_id: str):
-    return await get_category_by_id(category_id)
+    return await get_category_by_id(category_id, active_only=True)
 
 
 @router.post("/admin", response_model=CategoryResponse)

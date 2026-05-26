@@ -18,14 +18,18 @@ def normalize_category_doc(category: dict) -> dict:
 
 # ==================== CORE CATEGORY FUNCTIONS ====================
 
-async def get_all_categories() -> List[dict]:
-    categories = await db.categories.find({}, {"_id": 0}).to_list(500)
+async def get_all_categories(active_only: bool = False) -> List[dict]:
+    query = {"is_active": {"$ne": False}} if active_only else {}
+    categories = await db.categories.find(query, {"_id": 0}).to_list(500)
     normalized = [normalize_category_doc(category) for category in categories]
     return sorted(normalized, key=lambda c: (c.get("sort_order", 0), c.get("name", "").lower()))
 
 
-async def get_category_by_id(category_id: str) -> dict:
-    category = await db.categories.find_one({"id": category_id}, {"_id": 0})
+async def get_category_by_id(category_id: str, active_only: bool = False) -> dict:
+    query = {"id": category_id}
+    if active_only:
+        query["is_active"] = {"$ne": False}
+    category = await db.categories.find_one(query, {"_id": 0})
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return normalize_category_doc(category)
@@ -68,7 +72,7 @@ async def ensure_category_exists(category_id: str) -> None:
 async def get_parent_categories(active_only: bool = False, nav_only: bool = False) -> List[dict]:
     query = {"$or": [{"parent_id": None}, {"parent_id": ""}, {"parent_id": {"$exists": False}}]}
     if active_only:
-        query["is_active"] = True
+        query["is_active"] = {"$ne": False}
     if nav_only:
         query["show_in_nav"] = True
 
@@ -80,7 +84,7 @@ async def get_parent_categories(active_only: bool = False, nav_only: bool = Fals
 async def get_child_categories(parent_id: str, active_only: bool = False) -> List[dict]:
     query = {"parent_id": parent_id}
     if active_only:
-        query["is_active"] = True
+        query["is_active"] = {"$ne": False}
 
     categories = await db.categories.find(query, {"_id": 0}).to_list(500)
     normalized = [normalize_category_doc(category) for category in categories]

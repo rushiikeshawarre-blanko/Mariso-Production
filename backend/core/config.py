@@ -43,7 +43,9 @@ AUTH0_JWKS_CLIENT = PyJWKClient(
 ) if AUTH0_DOMAIN else None
 
 
-ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
+# Default to a non-development environment so optional development-only
+# features are never enabled by missing or blank configuration.
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "").strip().lower() or "production"
 
 CASHFREE_ENABLED = os.environ.get("CASHFREE_ENABLED", "false").strip().lower() == "true"
 CASHFREE_ENV = os.environ.get("CASHFREE_ENV", "sandbox").strip().lower()
