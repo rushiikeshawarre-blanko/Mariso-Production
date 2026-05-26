@@ -378,6 +378,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             src={getSafeMediaUrl(homepageContent.hero.background_image, defaults.hero.background_image)}
             alt="Luxury candles"
             className="w-full h-full object-cover object-center"
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#F8F5F1]/35 via-[#F8F5F1]/45 to-[#F8F5F1]/70" />
         </div>
@@ -514,6 +517,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                         src={getSafeMediaUrl(card.image, defaultCategoryImage)}
                         alt={card.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                        loading="lazy"
+                        decoding="async"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent" />
                       <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
@@ -551,6 +556,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                       src={category.image || defaultCategoryImage}
                       alt={category.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                      loading="lazy"
+                      decoding="async"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent" />
                     <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
@@ -575,6 +582,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 src={getSafeMediaUrl(homepageContent.crafted_with_intention.image, defaults.crafted_with_intention.image)}
                 alt="Craftsman hands"
                 className="rounded-[1.5rem] w-full aspect-[4/5] object-cover shadow-[0_18px_60px_rgba(0,0,0,0.08)]"
+                loading="lazy"
+                decoding="async"
               />
               <div className="absolute -bottom-6 -right-6 bg-white/95 backdrop-blur-sm p-6 rounded-[1.25rem] shadow-[0_18px_40px_rgba(0,0,0,0.12)] hidden lg:block">
                 <Sparkles className="h-8 w-8 text-terracotta mb-2" strokeWidth={1.5} />
@@ -691,6 +700,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 src={getSafeMediaUrl(homepageContent.supporting_artisans.image, defaults.supporting_artisans.image)}
                 alt="Artisan crafting"
                 className="rounded-[1.5rem] w-full aspect-[4/5] object-cover shadow-[0_18px_60px_rgba(0,0,0,0.08)]"
+                loading="lazy"
+                decoding="async"
               />
             </div>
           </div>
@@ -718,6 +729,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                       src={getSafeMediaUrl(card.image, defaults.craft_process.cards[index]?.image || defaultCategoryImage)}
                       alt={card.title}
                       className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
                     />
                     {card.show_play_icon ? (
                       <div className="absolute inset-0 bg-foreground/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -898,6 +911,8 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                   src={getSafeMediaUrl(card.image, defaults.follow_journey.cards[index]?.image || defaultCategoryImage)}
                   alt={card.alt_text || `Instagram ${index + 1}`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/20 transition-colors duration-300" />
                 </>
