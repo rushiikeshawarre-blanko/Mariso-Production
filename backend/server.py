@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Response
 from starlette.middleware.cors import CORSMiddleware
 import logging
 from core.db_indexes import create_indexes
@@ -72,6 +72,10 @@ async def api_root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.head("/health")
+async def health_head():
+    return Response(status_code=200)
 
 # Include the routers
 app.include_router(content_router)
