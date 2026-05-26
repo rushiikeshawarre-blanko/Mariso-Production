@@ -329,6 +329,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
     ? [...marqueeTestimonials, ...marqueeTestimonials]
     : marqueeTestimonials;
   const heroButtons = sortedActiveItems(homepageContent.hero.buttons);
+  const storyButtonLabel = String(homepageContent.crafted_with_intention.button_label || '').trim() || defaults.crafted_with_intention.button_label;
   const configuredCategoryCards = Array.isArray(homepageContent.shop_by_category.cards)
     ? homepageContent.shop_by_category.cards
     : [];
@@ -380,6 +381,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             className="w-full h-full object-cover object-center"
             loading="eager"
             decoding="async"
+            fetchPriority="high"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#F8F5F1]/35 via-[#F8F5F1]/45 to-[#F8F5F1]/70" />
         </div>
@@ -603,12 +605,12 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 ))}
               </div>
               {getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link) ? (
-              <ContentLink href={getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link)}>
-                <Button className="btn-secondary mt-8" data-testid="story-learn-more">
-                  {homepageContent.crafted_with_intention.button_label}
+              <Button asChild className="btn-secondary mt-8">
+                <ContentLink href={getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link)} data-testid="story-learn-more">
+                  {storyButtonLabel}
                   <ArrowRight className="ml-2 h-4 w-4" strokeWidth={1.5} />
-                </Button>
-              </ContentLink>
+                </ContentLink>
+              </Button>
               ) : null}
             </div>
           </div>
@@ -800,10 +802,10 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                         onClick={() => toggleFaq(faq.id)}
                         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-[#BE9D7C] md:px-6"
                       >
-                        <span className="text-sm md:text-base font-medium leading-6 text-white">
+                        <span className="text-sm md:text-base font-medium leading-6 text-foreground">
                           {faq.question}
                         </span>
-                        <span className="shrink-0 text-white">
+                        <span className="shrink-0 text-foreground">
                           {isOpen ? (
                             <ChevronDown className="h-5 w-5" />
                           ) : (

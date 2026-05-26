@@ -79,6 +79,7 @@ export const Footer = () => {
                 href="https://www.instagram.com/mariso_candles?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==" 
                 target="_blank" 
                 rel="noopener noreferrer"
+                aria-label="Instagram"
                 className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-clay/30 transition-colors"
                 data-testid="footer-instagram"
               >
@@ -88,6 +89,7 @@ export const Footer = () => {
                 href="https://facebook.com" 
                 target="_blank" 
                 rel="noopener noreferrer"
+                aria-label="Facebook"
                 className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-clay/30 transition-colors"
                 data-testid="footer-facebook"
               >
@@ -95,6 +97,7 @@ export const Footer = () => {
               </a>
               <a 
                 href="mailto:hello@mariso.com"
+                aria-label="Email Mariso"
                 className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-clay/30 transition-colors"
                 data-testid="footer-email"
               >
@@ -105,7 +108,7 @@ export const Footer = () => {
 
           {/* Shop */}
           <div>
-            <h4 className="font-heading text-lg mb-6">Shop</h4>
+            <h3 className="font-heading text-lg mb-6">Shop</h3>
             <ul className="space-y-3">
               <li>
                 <Link to="/shop" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="footer-all-products">
@@ -132,7 +135,7 @@ export const Footer = () => {
 
           {/* Help */}
           <div>
-            <h4 className="font-heading text-lg mb-6">Help</h4>
+            <h3 className="font-heading text-lg mb-6">Help</h3>
             <ul className="space-y-3">
               {helpPages.map((page) => (
                 <li key={page.id}>{renderFooterPageLink(page, 'footer-help')}</li>
@@ -147,7 +150,7 @@ export const Footer = () => {
 
           {/* Newsletter */}
           <div>
-            <h4 className="font-heading text-lg mb-6">Stay Connected</h4>
+            <h3 className="font-heading text-lg mb-6">Stay Connected</h3>
             <p className="text-muted-foreground mb-4">
               Subscribe for exclusive offers and updates.
             </p>
