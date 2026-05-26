@@ -457,7 +457,9 @@ const AdminOrders = () => {
                 <h4 className="font-medium mb-2">Shipping Address</h4>
                 <p className="text-sm text-muted-foreground">
                   {selectedOrder.billing_address}<br />
-                  {selectedOrder.billing_city}, {selectedOrder.billing_postal_code}
+                  {selectedOrder.billing_address_2 && <>{selectedOrder.billing_address_2}<br /></>}
+                  {selectedOrder.billing_city}, {selectedOrder.billing_postal_code}<br />
+                  {selectedOrder.billing_state || 'Not provided'}, {selectedOrder.billing_country || 'Not provided'}
                 </p>
               </div>
 

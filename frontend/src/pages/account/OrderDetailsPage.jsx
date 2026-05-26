@@ -324,8 +324,12 @@ const OrderDetailsPage = () => {
             <p>{order.billing_phone}</p>
             <p>{order.billing_email}</p>
             <p>{order.billing_address}</p>
+            {order.billing_address_2 && <p>{order.billing_address_2}</p>}
             <p>
               {order.billing_city} - {order.billing_postal_code}
+            </p>
+            <p>
+              {order.billing_state || 'Not provided'}, {order.billing_country || 'Not provided'}
             </p>
           </div>
         </div>

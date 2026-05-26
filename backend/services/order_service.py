@@ -343,6 +343,9 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("coupon_snapshot", None)
     order.setdefault("coupon_usage_recorded", False)
     order.setdefault("payment_events", [])
+    order.setdefault("billing_address_2", None)
+    order.setdefault("billing_state", None)
+    order.setdefault("billing_country", None)
     order.setdefault(
         "gift_packaging_amount",
         GIFT_PACKAGING_PRICE if order.get("gift_packaging") else 0,
@@ -973,7 +976,10 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "billing_phone": formatted_phone,
         "billing_email": order.billing_email,
         "billing_address": order.billing_address,
+        "billing_address_2": order.billing_address_2,
         "billing_city": order.billing_city,
+        "billing_state": order.billing_state,
+        "billing_country": order.billing_country,
         "billing_postal_code": order.billing_postal_code,
         "payment_method": order.payment_method,
         "payment_provider": order.payment_method,
@@ -1097,7 +1103,10 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "billing_phone": formatted_phone,
         "billing_email": order_payload.billing_email,
         "billing_address": order_payload.billing_address,
+        "billing_address_2": order_payload.billing_address_2,
         "billing_city": order_payload.billing_city,
+        "billing_state": order_payload.billing_state,
+        "billing_country": order_payload.billing_country,
         "billing_postal_code": order_payload.billing_postal_code,
         "payment_method": PAYMENT_PROVIDER_CASHFREE,
         "payment_provider": PAYMENT_PROVIDER_CASHFREE,

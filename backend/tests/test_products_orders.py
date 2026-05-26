@@ -154,6 +154,8 @@ def test_create_order_authenticated():
         "billing_email": "aisha@test.com",
         "billing_address": "123 Test Street",
         "billing_city": "Mumbai",
+        "billing_state": "Maharashtra",
+        "billing_country": "India",
         "billing_postal_code": "400001",
         "payment_method": "cod",
         "total_price": product["price"]

@@ -66,7 +66,8 @@ test.describe('Checkout Flow', () => {
     await page.getByTestId('checkout-phone').fill('9876543210');
     await page.getByTestId('checkout-email').fill('aisha@test.com');
     await page.getByTestId('checkout-address').fill('123 Test Street');
-    await page.getByTestId('checkout-city').fill('Mumbai');
+    await page.getByTestId('checkout-state').selectOption('Maharashtra');
+    await page.getByTestId('checkout-city').selectOption('Mumbai');
     await page.getByTestId('checkout-postal').fill('400001');
     
     // Select COD payment

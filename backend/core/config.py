@@ -60,6 +60,20 @@ try:
 except ValueError:
     STOCK_RESERVATION_MINUTES = 10
 
+SHIPROCKET_ENABLED = os.environ.get("SHIPROCKET_ENABLED", "false").strip().lower() == "true"
+SHIPROCKET_BASE_URL = os.environ.get(
+    "SHIPROCKET_BASE_URL",
+    "https://apiv2.shiprocket.in/v1/external",
+).strip().rstrip("/")
+SHIPROCKET_EMAIL = os.environ.get("SHIPROCKET_EMAIL", "").strip()
+SHIPROCKET_PASSWORD = os.environ.get("SHIPROCKET_PASSWORD", "").strip()
+SHIPROCKET_PICKUP_LOCATION = os.environ.get("SHIPROCKET_PICKUP_LOCATION", "").strip()
+SHIPROCKET_DEFAULT_WEIGHT_KG = os.environ.get("SHIPROCKET_DEFAULT_WEIGHT_KG", "").strip()
+SHIPROCKET_DEFAULT_LENGTH_CM = os.environ.get("SHIPROCKET_DEFAULT_LENGTH_CM", "").strip()
+SHIPROCKET_DEFAULT_BREADTH_CM = os.environ.get("SHIPROCKET_DEFAULT_BREADTH_CM", "").strip()
+SHIPROCKET_DEFAULT_HEIGHT_CM = os.environ.get("SHIPROCKET_DEFAULT_HEIGHT_CM", "").strip()
+SHIPROCKET_DEFAULT_COUNTRY = os.environ.get("SHIPROCKET_DEFAULT_COUNTRY", "India").strip()
+
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "").strip()
 

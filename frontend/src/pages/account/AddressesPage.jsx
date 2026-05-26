@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import { getCitiesForState, INDIA_STATES, withStoredOption } from '../../lib/indiaLocations';
 import { MapPin, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,7 +19,10 @@ const AddressesPage = () => {
     name: '',
     phone: '',
     address: '',
+    address_line_2: '',
     city: '',
+    state: '',
+    country: 'India',
     postal_code: '',
     is_default: false
   });
@@ -27,9 +31,21 @@ const AddressesPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleStateChange = (e) => {
+    const state = e.target.value;
+    setFormData((currentData) => ({
+      ...currentData,
+      state,
+      city: getCitiesForState(state).includes(currentData.city) ? currentData.city : ''
+    }));
+  };
+
+  const stateOptions = withStoredOption(INDIA_STATES, formData.state);
+  const cityOptions = withStoredOption(getCitiesForState(formData.state), formData.city);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.phone || !formData.address || !formData.city || !formData.postal_code) {
+    if (!formData.name || !formData.phone || !formData.address || !formData.city || !formData.state || !formData.country || !formData.postal_code) {
       toast.error('Please fill in all fields');
       return;
     }
@@ -43,7 +59,10 @@ const AddressesPage = () => {
         name: '',
         phone: '',
         address: '',
+        address_line_2: '',
         city: '',
+        state: '',
+        country: 'India',
         postal_code: '',
         is_default: false
       });
@@ -117,18 +136,53 @@ const AddressesPage = () => {
                   data-testid="address-street"
                 />
               </div>
+              <div>
+                <Label htmlFor="address_line_2">Address Line 2 (Optional)</Label>
+                <Input
+                  id="address_line_2"
+                  name="address_line_2"
+                  value={formData.address_line_2}
+                  onChange={handleChange}
+                  placeholder="Apartment, suite, landmark"
+                  className="mt-1"
+                  data-testid="address-line-2"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <Label htmlFor="state">State</Label>
+                  <select
+                    id="state"
+                    name="state"
+                    value={formData.state}
+                    onChange={handleStateChange}
+                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    required
+                    data-testid="address-state"
+                  >
+                    <option value="">Select state</option>
+                    {stateOptions.map((state) => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <Label htmlFor="city">City</Label>
-                  <Input
+                  <select
                     id="city"
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    placeholder="Mumbai"
-                    className="mt-1"
+                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    required
+                    disabled={!formData.state}
                     data-testid="address-city"
-                  />
+                  >
+                    <option value="">Select city</option>
+                    {cityOptions.map((city) => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label htmlFor="postal_code">Postal Code</Label>
@@ -140,6 +194,19 @@ const AddressesPage = () => {
                     placeholder="400001"
                     className="mt-1"
                     data-testid="address-postal"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="country">Country</Label>
+                  <Input
+                    id="country"
+                    name="country"
+                    value={formData.country}
+                    onChange={handleChange}
+                    placeholder="India"
+                    className="mt-1"
+                    required
+                    data-testid="address-country"
                   />
                 </div>
               </div>
@@ -186,7 +253,9 @@ const AddressesPage = () => {
               <h3 className="font-medium mb-2">{address.name}</h3>
               <p className="text-muted-foreground text-sm">
                 {address.address}<br />
-                {address.city}, {address.postal_code}<br />
+                {address.address_line_2 && <>{address.address_line_2}<br /></>}
+                {address.city}{address.state ? `, ${address.state}` : ''}, {address.postal_code}<br />
+                {address.country || 'Not provided'}<br />
                 {address.phone}
               </p>
               <button

@@ -29,7 +29,10 @@ class OrderCreate(BaseModel):
     billing_phone: str
     billing_email: EmailStr
     billing_address: str
+    billing_address_2: Optional[str] = None
     billing_city: str
+    billing_state: str = Field(..., min_length=1)
+    billing_country: str = Field("India", min_length=1)
     billing_postal_code: str
     payment_method: str
     gift_packaging: bool = False
@@ -40,7 +43,10 @@ class CashfreeCheckoutCreate(BaseModel):
     billing_phone: str
     billing_email: EmailStr
     billing_address: str
+    billing_address_2: Optional[str] = None
     billing_city: str
+    billing_state: str = Field(..., min_length=1)
+    billing_country: str = Field("India", min_length=1)
     billing_postal_code: str
     gift_packaging: bool = False
     coupon_code: Optional[str] = None

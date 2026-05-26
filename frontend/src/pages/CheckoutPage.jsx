@@ -9,6 +9,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { createCashfreeSession, getAvailableCoupons, validateCoupon } from '../lib/api';
 import { loadCashfree } from '../lib/cashfree';
 import { formatINR } from '../lib/currency';
+import { getCitiesForState, INDIA_STATES, withStoredOption } from '../lib/indiaLocations';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
 
@@ -97,13 +98,28 @@ const CheckoutPage = () => {
     phone: '',
     email: user?.email || '',
     address: '',
+    addressLine2: '',
     city: '',
-    postalCode: ''
+    state: '',
+    postalCode: '',
+    country: 'India'
   });
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
+
+  const handleStateChange = (e) => {
+    const state = e.target.value;
+    setFormData((currentData) => ({
+      ...currentData,
+      state,
+      city: getCitiesForState(state).includes(currentData.city) ? currentData.city : ''
+    }));
+  };
+
+  const stateOptions = withStoredOption(INDIA_STATES, formData.state);
+  const cityOptions = withStoredOption(getCitiesForState(formData.state), formData.city);
 
   useEffect(() => {
     if (appliedCoupon && couponCartSignature && couponCartSignature !== cartSignature) {
@@ -302,7 +318,7 @@ const CheckoutPage = () => {
     }
 
     // Validate form
-    if (!formData.name || !formData.phone || !formData.email || !formData.address || !formData.city || !formData.postalCode) {
+    if (!formData.name || !formData.phone || !formData.email || !formData.address || !formData.city || !formData.state || !formData.postalCode || !formData.country) {
       toast.error('Please fill in all fields');
       return;
     }
@@ -329,7 +345,10 @@ const CheckoutPage = () => {
         billing_phone: formData.phone,
         billing_email: formData.email,
         billing_address: formData.address,
+        billing_address_2: formData.addressLine2 || undefined,
         billing_city: formData.city,
+        billing_state: formData.state,
+        billing_country: formData.country,
         billing_postal_code: formData.postalCode,
         gift_packaging: items.some((item) => item.gift_packaging?.selected === true),
         coupon_code: appliedCoupon?.code || undefined,
@@ -471,19 +490,53 @@ const CheckoutPage = () => {
                         data-testid="checkout-address"
                       />
                     </div>
+                    <div>
+                      <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+                      <Input
+                        id="addressLine2"
+                        name="addressLine2"
+                        value={formData.addressLine2}
+                        onChange={handleChange}
+                        placeholder="Apartment, suite, landmark"
+                        className="mt-2"
+                        data-testid="checkout-address-line-2"
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
+                        <Label htmlFor="state">State</Label>
+                        <select
+                          id="state"
+                          name="state"
+                          value={formData.state}
+                          onChange={handleStateChange}
+                          className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          required
+                          data-testid="checkout-state"
+                        >
+                          <option value="">Select state</option>
+                          {stateOptions.map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <Label htmlFor="city">City</Label>
-                        <Input
+                        <select
                           id="city"
                           name="city"
                           value={formData.city}
                           onChange={handleChange}
-                          placeholder="Mumbai"
-                          className="mt-2"
+                          className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                           required
+                          disabled={!formData.state}
                           data-testid="checkout-city"
-                        />
+                        >
+                          <option value="">Select city</option>
+                          {cityOptions.map((city) => (
+                            <option key={city} value={city}>{city}</option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <Label htmlFor="postalCode">Postal Code</Label>
@@ -496,6 +549,19 @@ const CheckoutPage = () => {
                           className="mt-2"
                           required
                           data-testid="checkout-postal"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="country">Country</Label>
+                        <Input
+                          id="country"
+                          name="country"
+                          value={formData.country}
+                          onChange={handleChange}
+                          placeholder="India"
+                          className="mt-2"
+                          required
+                          data-testid="checkout-country"
                         />
                       </div>
                     </div>
