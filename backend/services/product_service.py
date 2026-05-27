@@ -120,7 +120,7 @@ async def enrich_products(products: List[dict]) -> List[dict]:
     return [enrich_product(product, category_map) for product in products]
 
 
-def _first_image(images: Optional[list]) -> List[str]:
+def _first_image(images: Optional[list]) -> list:
     for image in images or []:
         if image:
             return [image]
@@ -462,7 +462,7 @@ async def create_product(product: ProductCreate):
         "subcategory": product.subcategory or "",
         "sku": product.sku or f"SKU-{product_id[:8].upper()}",
         "stock": product.stock,
-        "images": product.images,
+        "images": product.model_dump()["images"],
         "video": product.video or "",
         "has_color_options": product.has_color_options,
         "has_flavor_options": product.has_flavor_options,

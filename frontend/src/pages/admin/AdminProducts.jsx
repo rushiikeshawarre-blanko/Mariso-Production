@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import RichTextEditor from '../../components/ui/rich-text-editor';
 import { normalizeEditorHtml } from '../../lib/richContent';
+import { getFirstImageUrl, getThumbImage, normalizeImageUrl } from '../../lib/utils';
 import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft, ChevronRight, Package, RefreshCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -34,6 +35,8 @@ const slugify = (value) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
+
+const hasImageUrl = (image) => Boolean(normalizeImageUrl(image));
 
 const newGiftPackagingOption = (source = {}) => ({
   id: source.id || '',
@@ -1161,7 +1164,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       toast.error('Color name is required');
       return;
     }
-    const colorImages = newColor.images.filter(url => url.trim() !== '');
+    const colorImages = newColor.images.filter(hasImageUrl);
     const newColorOption = {
       id: `temp-${Date.now()}`,
       name: newColor.name,
@@ -1431,7 +1434,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     // Clean up color images (remove empty strings)
     const cleanedColorOptions = formData.color_options.map(color => ({
       ...color,
-      images: (color.images || []).filter(url => url.trim() !== ''),
+      images: (color.images || []).filter(hasImageUrl),
       video: color.video || ''
     }));
     const cleanedGiftOptions = formData.gift_packaging_options.map((option) => ({
@@ -1455,7 +1458,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: formData.category_id,
       sku: formData.sku,
       stock: parseInt(formData.stock, 10) || 0,
-      images: (formData.images || []).filter(Boolean).slice(0, 5),
+      images: (formData.images || []).filter(hasImageUrl).slice(0, 5),
       video: formData.video,
       is_on_sale: formData.is_on_sale,
       is_featured: formData.is_featured,
@@ -1796,7 +1799,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                       {Array.from({ length: 5 }).map((_, imageIndex) => {
-                        const imageUrl = formData.images?.[imageIndex] || '';
+                        const imageUrl = normalizeImageUrl(formData.images?.[imageIndex]);
                         const imageCount = formData.images.filter(Boolean).length;
 
                         return (
@@ -2373,7 +2376,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                             </Label>
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                               {[0, 1, 2, 3, 4].map((imageIndex) => {
-                                const imageUrl = color.images?.[imageIndex] || '';
+                                const imageUrl = normalizeImageUrl(color.images?.[imageIndex]);
                                 return (
                                     <div
                                       key={imageIndex}
@@ -3232,11 +3235,13 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                 const variantSummary = getAvailableVariantSummary(product);
                 const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
                 const productThumbnail =
-                  (product.images || []).filter(Boolean)[0] ||
-                  (product.color_options || [])
-                    .filter((color) => color?.is_active !== false)
-                    .flatMap((color) => color?.images || [])
-                    .filter(Boolean)[0] ||
+                  getFirstImageUrl(product.images, getThumbImage) ||
+                  getFirstImageUrl(
+                    (product.color_options || [])
+                      .filter((color) => color?.is_active !== false)
+                      .flatMap((color) => color?.images || []),
+                    getThumbImage
+                  ) ||
                   'https://via.placeholder.com/40';
                 
                 return (

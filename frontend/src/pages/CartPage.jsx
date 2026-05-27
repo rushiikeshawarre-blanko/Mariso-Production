@@ -19,7 +19,7 @@ import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles, CheckCircle2 }
 import { useCart } from '../context/CartContext';
 import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
-import { getProductPath } from '../lib/utils';
+import { getFirstImageUrl, getProductPath, getThumbImage } from '../lib/utils';
 
 const getLegacyGiftOption = (item) => ({
   id: null,
@@ -92,12 +92,14 @@ const CartPage = () => {
     );
 
     return (
-      (selectedColor?.images || []).filter(Boolean)[0] ||
-      (item.images || []).filter(Boolean)[0] ||
-      (item.color_options || [])
-        .filter((color) => color?.is_active !== false)
-        .flatMap((color) => color?.images || [])
-        .filter(Boolean)[0] ||
+      getFirstImageUrl(selectedColor?.images, getThumbImage) ||
+      getFirstImageUrl(item.images, getThumbImage) ||
+      getFirstImageUrl(
+        (item.color_options || [])
+          .filter((color) => color?.is_active !== false)
+          .flatMap((color) => color?.images || []),
+        getThumbImage
+      ) ||
       'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=200'
     );
   };  

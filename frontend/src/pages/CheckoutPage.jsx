@@ -10,6 +10,7 @@ import { createCashfreeSession, getAvailableCoupons, validateCoupon } from '../l
 import { loadCashfree } from '../lib/cashfree';
 import { formatINR } from '../lib/currency';
 import { getCitiesForState, INDIA_STATES, withStoredOption } from '../lib/indiaLocations';
+import { getFirstImageUrl, getThumbImage } from '../lib/utils';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
 
@@ -144,12 +145,14 @@ const CheckoutPage = () => {
     );
 
     return (
-      (selectedColor?.images || []).filter(Boolean)[0] ||
-      (item.images || []).filter(Boolean)[0] ||
-      (item.color_options || [])
-        .filter((color) => color?.is_active !== false)
-        .flatMap((color) => color?.images || [])
-        .filter(Boolean)[0] ||
+      getFirstImageUrl(selectedColor?.images, getThumbImage) ||
+      getFirstImageUrl(item.images, getThumbImage) ||
+      getFirstImageUrl(
+        (item.color_options || [])
+          .filter((color) => color?.is_active !== false)
+          .flatMap((color) => color?.images || []),
+        getThumbImage
+      ) ||
       'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=100'
     );
   };  

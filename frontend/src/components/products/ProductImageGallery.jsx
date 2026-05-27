@@ -18,6 +18,17 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
     return galleryImages.find((item) => item?.type !== 'video' && item?.url)?.url || '';
   };
 
+  const getPreviousThumbnailUrl = (index) => {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (galleryImages[i]?.type !== 'video' && galleryImages[i]?.url) {
+        return galleryImages[i].thumbnailUrl || galleryImages[i].url;
+      }
+    }
+
+    const firstImage = galleryImages.find((item) => item?.type !== 'video' && item?.url);
+    return firstImage?.thumbnailUrl || firstImage?.url || '';
+  };
+
   useEffect(() => {
     if (currentIndex >= galleryImages.length) {
       setCurrentIndex(0);
@@ -198,9 +209,9 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
             >
               {image.type === 'video' ? (
                 <div className="relative h-full w-full bg-black">
-                  {getPreviousImageUrl(index) ? (
+                  {getPreviousThumbnailUrl(index) ? (
                     <img
-                      src={getPreviousImageUrl(index)}
+                      src={getPreviousThumbnailUrl(index)}
                       alt={`${productName} video preview`}
                       className="h-full w-full object-cover opacity-80"
                     />
@@ -227,7 +238,7 @@ export const ProductImageGallery = ({ media = [], productName = 'Product' }) => 
                 </div>
               ) : (
                 <img
-                  src={image.url}
+                  src={image.thumbnailUrl || image.url}
                   alt={`${productName} thumbnail ${index + 1}`}
                   className="h-full w-full object-cover"
                 />

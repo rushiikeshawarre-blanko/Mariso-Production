@@ -1,6 +1,16 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import uuid
+
+
+class ProductImage(BaseModel):
+    url: str = ""
+    thumb_url: Optional[str] = ""
+    card_url: Optional[str] = ""
+    detail_url: Optional[str] = ""
+
+
+ProductImageValue = Union[str, ProductImage]
 
 
 class ColorOption(BaseModel):
@@ -8,14 +18,14 @@ class ColorOption(BaseModel):
     name: str
     hex_code: str
     hex_code_secondary: Optional[str] = None
-    images: List[str] = Field(default_factory=list)
+    images: List[ProductImageValue] = Field(default_factory=list)
     video: Optional[str] = ""
 
 class FlavorOption(BaseModel):
     id: str = ""
     name: str
     description: Optional[str] = ""
-    images: List[str] = Field(default_factory=list)
+    images: List[ProductImageValue] = Field(default_factory=list)
 
 class ProductVariant(BaseModel):
     id: str = ""
@@ -24,7 +34,7 @@ class ProductVariant(BaseModel):
     sku: Optional[str] = None
     price_override: Optional[float] = None
     stock: Optional[int] = None
-    images: List[str] = Field(default_factory=list)
+    images: List[ProductImageValue] = Field(default_factory=list)
     is_active: bool = True
 
 
@@ -50,7 +60,7 @@ class ProductCreate(BaseModel):
     subcategory: Optional[str] = ""
     sku: Optional[str] = ""
     stock: int = Field(0, ge=0)
-    images: List[str] = Field(default_factory=list)
+    images: List[ProductImageValue] = Field(default_factory=list)
     video: Optional[str] = ""
     # Variant options
     has_color_options: bool = False
@@ -104,7 +114,7 @@ class ProductUpdate(BaseModel):
     subcategory: Optional[str] = None
     sku: Optional[str] = None
     stock: Optional[int] = Field(None, ge=0)
-    images: Optional[List[str]] = None
+    images: Optional[List[ProductImageValue]] = None
     video: Optional[str] = ""
     has_color_options: Optional[bool] = None
     has_flavor_options: Optional[bool] = None
@@ -155,7 +165,7 @@ class ProductResponse(BaseModel):
     subcategory: str
     sku: str
     stock: int
-    images: List[str]
+    images: List[ProductImageValue]
     video: Optional[str] = ""
     has_color_options: bool
     has_flavor_options: bool
@@ -192,7 +202,7 @@ class ProductCardColorOption(BaseModel):
     hex_code: Optional[str] = ""
     hex_code_secondary: Optional[str] = None
     is_active: bool = True
-    images: List[str] = Field(default_factory=list)
+    images: List[ProductImageValue] = Field(default_factory=list)
 
 
 class ProductCardFlavorOption(BaseModel):
@@ -223,7 +233,7 @@ class ProductCardResponse(BaseModel):
     discount_price: Optional[float]
     is_on_sale: bool
     stock: int
-    images: List[str]
+    images: List[ProductImageValue]
     has_color_options: bool
     has_flavor_options: bool
     color_options: List[ProductCardColorOption] = Field(default_factory=list)

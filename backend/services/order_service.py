@@ -46,6 +46,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _get_order_image_url(image) -> str:
+    if isinstance(image, str):
+        return image
+    if isinstance(image, dict):
+        return (
+            image.get("thumb_url")
+            or image.get("card_url")
+            or image.get("detail_url")
+            or image.get("url")
+            or ""
+        )
+    return ""
+
+
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -548,7 +562,9 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
             "flavor_id": item.flavor_id,
             "flavor_name": flavor_name or "",
             "product_name": product["name"],
-            "product_image": variant_image or (product["images"][0] if product.get("images") else ""),
+            "product_image": _get_order_image_url(
+                variant_image or (product["images"][0] if product.get("images") else "")
+            ),
             "original_price": product["price"],
             "price": price,
             "quantity": item.quantity,

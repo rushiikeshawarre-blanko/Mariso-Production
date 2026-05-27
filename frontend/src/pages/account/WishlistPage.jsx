@@ -5,7 +5,7 @@ import { useCart } from '../../context/CartContext';
 import { Button } from '../../components/ui/button';
 import { Heart, ShoppingBag, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { getProductCardImage, getProductPath } from '../../lib/utils';
+import { getProductPath, getProductThumbImage } from '../../lib/utils';
 
 const WishlistPage = () => {
   const [wishlist, setWishlist] = useState([]);
@@ -80,7 +80,7 @@ const WishlistPage = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {wishlist.map((product) => {
           const productPath = getProductPath(product) || '/shop';
-          const productImage = getProductCardImage(product);
+          const productImage = getProductThumbImage(product);
           const price = product.is_on_sale && product.sale_price ? product.sale_price : product.price;
           
           return (

@@ -11,6 +11,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getProduct, getProductBySlug, getProducts, addToWishlist } from '../lib/api';
 import { htmlToPlainText, sanitizeRichContent } from '../lib/richContent';
+import { getDetailImage, getThumbImage } from '../lib/utils';
 import { toast } from 'sonner';
 
 const ProductPage = () => {
@@ -104,10 +105,13 @@ const ProductPage = () => {
   // Build gallery media with images plus optional product video
   const galleryMedia = useMemo(() => {
     const images = currentImages.length > 0 ? currentImages : (product?.images || []);
-    const filteredImages = images.filter(Boolean).map((url) => ({
-      type: 'image',
-      url,
-    }));
+    const filteredImages = images
+      .map((image) => ({
+        type: 'image',
+        url: getDetailImage(image),
+        thumbnailUrl: getThumbImage(image),
+      }))
+      .filter((image) => image.url);
 
     // If still no images, use fallback placeholders
     const fallbackImages = filteredImages.length === 0
@@ -115,7 +119,7 @@ const ProductPage = () => {
           'https://images.unsplash.com/photo-1602874801007-bd458bb1b8b6?w=800',
           'https://images.unsplash.com/photo-1592990332407-1ab9b8439a4c?w=800',
           'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=800'
-        ].map((url) => ({ type: 'image', url }))
+        ].map((url) => ({ type: 'image', url, thumbnailUrl: url }))
       : filteredImages;
 
     const selectedVideo = selectedColor?.video || product?.video || '';
