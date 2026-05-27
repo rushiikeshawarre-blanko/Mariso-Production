@@ -62,6 +62,16 @@ try:
 except ValueError:
     STOCK_RESERVATION_MINUTES = 10
 
+# Cashfree requires order_expiry_time to be more than 15 minutes. Keep this
+# independent from the shorter inventory reservation timeout.
+try:
+    _configured_cashfree_order_expiry_minutes = int(
+        os.environ.get("CASHFREE_ORDER_EXPIRY_MINUTES", "30").strip()
+    )
+except ValueError:
+    _configured_cashfree_order_expiry_minutes = 30
+CASHFREE_ORDER_EXPIRY_MINUTES = max(_configured_cashfree_order_expiry_minutes, 30)
+
 SHIPROCKET_ENABLED = os.environ.get("SHIPROCKET_ENABLED", "false").strip().lower() == "true"
 SHIPROCKET_BASE_URL = os.environ.get(
     "SHIPROCKET_BASE_URL",

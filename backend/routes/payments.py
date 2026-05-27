@@ -1,10 +1,13 @@
 import json
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from core.auth import get_current_user
+from core.config import CASHFREE_ORDER_EXPIRY_MINUTES
 from models.order import CashfreeCheckoutCreate
 from services.cashfree_service import (
     create_cashfree_order_session,
@@ -32,6 +35,11 @@ CASHFREE_PAYMENT_STATUS_SUCCESS = "SUCCESS"
 
 class CashfreeVerifyRequest(BaseModel):
     order_id: str
+
+
+def _cashfree_order_expiry_time(now: Optional[datetime] = None) -> str:
+    created_at = now or datetime.now(timezone.utc)
+    return (created_at + timedelta(minutes=CASHFREE_ORDER_EXPIRY_MINUTES)).isoformat()
 
 
 def _payment_result(order: dict) -> dict:
@@ -118,6 +126,16 @@ async def create_cashfree_session_route(
 ):
     pending_order = await create_pending_cashfree_order(payload, user)
     order_id = pending_order["id"]
+    # Cashfree session expiry must not reuse the shorter inventory hold expiry.
+    cashfree_order_expiry_time = _cashfree_order_expiry_time()
+    logger.info(
+        "Checkout expiries calculated: order_id=%s stock_reserved_until=%s "
+        "cashfree_order_expiry_time=%s cashfree_order_expiry_minutes=%s",
+        order_id,
+        pending_order.get("stock_reserved_until"),
+        cashfree_order_expiry_time,
+        CASHFREE_ORDER_EXPIRY_MINUTES,
+    )
 
     try:
         cashfree_data = create_cashfree_order_session(
@@ -126,7 +144,7 @@ async def create_cashfree_session_route(
             customer_name=pending_order["billing_name"],
             customer_email=pending_order["billing_email"],
             customer_phone=pending_order["billing_phone"],
-            order_expiry_time=pending_order.get("stock_reserved_until"),
+            order_expiry_time=cashfree_order_expiry_time,
         )
     except HTTPException as exc:
         error_context = _cashfree_error_context(exc)
