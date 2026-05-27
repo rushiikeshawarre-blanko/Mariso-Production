@@ -29,13 +29,18 @@ logging.basicConfig(level=logging.INFO)
 # Create the main app
 app = FastAPI(title="Mariso Candles API")
 
-allowed_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+allowed_origins = []
+
+if ENVIRONMENT == "development":
+    allowed_origins.extend([
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ])
 
 if FRONTEND_URL:
     allowed_origins.append(FRONTEND_URL)
+
+allowed_origins = list(dict.fromkeys(allowed_origins))
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,6 +53,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_db_check():
+    logger.info("Allowed CORS origins (%s): %s", ENVIRONMENT, allowed_origins)
+
     try:
         await db.command("ping")
         logger.info("MongoDB connected successfully")
