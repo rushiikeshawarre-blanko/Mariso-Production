@@ -38,6 +38,12 @@ const slugify = (value) =>
 
 const hasImageUrl = (image) => Boolean(normalizeImageUrl(image));
 
+const PRODUCT_IMAGE_VARIANTS = [
+  { key: 'thumb', width: 300, height: 400, quality: 0.78 },
+  { key: 'card', width: 600, height: 800, quality: 0.78 },
+  { key: 'detail', width: 1200, height: 1600, quality: 0.84 },
+];
+
 const newGiftPackagingOption = (source = {}) => ({
   id: source.id || '',
   title: source.title || source.gift_packaging_title || 'Add Gift Packaging',
@@ -199,39 +205,91 @@ const AdminProducts = () => {
       image.src = url;
     });
 
-  const getCroppedImageBlob = async (imageSrc, cropPixels, fileType = 'image/jpeg') => {
+  const canvasToBlob = (canvas, fileType, quality) =>
+    new Promise((resolve) => {
+      canvas.toBlob(resolve, fileType, quality);
+    });
+
+  const getCroppedImageVariantFiles = async (imageSrc, cropPixels, originalFilename) => {
     const image = await createImage(imageSrc);
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+    const canvases = PRODUCT_IMAGE_VARIANTS.map((variant) => {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
 
-    canvas.width = cropPixels.width;
-    canvas.height = cropPixels.height;
+      if (!context) {
+        throw new Error('Failed to create image canvas context');
+      }
 
-    context.drawImage(
-      image,
-      cropPixels.x,
-      cropPixels.y,
-      cropPixels.width,
-      cropPixels.height,
-      0,
-      0,
-      cropPixels.width,
-      cropPixels.height
+      canvas.width = variant.width;
+      canvas.height = variant.height;
+      context.drawImage(
+        image,
+        cropPixels.x,
+        cropPixels.y,
+        cropPixels.width,
+        cropPixels.height,
+        0,
+        0,
+        variant.width,
+        variant.height
+      );
+
+      return canvas;
+    });
+
+    let fileType = 'image/webp';
+    let blobs = await Promise.all(
+      canvases.map((canvas, index) => canvasToBlob(canvas, fileType, PRODUCT_IMAGE_VARIANTS[index].quality))
     );
 
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            reject(new Error('Failed to create cropped image blob'));
-            return;
-          }
-          resolve(blob);
-        },
-        fileType,
-        0.92
+    if (blobs.some((blob) => !blob || blob.type !== fileType)) {
+      fileType = 'image/jpeg';
+      blobs = await Promise.all(
+        canvases.map((canvas, index) => canvasToBlob(canvas, fileType, PRODUCT_IMAGE_VARIANTS[index].quality))
       );
-    });
+    }
+
+    if (blobs.some((blob) => !blob)) {
+      throw new Error('Failed to create optimized image variants');
+    }
+
+    const extension = fileType === 'image/webp' ? 'webp' : 'jpg';
+    const filenameBase = String(originalFilename || 'product-image').replace(/\.[^.]+$/, '');
+
+    return PRODUCT_IMAGE_VARIANTS.map((variant, index) => new File(
+      [blobs[index]],
+      `${filenameBase}-${variant.key}.${extension}`,
+      { type: fileType }
+    ));
+  };
+
+  const uploadImageVariants = async (imageSrc, cropPixels, originalFilename, folder) => {
+    const variantFiles = await getCroppedImageVariantFiles(imageSrc, cropPixels, originalFilename);
+    const uploadedUrls = await Promise.all(
+      variantFiles.map(async (file) => {
+        const presigned = await createPresignedUpload({
+          filename: file.name,
+          content_type: file.type,
+          folder,
+        });
+
+        await uploadFileToPresignedUrl(
+          presigned.upload_url,
+          file,
+          presigned.content_type
+        );
+
+        return presigned.file_url;
+      })
+    );
+
+    const [thumbUrl, cardUrl, detailUrl] = uploadedUrls;
+    return {
+      url: detailUrl,
+      thumb_url: thumbUrl,
+      card_url: cardUrl,
+      detail_url: detailUrl,
+    };
   };
 
   const closeDefaultImageCropModal = () => {
@@ -389,20 +447,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     }
 
     try {
-      const croppedBlob = await getCroppedImageBlob(
+      const uploaded = await uploadDefaultImageFile(
         pendingDefaultImageUrl,
         croppedAreaPixels,
-        pendingDefaultImageFile.type
+        pendingDefaultImageFile.name,
+        pendingDefaultImageIndex
       );
 
-      const croppedFile = new File(
-        [croppedBlob],
-        `cropped-${pendingDefaultImageFile.name}`,
-        { type: croppedBlob.type || pendingDefaultImageFile.type }
-      );
-
-      await uploadDefaultImageFile(croppedFile, pendingDefaultImageIndex);
-      closeDefaultImageCropModal();
+      if (uploaded) {
+        closeDefaultImageCropModal();
+      }
     } catch (error) {
       console.error('Error cropping default image:', error);
       toast.error('Failed to crop and upload image');
@@ -459,41 +513,24 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     setColorCroppedAreaPixels(croppedPixels);
   };
 
-  const uploadColorImageFile = async (file, colorIndex, imageIndex) => {
-    if (!file) return;
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
-      return;
-    }
-
-    const maxSizeBytes = 30 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      toast.error('Image size must be 30MB or less');
-      return;
-    }
-
+  const uploadColorImageFile = async (imageSrc, cropPixels, originalFilename, colorIndex, imageIndex) => {
     try {
       setUploadingColorImage(true);
 
-      const presigned = await createPresignedUpload({
-        filename: file.name,
-        content_type: file.type,
-        folder: 'products/colors',
-      });
-
-      await uploadFileToPresignedUrl(
-        presigned.upload_url,
-        file,
-        presigned.content_type
+      const image = await uploadImageVariants(
+        imageSrc,
+        cropPixels,
+        originalFilename,
+        'products/colors'
       );
 
-      updateColorImage(colorIndex, imageIndex, presigned.file_url);
+      updateColorImage(colorIndex, imageIndex, image);
       toast.success('Color image uploaded successfully');
+      return true;
     } catch (error) {
       console.error('Error uploading color image:', error);
       toast.error('Failed to upload color image');
+      return false;
     } finally {
       setUploadingColorImage(false);
     }
@@ -514,20 +551,17 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     }
 
     try {
-      const croppedBlob = await getCroppedImageBlob(
+      const uploaded = await uploadColorImageFile(
         pendingColorImageUrl,
         colorCroppedAreaPixels,
-        pendingColorImageFile.type
+        pendingColorImageFile.name,
+        colorIndex,
+        imageIndex
       );
 
-      const croppedFile = new File(
-        [croppedBlob],
-        `cropped-${pendingColorImageFile.name}`,
-        { type: croppedBlob.type || pendingColorImageFile.type }
-      );
-
-      await uploadColorImageFile(croppedFile, colorIndex, imageIndex);
-      closeColorImageCropModal();
+      if (uploaded) {
+        closeColorImageCropModal();
+      }
     } catch (error) {
       console.error('Error cropping color image:', error);
       toast.error('Failed to crop and upload color image');
@@ -542,41 +576,22 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     e.target.value = '';
   };
 
-  const uploadNewColorImageFile = async (file, imageIndex) => {
-    if (!file) return;
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
-      return;
-    }
-
-    const maxSizeBytes = 30 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      toast.error('Image size must be 30MB or less');
-      return;
-    }
-
+  const uploadNewColorImageFile = async (imageSrc, cropPixels, originalFilename, imageIndex) => {
     try {
       setUploadingColorImage(true);
 
-      const presigned = await createPresignedUpload({
-        filename: file.name,
-        content_type: file.type,
-        folder: 'products/colors',
-      });
-
-      await uploadFileToPresignedUrl(
-        presigned.upload_url,
-        file,
-        presigned.content_type
+      const image = await uploadImageVariants(
+        imageSrc,
+        cropPixels,
+        originalFilename,
+        'products/colors'
       );
 
       const nextImages = [...newColor.images];
       while (nextImages.length < 5) {
         nextImages.push('');
       }
-      nextImages[imageIndex] = presigned.file_url;
+      nextImages[imageIndex] = image;
 
       setNewColor((prev) => ({
         ...prev,
@@ -584,9 +599,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       }));
 
       toast.success('New color image uploaded successfully');
+      return true;
     } catch (error) {
       console.error('Error uploading new color image:', error);
       toast.error('Failed to upload new color image');
+      return false;
     } finally {
       setUploadingColorImage(false);
     }
@@ -662,20 +679,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     }
 
     try {
-      const croppedBlob = await getCroppedImageBlob(
+      const uploaded = await uploadNewColorImageFile(
         pendingNewColorImageUrl,
         newColorCroppedAreaPixels,
-        pendingNewColorImageFile.type
+        pendingNewColorImageFile.name,
+        pendingNewColorImageIndex
       );
 
-      const croppedFile = new File(
-        [croppedBlob],
-        `cropped-${pendingNewColorImageFile.name}`,
-        { type: croppedBlob.type || pendingNewColorImageFile.type }
-      );
-
-      await uploadNewColorImageFile(croppedFile, pendingNewColorImageIndex);
-      closeNewColorImageCropModal();
+      if (uploaded) {
+        closeNewColorImageCropModal();
+      }
     } catch (error) {
       console.error('Error cropping new color image:', error);
       toast.error('Failed to crop and upload new color image');
@@ -740,34 +753,15 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     });
   };
 
-  const uploadDefaultImageFile = async (file, replaceIndex = null) => {
-    if (!file) return;
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a JPG, PNG, WEBP, or GIF image');
-      return;
-    }
-
-    const maxSizeBytes = 30 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      toast.error('Image size must be 30MB or less');
-      return;
-    }
-
+  const uploadDefaultImageFile = async (imageSrc, cropPixels, originalFilename, replaceIndex = null) => {
     try {
       setUploadingDefaultImage(true);
 
-      const presigned = await createPresignedUpload({
-        filename: file.name,
-        content_type: file.type,
-        folder: 'products/default',
-      });
-
-      await uploadFileToPresignedUrl(
-        presigned.upload_url,
-        file,
-        presigned.content_type
+      const image = await uploadImageVariants(
+        imageSrc,
+        cropPixels,
+        originalFilename,
+        'products/default'
       );
 
       setFormData((prev) => {
@@ -775,7 +769,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
 
         if (typeof replaceIndex === 'number') {
           const nextImages = [...currentImages];
-          nextImages[replaceIndex] = presigned.file_url;
+          nextImages[replaceIndex] = image;
 
           return {
             ...prev,
@@ -790,14 +784,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
 
         return {
           ...prev,
-          images: [...currentImages, presigned.file_url].slice(0, 5),
+          images: [...currentImages, image].slice(0, 5),
         };
       });  
 
       toast.success('Image uploaded successfully');
+      return true;
     } catch (error) {
       console.error('Error uploading default image:', error);
       toast.error('Failed to upload image');
+      return false;
     } finally {
       setUploadingDefaultImage(false);
     }
@@ -1799,7 +1795,9 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                       {Array.from({ length: 5 }).map((_, imageIndex) => {
-                        const imageUrl = normalizeImageUrl(formData.images?.[imageIndex]);
+                        const image = formData.images?.[imageIndex];
+                        const imageUrl = getThumbImage(image);
+                        const recropImageUrl = normalizeImageUrl(image);
                         const imageCount = formData.images.filter(Boolean).length;
 
                         return (
@@ -1864,7 +1862,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                   size="sm"
                                   className="col-span-2"
                                   disabled={uploadingDefaultImage}
-                                  onClick={() => handleDefaultImageRecrop(imageUrl, imageIndex)}
+                                  onClick={() => handleDefaultImageRecrop(recropImageUrl, imageIndex)}
                                 >
                                   Re-crop
                                 </Button>
@@ -2376,7 +2374,9 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                             </Label>
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                               {[0, 1, 2, 3, 4].map((imageIndex) => {
-                                const imageUrl = normalizeImageUrl(color.images?.[imageIndex]);
+                                const image = color.images?.[imageIndex];
+                                const imageUrl = getThumbImage(image);
+                                const recropImageUrl = normalizeImageUrl(image);
                                 return (
                                     <div
                                       key={imageIndex}
@@ -2485,7 +2485,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                             size="sm"
                                             className="w-full h-7 text-xs"
                                             disabled={uploadingColorImage}
-                                            onClick={() => handleExistingColorImageRecrop(imageUrl, colorIndex, imageIndex)}
+                                            onClick={() => handleExistingColorImageRecrop(recropImageUrl, colorIndex, imageIndex)}
                                           >
                                             {uploadingColorImage ? 'Uploading...' : 'Re-crop'}
                                           </Button>
@@ -2713,7 +2713,9 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                           )}
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                             {[0, 1, 2, 3, 4].map((imageIndex) => {
-                              const imageUrl = newColor.images[imageIndex] || '';
+                              const image = newColor.images[imageIndex];
+                              const imageUrl = getThumbImage(image);
+                              const recropImageUrl = normalizeImageUrl(image);
 
                               return (
                                 <div key={imageIndex} className="space-y-2">
@@ -2790,7 +2792,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                         size="sm"
                                         className="w-full"
                                         disabled={uploadingColorImage}
-                                        onClick={() => handleNewColorImageRecrop(imageUrl, imageIndex)}
+                                        onClick={() => handleNewColorImageRecrop(recropImageUrl, imageIndex)}
                                       >
                                         {uploadingColorImage ? 'Uploading...' : 'Re-crop'}
                                       </Button>
