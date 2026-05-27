@@ -38,7 +38,7 @@ from core.constants import (
 )
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
 from services.admin_service import build_order_period_filter
-from services.cashfree_service import get_cashfree_order
+from services.cashfree_service import create_cashfree_refund, get_cashfree_order, get_cashfree_refund
 from services.coupon_service import increment_coupon_usage, validate_coupon
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_order_status_whatsapp
@@ -392,6 +392,14 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("refund_status", "none")
     order.setdefault("refund_amount", None)
     order.setdefault("refund_reason", None)
+    order.setdefault("refund_note", None)
+    order.setdefault("refund_id", None)
+    order.setdefault("cf_refund_id", None)
+    order.setdefault("cashfree_refund_status", None)
+    order.setdefault("refund_initiated_at", None)
+    order.setdefault("refund_completed_at", None)
+    order.setdefault("refund_failed_reason", None)
+    order.setdefault("refund_last_synced_at", None)
     order.setdefault("stock_restored_at", None)
     order.setdefault(
         "gift_packaging_amount",
@@ -1081,6 +1089,14 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "refund_status": "none",
         "refund_amount": None,
         "refund_reason": None,
+        "refund_note": None,
+        "refund_id": None,
+        "cf_refund_id": None,
+        "cashfree_refund_status": None,
+        "refund_initiated_at": None,
+        "refund_completed_at": None,
+        "refund_failed_reason": None,
+        "refund_last_synced_at": None,
         "stock_restored_at": None,
         "gift_packaging": bool(order.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
@@ -1234,6 +1250,14 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "refund_status": "none",
         "refund_amount": None,
         "refund_reason": None,
+        "refund_note": None,
+        "refund_id": None,
+        "cf_refund_id": None,
+        "cashfree_refund_status": None,
+        "refund_initiated_at": None,
+        "refund_completed_at": None,
+        "refund_failed_reason": None,
+        "refund_last_synced_at": None,
         "stock_restored_at": None,
         "gift_packaging": bool(order_payload.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
@@ -1929,6 +1953,143 @@ async def reject_order_cancellation(
 
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+
+def _generate_refund_id(order_id: str) -> str:
+    safe_order_id = "".join(char for char in order_id if char.isalnum())[:12] or "order"
+    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+    return f"refund_{safe_order_id}_{timestamp}"
+
+
+def _map_cashfree_refund_status(cashfree_data: dict) -> str:
+    provider_status = str(cashfree_data.get("refund_status") or "").strip().lower()
+    if provider_status in {"success", "completed", "successful"}:
+        return "success"
+    if provider_status == "processing":
+        return "processing"
+    if provider_status in {"pending", "accepted"}:
+        return "initiated"
+    if provider_status in {"failed", "cancelled", "canceled"}:
+        return "failed"
+    return "initiated"
+
+
+def _refund_provider_update_fields(cashfree_data: dict, synced_at: str) -> dict:
+    refund_status = _map_cashfree_refund_status(cashfree_data)
+    provider_status = cashfree_data.get("refund_status")
+    failure_reason = cashfree_data.get("status_description") or (
+        str(provider_status) if refund_status == "failed" and provider_status else None
+    )
+    return {
+        "cf_refund_id": cashfree_data.get("cf_refund_id"),
+        "cashfree_refund_status": provider_status,
+        "refund_status": refund_status,
+        "refund_completed_at": synced_at if refund_status == "success" else None,
+        "refund_failed_reason": failure_reason if refund_status == "failed" else None,
+        "refund_last_synced_at": synced_at,
+        "updated_at": synced_at,
+    }
+
+
+async def initiate_order_refund(order_id: str, admin_id: str):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order = _normalize_order_payment_defaults(order)
+
+    if order.get("status") != ORDER_STATUS_CANCELLED or order.get("cancellation_status") != "approved":
+        raise HTTPException(status_code=400, detail="Refunds can be initiated only for approved cancellations")
+    if order.get("payment_provider") != PAYMENT_PROVIDER_CASHFREE:
+        raise HTTPException(status_code=400, detail="Only Cashfree payments can be refunded here")
+    if order.get("payment_status") != PAYMENT_STATUS_PAID:
+        raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
+    if _round_money(order.get("refund_amount")) <= 0:
+        raise HTTPException(status_code=400, detail="Refund amount must be greater than zero")
+    if order.get("refund_id") or order.get("cf_refund_id"):
+        raise HTTPException(status_code=409, detail="A Cashfree refund has already been initiated for this order")
+    if order.get("refund_status") != "pending":
+        raise HTTPException(status_code=400, detail="Refund is not pending initiation")
+
+    now = _now_iso()
+    refund_id = _generate_refund_id(order_id)
+    refund_note = f"Cancellation refund for order {order_id}"
+    claim = await db.orders.update_one(
+        {
+            "id": order_id,
+            "status": ORDER_STATUS_CANCELLED,
+            "cancellation_status": "approved",
+            "payment_provider": PAYMENT_PROVIDER_CASHFREE,
+            "payment_status": PAYMENT_STATUS_PAID,
+            "refund_status": "pending",
+            "refund_id": {"$in": [None, ""]},
+            "cf_refund_id": {"$in": [None, ""]},
+        },
+        {
+            "$set": {
+                "refund_status": "initiated",
+                "refund_id": refund_id,
+                "refund_note": refund_note,
+                "refund_initiated_at": now,
+                "refund_failed_reason": None,
+                "updated_at": now,
+                "updated_by": admin_id,
+            }
+        },
+    )
+    if claim.modified_count == 0:
+        raise HTTPException(status_code=409, detail="A refund has already been initiated or is no longer eligible")
+
+    provider_order_id = order.get("cashfree_order_id") or order_id
+    try:
+        cashfree_data = create_cashfree_refund(
+            provider_order_id,
+            refund_id,
+            _round_money(order.get("refund_amount")),
+            refund_note,
+        )
+    except HTTPException as exc:
+        failure_reason = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
+        await db.orders.update_one(
+            {"id": order_id, "refund_id": refund_id},
+            {"$set": {"refund_status": "failed", "refund_failed_reason": failure_reason, "updated_at": _now_iso()}},
+        )
+        raise
+
+    synced_at = _now_iso()
+    update_fields = _refund_provider_update_fields(cashfree_data, synced_at)
+    update_fields["cf_refund_id"] = cashfree_data.get("cf_refund_id")
+    await db.orders.update_one(
+        {"id": order_id, "refund_id": refund_id},
+        {"$set": update_fields},
+    )
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+
+
+async def sync_order_refund(order_id: str, admin_id: str):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order = _normalize_order_payment_defaults(order)
+    if order.get("status") != ORDER_STATUS_CANCELLED or order.get("cancellation_status") != "approved":
+        raise HTTPException(status_code=400, detail="Refund status is available only for approved cancellations")
+    if order.get("payment_provider") != PAYMENT_PROVIDER_CASHFREE:
+        raise HTTPException(status_code=400, detail="Only Cashfree refunds can be synced here")
+    if not order.get("refund_id"):
+        raise HTTPException(status_code=400, detail="No Cashfree refund has been initiated for this order")
+
+    provider_order_id = order.get("cashfree_order_id") or order_id
+    cashfree_data = get_cashfree_refund(provider_order_id, order["refund_id"])
+    synced_at = _now_iso()
+    update_fields = _refund_provider_update_fields(cashfree_data, synced_at)
+    update_fields["cf_refund_id"] = cashfree_data.get("cf_refund_id") or order.get("cf_refund_id")
+    update_fields["updated_by"] = admin_id
+    await db.orders.update_one(
+        {"id": order_id, "refund_id": order["refund_id"]},
+        {"$set": update_fields},
+    )
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
 
 
 async def get_user_orders(user_id: str, limit: int = 100):

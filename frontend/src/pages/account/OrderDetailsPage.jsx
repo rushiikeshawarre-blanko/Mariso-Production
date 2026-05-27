@@ -168,6 +168,13 @@ const OrderDetailsPage = () => {
   const hasGiftedItems = hasItemGiftPackaging(order.items);
   const hasGiftPackaging = Boolean(order.gift_packaging || hasGiftedItems || Number(order.gift_packaging_amount || 0) > 0);
   const cancellationStatus = order.cancellation_status || 'none';
+  const refundStatusText = {
+    pending: 'Refund pending admin initiation',
+    initiated: 'Refund initiated',
+    processing: 'Refund initiated',
+    success: 'Refund completed',
+    failed: 'Refund failed, contact support',
+  }[order.refund_status];
   const placedAt = new Date(order.created_at).getTime();
   const cancellationWindowOpen = Number.isFinite(placedAt) && Date.now() <= placedAt + (60 * 60 * 1000);
   const isCancellationCandidate = (
@@ -217,7 +224,7 @@ const OrderDetailsPage = () => {
 
           {cancellationStatus === 'approved' && (
             <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-              Your cancellation request has been approved. Your refund is pending initiation.
+              Your cancellation request has been approved. {refundStatusText || 'Refund pending admin initiation'}.
             </p>
           )}
 

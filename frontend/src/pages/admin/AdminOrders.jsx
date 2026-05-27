@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { approveOrderCancellation, getAllOrders, rejectOrderCancellation, updateOrderStatus } from '../../lib/api';
+import {
+  approveOrderCancellation,
+  getAllOrders,
+  initiateOrderRefund,
+  rejectOrderCancellation,
+  syncOrderRefund,
+  updateOrderStatus,
+} from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -130,6 +137,7 @@ const AdminOrders = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState('');
   const [updatingCancellation, setUpdatingCancellation] = useState(false);
+  const [updatingRefund, setUpdatingRefund] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -198,6 +206,28 @@ const AdminOrders = () => {
       toast.error(error?.response?.data?.detail || 'Failed to update cancellation request');
     } finally {
       setUpdatingCancellation(false);
+    }
+  };
+
+  const handleRefundAction = async (action) => {
+    if (!selectedOrder?.id) return;
+
+    setUpdatingRefund(true);
+    try {
+      const updatedOrder = action === 'initiate'
+        ? await initiateOrderRefund(selectedOrder.id)
+        : await syncOrderRefund(selectedOrder.id);
+      setSelectedOrder((current) => ({ ...current, ...updatedOrder }));
+      toast.success(action === 'initiate' ? 'Refund initiated' : 'Refund status synced');
+      fetchOrders();
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(
+        (typeof detail === 'string' ? detail : detail?.message) ||
+        (action === 'initiate' ? 'Failed to initiate refund' : 'Failed to sync refund status')
+      );
+    } finally {
+      setUpdatingRefund(false);
     }
   };
 
@@ -493,6 +523,18 @@ const AdminOrders = () => {
                     {selectedOrder.refund_amount !== null && selectedOrder.refund_amount !== undefined && (
                       <p><span className="text-amber-800">Refund Amount:</span> {formatINR(selectedOrder.refund_amount)}</p>
                     )}
+                    {selectedOrder.refund_id && (
+                      <p className="break-all"><span className="text-amber-800">Refund ID:</span> {selectedOrder.refund_id}</p>
+                    )}
+                    {selectedOrder.cf_refund_id && (
+                      <p className="break-all"><span className="text-amber-800">Cashfree Refund ID:</span> {selectedOrder.cf_refund_id}</p>
+                    )}
+                    {selectedOrder.cashfree_refund_status && (
+                      <p><span className="text-amber-800">Cashfree Status:</span> {formatAdminValue(selectedOrder.cashfree_refund_status)}</p>
+                    )}
+                    {selectedOrder.refund_failed_reason && (
+                      <p><span className="text-amber-800">Failure Reason:</span> {selectedOrder.refund_failed_reason}</p>
+                    )}
                     {selectedOrder.cancellation_admin_note && selectedOrder.cancellation_status !== 'requested' && (
                       <p><span className="text-amber-800">Admin Note:</span> {selectedOrder.cancellation_admin_note}</p>
                     )}
@@ -524,10 +566,39 @@ const AdminOrders = () => {
                         </Button>
                       </div>
                       <p className="text-xs text-amber-800">
-                        Approval marks the refund as pending. No refund is initiated from this screen.
+                        Approval marks the refund as pending. Refund initiation remains a separate admin action.
                       </p>
                     </div>
                   )}
+
+                  {selectedOrder.status === 'cancelled' &&
+                    selectedOrder.cancellation_status === 'approved' &&
+                    selectedOrder.refund_status === 'pending' &&
+                    !selectedOrder.refund_id && (
+                      <div className="mt-4">
+                        <Button
+                          type="button"
+                          onClick={() => handleRefundAction('initiate')}
+                          disabled={updatingRefund}
+                        >
+                          {updatingRefund ? 'Initiating...' : 'Initiate Refund'}
+                        </Button>
+                      </div>
+                    )}
+
+                  {selectedOrder.refund_id &&
+                    ['initiated', 'processing', 'failed'].includes(selectedOrder.refund_status) && (
+                      <div className="mt-4">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleRefundAction('sync')}
+                          disabled={updatingRefund}
+                        >
+                          {updatingRefund ? 'Syncing...' : 'Sync Refund Status'}
+                        </Button>
+                      </div>
+                    )}
                 </div>
               )}
 

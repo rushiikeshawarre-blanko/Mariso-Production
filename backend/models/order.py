@@ -88,6 +88,14 @@ class OrderPaymentFields(BaseModel):
     refund_status: str = "none"
     refund_amount: Optional[float] = None
     refund_reason: Optional[str] = None
+    refund_note: Optional[str] = None
+    refund_id: Optional[str] = None
+    cf_refund_id: Optional[str] = None
+    cashfree_refund_status: Optional[str] = None
+    refund_initiated_at: Optional[str] = None
+    refund_completed_at: Optional[str] = None
+    refund_failed_reason: Optional[str] = None
+    refund_last_synced_at: Optional[str] = None
     stock_restored_at: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):

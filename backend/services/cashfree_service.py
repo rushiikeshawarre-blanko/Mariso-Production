@@ -192,6 +192,18 @@ def _normalize_cashfree_get_order_response(data: dict) -> dict:
     }
 
 
+def _normalize_cashfree_refund_response(data: dict) -> dict:
+    return {
+        "refund_id": data.get("refund_id"),
+        "cf_refund_id": data.get("cf_refund_id"),
+        "refund_status": data.get("refund_status") or data.get("status"),
+        "refund_amount": data.get("refund_amount"),
+        "refund_note": data.get("refund_note"),
+        "refund_arn": data.get("refund_arn"),
+        "status_description": data.get("status_description") or data.get("refund_message"),
+    }
+
+
 def _sanitize_for_log(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized = {}
@@ -375,3 +387,72 @@ def get_cashfree_order(order_id: str) -> dict:
         raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
 
     return _normalize_cashfree_get_order_response(data)
+
+
+def create_cashfree_refund(order_id: str, refund_id: str, amount: float, note: str) -> dict:
+    idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mariso:cashfree:create-refund:{refund_id}"))
+    headers = _build_cashfree_headers(idempotency_key)
+    rounded_amount = round(float(amount or 0), 2)
+    payload = {
+        "refund_amount": rounded_amount,
+        "refund_id": refund_id,
+        "refund_note": note,
+        "refund_speed": "STANDARD",
+    }
+
+    try:
+        response = requests.post(
+            f"{CASHFREE_BASE_URL}/orders/{order_id}/refunds",
+            json=payload,
+            headers=headers,
+            timeout=CASHFREE_TIMEOUT_SECONDS,
+        )
+    except requests.Timeout:
+        logger.warning("Cashfree create refund timed out for order_id=%s refund_id=%s", order_id, refund_id)
+        raise HTTPException(status_code=504, detail="Cashfree create refund timed out")
+    except requests.RequestException:
+        logger.exception("Cashfree create refund request failed for order_id=%s refund_id=%s", order_id, refund_id)
+        raise HTTPException(status_code=502, detail="Cashfree create refund request failed")
+
+    if response.status_code >= 400:
+        _raise_cashfree_error(
+            response,
+            order_id=order_id,
+            order_amount=rounded_amount,
+            operation="create refund",
+        )
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
+
+    return _normalize_cashfree_refund_response(data)
+
+
+def get_cashfree_refund(order_id: str, refund_id: str) -> dict:
+    idempotency_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mariso:cashfree:get-refund:{refund_id}"))
+    headers = _build_cashfree_headers(idempotency_key)
+
+    try:
+        response = requests.get(
+            f"{CASHFREE_BASE_URL}/orders/{order_id}/refunds/{refund_id}",
+            headers=headers,
+            timeout=CASHFREE_TIMEOUT_SECONDS,
+        )
+    except requests.Timeout:
+        logger.warning("Cashfree get refund timed out for order_id=%s refund_id=%s", order_id, refund_id)
+        raise HTTPException(status_code=504, detail="Cashfree get refund timed out")
+    except requests.RequestException:
+        logger.exception("Cashfree get refund request failed for order_id=%s refund_id=%s", order_id, refund_id)
+        raise HTTPException(status_code=502, detail="Cashfree get refund request failed")
+
+    if response.status_code >= 400:
+        _raise_cashfree_error(response, order_id=order_id, operation="get refund")
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
+
+    return _normalize_cashfree_refund_response(data)

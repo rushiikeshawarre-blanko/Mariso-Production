@@ -708,6 +708,26 @@ export const rejectOrderCancellation = async (orderId, note) => {
   }
 };
 
+export const initiateOrderRefund = async (orderId) => {
+  try {
+    const response = await axiosInstance.post(`/orders/admin/${orderId}/refund/initiate`);
+    return response.data;
+  } catch (error) {
+    console.error('Error initiating order refund:', error);
+    throw error;
+  }
+};
+
+export const syncOrderRefund = async (orderId) => {
+  try {
+    const response = await axiosInstance.post(`/orders/admin/${orderId}/refund/sync`);
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing order refund:', error);
+    throw error;
+  }
+};
+
 export const getCustomers = async () => {
   try {
     const response = await axiosInstance.get(`/admin/customers`);
