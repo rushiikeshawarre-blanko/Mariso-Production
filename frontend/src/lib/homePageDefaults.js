@@ -46,7 +46,7 @@ const HOME_PAGE_ADMIN_DEFAULTS = {
       'At Mariso, we believe in the beauty of imperfection. Each candle is hand-poured with care, ensuring no two pieces are exactly alike. Our jesmonite coasters and containers are crafted using eco-friendly materials, designed to be treasured long after the last flame.',
       'Every Mariso container is thoughtfully designed to be reused as décor or storage once the candle has finished, embodying our commitment to sustainable luxury.',
     ],
-    button_label: 'Learn More',
+    button_label: 'Read Our Story',
     button_link: '/about',
     image: 'https://images.unsplash.com/photo-1662845114342-256fdc45981d?crop=entropy&cs=srgb&fm=jpg&q=85',
     floating_badge_text: '100% Handcrafted',

@@ -330,6 +330,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
     : marqueeTestimonials;
   const heroButtons = sortedActiveItems(homepageContent.hero.buttons);
   const storyButtonLabel = String(homepageContent.crafted_with_intention.button_label || '').trim() || defaults.crafted_with_intention.button_label;
+  const storyButtonAriaLabel = /^learn more$/i.test(storyButtonLabel) ? 'Read Our Story' : storyButtonLabel;
   const configuredCategoryCards = Array.isArray(homepageContent.shop_by_category.cards)
     ? homepageContent.shop_by_category.cards
     : [];
@@ -606,7 +607,11 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
               </div>
               {getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link) ? (
               <Button asChild className="btn-secondary mt-8">
-                <ContentLink href={getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link)} data-testid="story-learn-more">
+                <ContentLink
+                  href={getSafeLink(homepageContent.crafted_with_intention.button_link, defaults.crafted_with_intention.button_link)}
+                  aria-label={storyButtonAriaLabel}
+                  data-testid="story-learn-more"
+                >
                   {storyButtonLabel}
                   <ArrowRight className="ml-2 h-4 w-4" strokeWidth={1.5} />
                 </ContentLink>
