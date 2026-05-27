@@ -513,8 +513,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 {activeCategoryCards.map((card, index) => {
                   const target = getSafeLink(card.link);
                   const cardClass = `group relative overflow-hidden rounded-[1.25rem] shadow-[0_8px_30px_rgba(0,0,0,0.06)] ${getCategoryCardClass(categoryTemplate, index)}`;
+                  const isFeaturedCategoryCard = Boolean(getCategoryCardClass(categoryTemplate, index));
                   const content = (
-                    <div className={`relative ${getCategoryCardClass(categoryTemplate, index) ? 'aspect-square md:aspect-[16/9]' : 'aspect-[4/3]'}`}>
+                    <div className={`relative ${isFeaturedCategoryCard ? 'h-full min-h-[18rem] aspect-square md:aspect-auto' : 'aspect-[4/3]'}`}>
                       <img
                         src={getSafeMediaUrl(card.image, defaultCategoryImage)}
                         alt={card.title}
@@ -553,7 +554,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                   }`}
                   data-testid={`category-card-${category.id}`}
                 >
-                  <div className={`relative ${index === 0 ? 'aspect-square md:aspect-[16/9]' : 'aspect-[4/3]'}`}>
+                  <div className={`relative ${index === 0 ? 'h-full min-h-[18rem] aspect-square md:aspect-auto' : 'aspect-[4/3]'}`}>
                     <img
                       src={category.image || defaultCategoryImage}
                       alt={category.name}
