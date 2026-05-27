@@ -79,6 +79,39 @@ class OrderPaymentFields(BaseModel):
     coupon_snapshot: Optional[dict] = None
     coupon_usage_recorded: bool = False
     payment_events: List[dict] = Field(default_factory=list)
+    cancellation_status: str = "none"
+    cancellation_requested_at: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    cancellation_admin_note: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    cancelled_by: Optional[str] = None
+    refund_status: str = "none"
+    refund_amount: Optional[float] = None
+    refund_reason: Optional[str] = None
+    stock_restored_at: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):
     status: str
+
+
+class OrderCancellationRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Cancellation reason is required")
+        return normalized
+
+
+class OrderCancellationDecision(BaseModel):
+    note: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("note")
+    @classmethod
+    def normalize_note(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.strip() or None

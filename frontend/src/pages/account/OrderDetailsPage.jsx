@@ -3,9 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { getCashfreePaymentStatus, getOrder } from "../../lib/api";
+import { getCashfreePaymentStatus, getOrder, requestOrderCancellation } from "../../lib/api";
 import { formatINR } from "../../lib/currency";
 import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Textarea } from "../../components/ui/textarea";
 
 const ORDER_ITEM_IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
@@ -42,6 +44,9 @@ const OrderDetailsPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [checkingPaymentStatus, setCheckingPaymentStatus] = useState(false);
   const [paymentStatusError, setPaymentStatusError] = useState('');
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [submittingCancellation, setSubmittingCancellation] = useState(false);
 
   const statusSteps = ["pending", "confirmed", "packed", "shipped", "delivered"];
 
@@ -118,6 +123,24 @@ const OrderDetailsPage = () => {
     }
   };
 
+  const handleCancellationRequest = async (event) => {
+    event.preventDefault();
+    if (!order?.id || !cancellationReason.trim()) return;
+
+    setSubmittingCancellation(true);
+    try {
+      const updatedOrder = await requestOrderCancellation(order.id, cancellationReason.trim());
+      setOrder(updatedOrder);
+      setCancelDialogOpen(false);
+      setCancellationReason('');
+      toast.success('Cancellation request submitted. Refund will be initiated after admin approval.');
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Unable to submit cancellation request.');
+    } finally {
+      setSubmittingCancellation(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-10 px-4">
@@ -144,6 +167,16 @@ const OrderDetailsPage = () => {
   const orderShortId = order.id?.slice(0, 8).toUpperCase();
   const hasGiftedItems = hasItemGiftPackaging(order.items);
   const hasGiftPackaging = Boolean(order.gift_packaging || hasGiftedItems || Number(order.gift_packaging_amount || 0) > 0);
+  const cancellationStatus = order.cancellation_status || 'none';
+  const placedAt = new Date(order.created_at).getTime();
+  const cancellationWindowOpen = Number.isFinite(placedAt) && Date.now() <= placedAt + (60 * 60 * 1000);
+  const isCancellationCandidate = (
+    order.status === 'confirmed' &&
+    order.payment_status === 'paid' &&
+    !['requested', 'approved'].includes(cancellationStatus)
+  );
+  const canRequestCancellation = isCancellationCandidate && cancellationWindowOpen;
+  const cancellationWindowExpired = isCancellationCandidate && !cancellationWindowOpen;
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -171,6 +204,43 @@ const OrderDetailsPage = () => {
           </span>
         </div>
       </div>
+
+      {(canRequestCancellation || cancellationWindowExpired || cancellationStatus !== 'none') && (
+        <div className="bg-white rounded-2xl border border-border p-6 mb-6">
+          <h2 className="font-heading text-xl mb-3">Cancellation</h2>
+
+          {cancellationStatus === 'requested' && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Cancellation request submitted. Refund will be initiated after admin approval.
+            </p>
+          )}
+
+          {cancellationStatus === 'approved' && (
+            <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+              Your cancellation request has been approved. Your refund is pending initiation.
+            </p>
+          )}
+
+          {cancellationStatus === 'rejected' && (
+            <div className="mb-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-800">
+              <p>Your cancellation request was not approved.</p>
+              {order.cancellation_admin_note && <p className="mt-2">Note: {order.cancellation_admin_note}</p>}
+            </div>
+          )}
+
+          {cancellationWindowExpired && (
+            <p className="text-sm text-muted-foreground">
+              Cancellation window expired. Please contact support.
+            </p>
+          )}
+
+          {canRequestCancellation && (
+            <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(true)}>
+              Request Cancellation
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-border p-6 mb-6">
         <h2 className="font-heading text-xl mb-4">Order Status</h2>
@@ -375,6 +445,35 @@ const OrderDetailsPage = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Request Cancellation</DialogTitle>
+            <DialogDescription>
+              Tell us why you want to cancel this order. Refunds are initiated only after admin approval.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4 mt-2" onSubmit={handleCancellationRequest}>
+            <Textarea
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              placeholder="Ordered by mistake"
+              maxLength={500}
+              required
+              data-testid="cancellation-reason"
+            />
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(false)}>
+                Keep Order
+              </Button>
+              <Button type="submit" disabled={submittingCancellation || !cancellationReason.trim()}>
+                {submittingCancellation ? 'Submitting...' : 'Submit Request'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

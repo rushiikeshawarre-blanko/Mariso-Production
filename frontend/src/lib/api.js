@@ -570,6 +570,16 @@ export const getOrder = async (id) => {
   }
 };
 
+export const requestOrderCancellation = async (orderId, reason) => {
+  try {
+    const response = await axiosInstance.post(`/orders/${orderId}/cancel-request`, { reason });
+    return response.data;
+  } catch (error) {
+    console.error('Error requesting order cancellation:', error);
+    throw error;
+  }
+};
+
 // Wishlist
 export const addToWishlist = async (productId) => {
   try {
@@ -674,6 +684,26 @@ export const updateOrderStatus = async (orderId, status) => {
     return response.data;
   } catch (error) {
     console.error('Error updating order status:', error);
+    throw error;
+  }
+};
+
+export const approveOrderCancellation = async (orderId, note) => {
+  try {
+    const response = await axiosInstance.post(`/orders/admin/${orderId}/cancellation/approve`, { note });
+    return response.data;
+  } catch (error) {
+    console.error('Error approving order cancellation:', error);
+    throw error;
+  }
+};
+
+export const rejectOrderCancellation = async (orderId, note) => {
+  try {
+    const response = await axiosInstance.post(`/orders/admin/${orderId}/cancellation/reject`, { note });
+    return response.data;
+  } catch (error) {
+    console.error('Error rejecting order cancellation:', error);
     throw error;
   }
 };

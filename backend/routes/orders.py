@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
-from models.order import OrderCreate, OrderStatusUpdate
+from models.order import OrderCancellationDecision, OrderCancellationRequest, OrderCreate, OrderStatusUpdate
 from core.auth import get_current_user, get_admin_user
 from services.order_service import (
     create_order,
@@ -9,6 +9,9 @@ from services.order_service import (
     get_order,
     get_all_orders,
     update_order_status,
+    request_order_cancellation,
+    approve_order_cancellation,
+    reject_order_cancellation,
 )
 
 router = APIRouter(prefix="/api", tags=["orders"])
@@ -34,6 +37,15 @@ async def get_order_route(order_id: str, user: dict = Depends(get_current_user))
     return await get_order(order_id, user)
 
 
+@router.post("/orders/{order_id}/cancel-request", response_model=dict)
+async def request_order_cancellation_route(
+    order_id: str,
+    request: OrderCancellationRequest,
+    user: dict = Depends(get_current_user),
+):
+    return await request_order_cancellation(order_id, request, user["id"])
+
+
 @router.get("/admin/orders", response_model=List[dict])
 async def get_all_orders_route(
     period: str = Query("all"),
@@ -41,11 +53,13 @@ async def get_all_orders_route(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     order_status: Optional[str] = None,
+    cancellation_status: Optional[str] = None,
     limit: int = 1000,
     admin: dict = Depends(get_admin_user),
 ):
     return await get_all_orders(
         order_status=order_status,
+        cancellation_status=cancellation_status,
         period=period,
         month=month,
         start_date=start_date,
@@ -57,3 +71,21 @@ async def get_all_orders_route(
 @router.put("/admin/orders/{order_id}/status", response_model=dict)
 async def update_order_status_route(order_id: str, status_update: OrderStatusUpdate, admin: dict = Depends(get_admin_user)):
     return await update_order_status(order_id, status_update, admin["id"])
+
+
+@router.post("/orders/admin/{order_id}/cancellation/approve", response_model=dict)
+async def approve_order_cancellation_route(
+    order_id: str,
+    decision: OrderCancellationDecision,
+    admin: dict = Depends(get_admin_user),
+):
+    return await approve_order_cancellation(order_id, decision, admin["id"])
+
+
+@router.post("/orders/admin/{order_id}/cancellation/reject", response_model=dict)
+async def reject_order_cancellation_route(
+    order_id: str,
+    decision: OrderCancellationDecision,
+    admin: dict = Depends(get_admin_user),
+):
+    return await reject_order_cancellation(order_id, decision, admin["id"])

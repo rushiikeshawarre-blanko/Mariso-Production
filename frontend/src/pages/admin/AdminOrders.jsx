@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getAllOrders, updateOrderStatus } from '../../lib/api';
+import { approveOrderCancellation, getAllOrders, rejectOrderCancellation, updateOrderStatus } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../components/ui/dialog';
+import { Textarea } from '../../components/ui/textarea';
 import { Eye, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatINR } from '../../lib/currency';
@@ -50,6 +51,7 @@ const STATUS_FILTERS = [
   { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'cancellation_requested', label: 'Cancellation Requested' },
 ];
 
 const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || 'Unknown Status';
@@ -126,12 +128,15 @@ const AdminOrders = () => {
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [cancellationNote, setCancellationNote] = useState('');
+  const [updatingCancellation, setUpdatingCancellation] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       const params = {
-        ...(statusFilter !== 'all' ? { order_status: statusFilter } : {}),
+        ...(statusFilter !== 'all' && statusFilter !== 'cancellation_requested' ? { order_status: statusFilter } : {}),
+        ...(statusFilter === 'cancellation_requested' ? { cancellation_status: 'requested' } : {}),
         period: 'all',
       };
 
@@ -174,6 +179,25 @@ const AdminOrders = () => {
       }
     } catch (error) {
       toast.error('Failed to update status');
+    }
+  };
+
+  const handleCancellationDecision = async (decision) => {
+    if (!selectedOrder?.id) return;
+
+    setUpdatingCancellation(true);
+    try {
+      const updatedOrder = decision === 'approve'
+        ? await approveOrderCancellation(selectedOrder.id, cancellationNote.trim() || null)
+        : await rejectOrderCancellation(selectedOrder.id, cancellationNote.trim() || null);
+      setSelectedOrder((current) => ({ ...current, ...updatedOrder }));
+      setCancellationNote('');
+      toast.success(`Cancellation request ${decision === 'approve' ? 'approved' : 'rejected'}`);
+      fetchOrders();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to update cancellation request');
+    } finally {
+      setUpdatingCancellation(false);
     }
   };
 
@@ -235,6 +259,7 @@ const AdminOrders = () => {
 
   const viewOrder = (order) => {
     setSelectedOrder(order);
+    setCancellationNote(order.cancellation_admin_note || '');
     setDialogOpen(true);
   };
 
@@ -381,24 +406,32 @@ const AdminOrders = () => {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={order.status}
-                      onValueChange={(value) => handleStatusChange(order.id, value)}
-                    >
-                      <SelectTrigger className={`h-8 w-[170px] text-xs ${getStatusColor(order.status)}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={order.status}>
-                          {getOrderStatusLabel(order.status)}
-                        </SelectItem>
-                        {allowedTransitions[order.status]?.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {getOrderStatusLabel(status)}
+                    <div className="space-y-2">
+                      {order.cancellation_status === 'requested' && (
+                        <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                          Cancellation Requested
+                        </span>
+                      )}
+                      <Select
+                        value={order.status}
+                        onValueChange={(value) => handleStatusChange(order.id, value)}
+                        disabled={order.cancellation_status === 'requested'}
+                      >
+                        <SelectTrigger className={`h-8 w-[170px] text-xs ${getStatusColor(order.status)}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={order.status}>
+                            {getOrderStatusLabel(order.status)}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          {allowedTransitions[order.status]?.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {getOrderStatusLabel(status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(order.created_at).toLocaleDateString()}
@@ -446,6 +479,55 @@ const AdminOrders = () => {
               {selectedOrder.status === 'paid_stock_issue' && (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-900">
                   Payment received, but stock could not be safely confirmed. Please review manually before packing or shipping.
+                </div>
+              )}
+
+              {selectedOrder.cancellation_status && selectedOrder.cancellation_status !== 'none' && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <h4 className="font-medium mb-3">Cancellation Request</h4>
+                  <div className="space-y-2">
+                    <p><span className="text-amber-800">Status:</span> {formatAdminValue(selectedOrder.cancellation_status)}</p>
+                    <p><span className="text-amber-800">Refund Status:</span> {formatAdminValue(selectedOrder.refund_status)}</p>
+                    <p><span className="text-amber-800">Reason:</span> {formatAdminValue(selectedOrder.cancellation_reason)}</p>
+                    <p><span className="text-amber-800">Requested At:</span> {formatAdminDate(selectedOrder.cancellation_requested_at)}</p>
+                    {selectedOrder.refund_amount !== null && selectedOrder.refund_amount !== undefined && (
+                      <p><span className="text-amber-800">Refund Amount:</span> {formatINR(selectedOrder.refund_amount)}</p>
+                    )}
+                    {selectedOrder.cancellation_admin_note && selectedOrder.cancellation_status !== 'requested' && (
+                      <p><span className="text-amber-800">Admin Note:</span> {selectedOrder.cancellation_admin_note}</p>
+                    )}
+                  </div>
+
+                  {selectedOrder.cancellation_status === 'requested' && (
+                    <div className="mt-4 space-y-3">
+                      <Textarea
+                        value={cancellationNote}
+                        onChange={(event) => setCancellationNote(event.target.value)}
+                        placeholder="Optional note to customer"
+                        maxLength={500}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          onClick={() => handleCancellationDecision('approve')}
+                          disabled={updatingCancellation}
+                        >
+                          {updatingCancellation ? 'Updating...' : 'Approve Cancellation'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleCancellationDecision('reject')}
+                          disabled={updatingCancellation}
+                        >
+                          Reject Request
+                        </Button>
+                      </div>
+                      <p className="text-xs text-amber-800">
+                        Approval marks the refund as pending. No refund is initiated from this screen.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

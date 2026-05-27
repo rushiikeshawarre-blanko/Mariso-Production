@@ -1,6 +1,12 @@
 from fastapi import HTTPException
 from typing import Optional, List, Dict
-from models.order import CashfreeCheckoutCreate, OrderCreate, OrderStatusUpdate
+from models.order import (
+    CashfreeCheckoutCreate,
+    OrderCancellationDecision,
+    OrderCancellationRequest,
+    OrderCreate,
+    OrderStatusUpdate,
+)
 from models.coupon import CouponValidationItem, CouponValidationRequest, normalize_coupon_code
 from core.database import db
 from core.config import STOCK_RESERVATION_MINUTES
@@ -14,6 +20,9 @@ from core.constants import (
     GIFT_PACKAGING_PRICE,
     MAX_LIMIT,
     ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_CANCELLED,
+    ORDER_STATUS_DELIVERED,
+    ORDER_STATUS_SHIPPED,
     ORDER_STATUS_PAID_STOCK_ISSUE,
     ORDER_STATUS_PAYMENT_EXPIRED,
     ORDER_STATUS_PAYMENT_FAILED,
@@ -40,6 +49,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 STALE_PENDING_SYNC_LIMIT = 25
+CANCELLATION_WINDOW = timedelta(hours=1)
 
 
 def _now_iso() -> str:
@@ -373,6 +383,16 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("billing_address_2", None)
     order.setdefault("billing_state", None)
     order.setdefault("billing_country", None)
+    order.setdefault("cancellation_status", "none")
+    order.setdefault("cancellation_requested_at", None)
+    order.setdefault("cancellation_reason", None)
+    order.setdefault("cancellation_admin_note", None)
+    order.setdefault("cancelled_at", None)
+    order.setdefault("cancelled_by", None)
+    order.setdefault("refund_status", "none")
+    order.setdefault("refund_amount", None)
+    order.setdefault("refund_reason", None)
+    order.setdefault("stock_restored_at", None)
     order.setdefault(
         "gift_packaging_amount",
         GIFT_PACKAGING_PRICE if order.get("gift_packaging") else 0,
@@ -1052,6 +1072,16 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
         "payment_events": [],
+        "cancellation_status": "none",
+        "cancellation_requested_at": None,
+        "cancellation_reason": None,
+        "cancellation_admin_note": None,
+        "cancelled_at": None,
+        "cancelled_by": None,
+        "refund_status": "none",
+        "refund_amount": None,
+        "refund_reason": None,
+        "stock_restored_at": None,
         "gift_packaging": bool(order.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
         "total_price": final_total,
@@ -1195,6 +1225,16 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
                 stock_reserved_until=reserved_until,
             )
         ],
+        "cancellation_status": "none",
+        "cancellation_requested_at": None,
+        "cancellation_reason": None,
+        "cancellation_admin_note": None,
+        "cancelled_at": None,
+        "cancelled_by": None,
+        "refund_status": "none",
+        "refund_amount": None,
+        "refund_reason": None,
+        "stock_restored_at": None,
         "gift_packaging": bool(order_payload.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
         "coupon_code": coupon_amounts["coupon_code"],
@@ -1701,6 +1741,196 @@ async def sync_stale_pending_orders(extra_filter: Optional[dict] = None, limit: 
             logger.exception("Cashfree stale pending sync failed for order_id=%s", order_id)
 
 
+async def request_order_cancellation(
+    order_id: str,
+    request: OrderCancellationRequest,
+    user_id: str,
+):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this order")
+
+    order = _normalize_order_payment_defaults(order)
+    if order.get("status") != ORDER_STATUS_CONFIRMED:
+        raise HTTPException(status_code=400, detail="Only confirmed orders can be cancelled")
+    if order.get("payment_status") != PAYMENT_STATUS_PAID:
+        raise HTTPException(status_code=400, detail="Only paid orders can be cancelled")
+    if order.get("cancellation_status") in {"requested", "approved"}:
+        raise HTTPException(status_code=400, detail="A cancellation request already exists for this order")
+
+    created_at = _parse_iso_datetime(order.get("created_at"))
+    if not created_at or datetime.now(timezone.utc) - created_at > CANCELLATION_WINDOW:
+        raise HTTPException(status_code=400, detail="Cancellation window expired. Please contact support.")
+
+    now = _now_iso()
+    result = await db.orders.update_one(
+        {
+            "id": order_id,
+            "user_id": user_id,
+            "status": ORDER_STATUS_CONFIRMED,
+            "$or": [
+                {"payment_status": PAYMENT_STATUS_PAID},
+                {"payment_status": {"$exists": False}},
+            ],
+            "cancellation_status": {"$nin": ["requested", "approved"]},
+        },
+        {
+            "$set": {
+                "cancellation_status": "requested",
+                "cancellation_requested_at": now,
+                "cancellation_reason": request.reason,
+                "cancellation_admin_note": None,
+                "updated_at": now,
+            }
+        },
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Order is no longer eligible for cancellation")
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+
+
+async def _restore_cancelled_order_stock(order: dict) -> dict:
+    if not order.get("stock_deducted") or order.get("stock_restored_at"):
+        return order
+
+    order_id = order["id"]
+    now = _now_iso()
+    claim = await db.orders.update_one(
+        {
+            "id": order_id,
+            "cancellation_status": "approved",
+            "stock_deducted": {"$ne": False},
+            "stock_restored_at": {"$in": [None, ""]},
+            "cancellation_stock_restore_transition": {"$exists": False},
+        },
+        {
+            "$set": {
+                "cancellation_stock_restore_transition": "restoring",
+                "updated_at": now,
+            }
+        },
+    )
+    if claim.modified_count == 0:
+        current_order = await _fetch_normalized_order(order_id, order)
+        if current_order.get("stock_restored_at"):
+            return current_order
+        raise HTTPException(status_code=409, detail="Cancellation stock restoration is already in progress")
+
+    try:
+        await _move_reserved_stock(order, reserved_delta=0, stock_delta=1)
+    except Exception:
+        await db.orders.update_one(
+            {"id": order_id, "cancellation_stock_restore_transition": "restoring"},
+            {
+                "$unset": {"cancellation_stock_restore_transition": ""},
+                "$set": {"updated_at": _now_iso()},
+            },
+        )
+        raise
+
+    restored_at = _now_iso()
+    await db.orders.update_one(
+        {"id": order_id, "cancellation_stock_restore_transition": "restoring"},
+        {
+            "$set": {
+                "stock_restored_at": restored_at,
+                "updated_at": restored_at,
+            },
+            "$unset": {"cancellation_stock_restore_transition": ""},
+        },
+    )
+    return await _fetch_normalized_order(order_id, order)
+
+
+async def approve_order_cancellation(
+    order_id: str,
+    decision: OrderCancellationDecision,
+    admin_id: str,
+):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order = _normalize_order_payment_defaults(order)
+
+    can_retry_stock_restore = (
+        order.get("cancellation_status") == "approved"
+        and order.get("status") == ORDER_STATUS_CANCELLED
+        and order.get("stock_deducted")
+        and not order.get("stock_restored_at")
+    )
+    if not can_retry_stock_restore:
+        if order.get("cancellation_status") != "requested":
+            raise HTTPException(status_code=400, detail="Cancellation request is not pending approval")
+        if order.get("status") in {ORDER_STATUS_SHIPPED, ORDER_STATUS_DELIVERED}:
+            raise HTTPException(status_code=400, detail="Shipped or delivered orders cannot be cancelled")
+
+        now = _now_iso()
+        refund_amount = _round_money(order.get("total_after_discount", order.get("total_price", 0)))
+        result = await db.orders.update_one(
+            {
+                "id": order_id,
+                "cancellation_status": "requested",
+                "status": {"$nin": [ORDER_STATUS_SHIPPED, ORDER_STATUS_DELIVERED, ORDER_STATUS_CANCELLED]},
+            },
+            {
+                "$set": {
+                    "cancellation_status": "approved",
+                    "cancellation_admin_note": decision.note,
+                    "status": ORDER_STATUS_CANCELLED,
+                    "cancelled_at": now,
+                    "cancelled_by": "admin",
+                    "refund_status": "pending",
+                    "refund_amount": refund_amount,
+                    "refund_reason": order.get("cancellation_reason"),
+                    "stock_deducted": bool(order.get("stock_deducted")),
+                    "updated_at": now,
+                    "updated_by": admin_id,
+                }
+            },
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=409, detail="Order is no longer eligible for cancellation approval")
+        order = await _fetch_normalized_order(order_id, order)
+
+    order = await _restore_cancelled_order_stock(order)
+    return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+
+async def reject_order_cancellation(
+    order_id: str,
+    decision: OrderCancellationDecision,
+    admin_id: str,
+):
+    existing_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if existing_order.get("cancellation_status") != "requested":
+        raise HTTPException(status_code=400, detail="Cancellation request is not pending rejection")
+
+    now = _now_iso()
+    result = await db.orders.update_one(
+        {"id": order_id, "cancellation_status": "requested"},
+        {
+            "$set": {
+                "cancellation_status": "rejected",
+                "cancellation_admin_note": decision.note,
+                "status": ORDER_STATUS_CONFIRMED,
+                "updated_at": now,
+                "updated_by": admin_id,
+            }
+        },
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Cancellation request has already been resolved")
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(order))
+
+
 async def get_user_orders(user_id: str, limit: int = 100):
     await sync_stale_pending_orders({"user_id": user_id})
     limit = min(limit, MAX_LIMIT)
@@ -1743,6 +1973,7 @@ async def get_order(order_id: str, user: dict):
 
 async def get_all_orders(
     order_status: Optional[str] = None,
+    cancellation_status: Optional[str] = None,
     period: str = "all",
     month: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -1753,6 +1984,8 @@ async def get_all_orders(
     await sync_stale_pending_orders(query)
     if order_status:
         query["status"] = order_status
+    if cancellation_status:
+        query["cancellation_status"] = cancellation_status
 
     limit = min(limit, MAX_LIMIT)
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
@@ -1789,6 +2022,12 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         "shipped": ["delivered"],
         "delivered": [],
     }
+
+    if (
+        existing_order.get("cancellation_status") == "requested"
+        and status_update.status != old_status
+    ):
+        raise HTTPException(status_code=400, detail="Resolve the cancellation request before updating fulfillment status")
 
     if status_update.status != old_status and status_update.status not in allowed_transitions.get(old_status, []):
         raise HTTPException(status_code=400, detail="Invalid status transition")
