@@ -788,7 +788,7 @@ const HeroPreview = ({ hero }) => {
                 key={button.id || `${button.label}-${index}`}
                 className={`rounded-full px-5 py-2 text-[10px] font-medium uppercase tracking-[0.26em] ${
                   button.style === 'secondary'
-                    ? 'border border-black/70 bg-transparent text-black'
+                    ? 'border-[1.25px] border-[#1C1917] bg-transparent text-[#1C1917]'
                     : 'bg-black text-white'
                 }`}
               >

@@ -27,6 +27,10 @@ const CATEGORY_IMAGE_FALLBACK =
     </svg>
   `);
 
+const CATEGORY_IMAGE_ASPECT = 1;
+const CATEGORY_IMAGE_SIZE = 900;
+const CATEGORY_IMAGE_QUALITY = 0.8;
+
 const slugify = (value) =>
   String(value || '')
     .toLowerCase()
@@ -143,6 +147,14 @@ const AdminCategories = () => {
     return true;
   };
 
+  const isGifFile = (file) => file?.type === 'image/gif';
+
+  const isGifUrl = (url) => String(url || '').split('?')[0].toLowerCase().endsWith('.gif');
+
+  const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+
   const openCategoryImageCrop = (file) => {
     if (!validateCategoryImageFile(file)) return;
 
@@ -163,6 +175,11 @@ const AdminCategories = () => {
   const openExistingCategoryImageCrop = () => {
     if (!formData.image) {
       toast.error('No category image available to re-crop');
+      return;
+    }
+
+    if (isGifUrl(formData.image)) {
+      toast.error('GIF category images are preserved as-is and cannot be re-cropped');
       return;
     }
 
@@ -201,14 +218,14 @@ const AdminCategories = () => {
     if (!categoryImageCrop?.sourceUrl) return null;
 
     const image = await loadImageForCrop(categoryImageCrop.sourceUrl);
-    const outputWidth = 1600;
-    const outputHeight = 900;
+    const outputWidth = CATEGORY_IMAGE_SIZE;
+    const outputHeight = Math.round(CATEGORY_IMAGE_SIZE / CATEGORY_IMAGE_ASPECT);
 
     const imageWidth = image.naturalWidth || image.width;
     const imageHeight = image.naturalHeight || image.height;
     const safeZoom = Math.max(1, Number(cropZoom) || 1);
 
-    // Fit the whole image inside the 16:9 banner (contain), then apply zoom and drag
+    // Fit the whole image inside the square frame first, then apply zoom and drag.
     const containScale = Math.min(outputWidth / imageWidth, outputHeight / imageHeight);
     const drawWidth = imageWidth * containScale * safeZoom;
     const drawHeight = imageHeight * containScale * safeZoom;
@@ -216,7 +233,7 @@ const AdminCategories = () => {
     // Calculate drag translation from the actual visible crop frame size
     const cropFrameRect = cropFrameRef.current?.getBoundingClientRect();
     const visibleWidth = cropFrameRect?.width || 520;
-    const visibleHeight = cropFrameRect?.height || (visibleWidth * 9) / 16;
+    const visibleHeight = cropFrameRect?.height || visibleWidth / CATEGORY_IMAGE_ASPECT;
     const positionScaleX = outputWidth / visibleWidth;
     const positionScaleY = outputHeight / visibleHeight;
     const drawX = (outputWidth - drawWidth) / 2 + Number(cropPosition.x || 0) * positionScaleX;
@@ -227,6 +244,10 @@ const AdminCategories = () => {
     canvas.height = outputHeight;
 
     const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Image optimization is not supported in this browser');
+    }
+
     context.fillStyle = '#f3f0eb';
     context.fillRect(0, 0, outputWidth, outputHeight);
     context.drawImage(
@@ -237,15 +258,20 @@ const AdminCategories = () => {
       drawHeight
     );
 
-    const blob = await new Promise((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', 0.92);
-    });
+    let outputType = 'image/webp';
+    let blob = await canvasToBlob(canvas, outputType, CATEGORY_IMAGE_QUALITY);
+
+    if (!blob || blob.type !== outputType) {
+      outputType = 'image/jpeg';
+      blob = await canvasToBlob(canvas, outputType, CATEGORY_IMAGE_QUALITY);
+    }
 
     if (!blob) return null;
 
     const originalName = categoryImageCrop.sourceName || categoryImageCrop.file?.name || 'category-image.jpg';
     const baseName = originalName.replace(/\.[^/.]+$/, '');
-    return new File([blob], `${baseName}-16x9.jpg`, { type: 'image/jpeg' });
+    const extension = outputType === 'image/webp' ? 'webp' : 'jpg';
+    return new File([blob], `${baseName}-square.${extension}`, { type: outputType });
   };
 
   const applyCategoryImageCrop = async () => {
@@ -254,10 +280,11 @@ const AdminCategories = () => {
       const croppedFile = await createCroppedCategoryImageFile();
       if (!croppedFile) {
         toast.error('Failed to crop image');
+        setCroppingImage(false);
         return;
       }
 
-      await uploadCategoryImageFile(croppedFile);
+      await uploadCategoryOptimizedImageFile(croppedFile);
       closeCategoryImageCrop();
     } catch (error) {
       console.error('Error cropping category image:', error);
@@ -302,7 +329,20 @@ const AdminCategories = () => {
     cropDragStartRef.current = null;
   };
 
-  const uploadCategoryImageFile = async (file) => {
+  const prepareCategoryImageFile = async (file) => {
+    if (!file) return;
+
+    if (!validateCategoryImageFile(file)) return;
+
+    if (isGifFile(file)) {
+      await uploadCategoryOptimizedImageFile(file);
+      return;
+    }
+
+    openCategoryImageCrop(file);
+  };
+
+  const uploadCategoryOptimizedImageFile = async (file) => {
     if (!file) return;
 
     if (!validateCategoryImageFile(file)) return;
@@ -363,14 +403,14 @@ const AdminCategories = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    openCategoryImageCrop(file);
+    await prepareCategoryImageFile(file);
     e.target.value = '';
   };
 
   const handleCategoryImageDrop = async (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    openCategoryImageCrop(file);
+    await prepareCategoryImageFile(file);
   };
 
   const removeCategoryImage = async () => {
@@ -573,7 +613,7 @@ const AdminCategories = () => {
                   <div>
                     <Label>Category Image</Label>
                     <p className="text-xs text-muted-foreground">
-                      Upload JPG, PNG, WEBP or GIF image, up to 30MB.
+                      Upload JPG, PNG, WEBP or GIF image, up to 30MB. Non-GIF images are cropped square and optimized before upload.
                     </p>
                   </div>
                 </div>
@@ -611,7 +651,7 @@ const AdminCategories = () => {
                       <img
                         src={formData.image}
                         alt="Category preview"
-                        className="aspect-[16/9] w-full object-cover"
+                        className="aspect-square w-full object-cover"
                         onError={(e) => {
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = CATEGORY_IMAGE_FALLBACK;
@@ -629,6 +669,7 @@ const AdminCategories = () => {
                         type="button"
                         variant="outline"
                         onClick={openExistingCategoryImageCrop}
+                        disabled={isGifUrl(formData.image)}
                         className="w-full sm:w-auto"
                       >
                         Re-crop
@@ -769,7 +810,7 @@ const AdminCategories = () => {
               <div>
                 <h2 className="font-heading text-xl">Crop Category Image</h2>
                 <p className="text-sm text-muted-foreground">
-                  Fit the image into a 16:9 category banner. Portrait images will keep the full image visible by default.
+                  Fit the image into a square category card. Portrait images will keep the full image visible by default.
                 </p>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeCategoryImageCrop(); }}>
@@ -780,7 +821,7 @@ const AdminCategories = () => {
             <div className="overflow-hidden rounded-lg border bg-muted">
               <div
                 ref={cropFrameRef}
-                className="relative aspect-[16/9] w-full cursor-grab touch-none overflow-hidden bg-[#f3f0eb] active:cursor-grabbing"
+                className="relative aspect-square w-full cursor-grab touch-none overflow-hidden bg-[#f3f0eb] active:cursor-grabbing"
                 onPointerDown={startCategoryCropDrag}
                 onPointerMove={moveCategoryCropDrag}
                 onPointerUp={stopCategoryCropDrag}
@@ -808,7 +849,7 @@ const AdminCategories = () => {
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <Label>Zoom</Label>
-                <span className="text-xs text-muted-foreground">16:9 category banner</span>
+                <span className="text-xs text-muted-foreground">Square category card</span>
               </div>
               <Input
                 type="range"
@@ -819,7 +860,7 @@ const AdminCategories = () => {
                 onChange={(e) => setCropZoom(Number(e.target.value))}
               />
               <p className="text-xs text-muted-foreground">
-                Portrait images are fitted fully inside the 16:9 banner first. Drag to reposition and zoom only if you want to fill more of the banner.
+                Portrait images are fitted fully inside the square first. Drag to reposition and zoom only if you want to fill more of the card.
               </p>
             </div>
 

@@ -428,7 +428,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                       className={`min-w-[215px] h-12 rounded-full px-8 text-[11px] font-medium uppercase tracking-[0.26em] shadow-sm transition-all duration-300 ${
                         isFilled
                           ? 'bg-black text-white hover:bg-black/90'
-                          : 'border border-black/80 text-black bg-transparent hover:bg-[#F3ECE4] hover:text-black hover:border-black hover:shadow-md'
+                          : 'border-[1.25px] border-[#1C1917] bg-transparent text-[#1C1917] hover:bg-[#1C1917] hover:text-white hover:border-[#1C1917] hover:shadow-md'
                       }`}
                       onMouseEnter={() => setHoveredButton(index)}
                       onMouseLeave={() => setHoveredButton(null)}
