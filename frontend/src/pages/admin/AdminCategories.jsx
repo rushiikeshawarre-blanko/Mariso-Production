@@ -13,7 +13,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
-import { Plus, Pencil, Trash2, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CATEGORY_IMAGE_FALLBACK =
@@ -27,9 +27,8 @@ const CATEGORY_IMAGE_FALLBACK =
     </svg>
   `);
 
-const CATEGORY_IMAGE_ASPECT = 1;
-const CATEGORY_IMAGE_SIZE = 900;
-const CATEGORY_IMAGE_QUALITY = 0.8;
+const CATEGORY_IMAGE_MAX_WIDTH = 1200;
+const CATEGORY_IMAGE_QUALITY = 0.82;
 
 const slugify = (value) =>
   String(value || '')
@@ -47,13 +46,7 @@ const AdminCategories = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [categoryImageCrop, setCategoryImageCrop] = useState(null);
-  const [cropZoom, setCropZoom] = useState(1);
-  const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 });
-  const cropDragStartRef = useRef(null);
-  const cropFrameRef = useRef(null);
   const formDataRef = useRef(null);
-  const [croppingImage, setCroppingImage] = useState(false);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   
   const parentCategoryOptions = useMemo(() => {
@@ -80,14 +73,6 @@ const AdminCategories = () => {
   useEffect(() => {
     formDataRef.current = formData;
   }, [formData]);
-
-  useEffect(() => {
-    return () => {
-      if (categoryImageCrop?.shouldRevoke && categoryImageCrop?.sourceUrl) {
-        URL.revokeObjectURL(categoryImageCrop.sourceUrl);
-      }
-    };
-  }, [categoryImageCrop]);
 
   const fetchCategories = async () => {
     try {
@@ -149,95 +134,35 @@ const AdminCategories = () => {
 
   const isGifFile = (file) => file?.type === 'image/gif';
 
-  const isGifUrl = (url) => String(url || '').split('?')[0].toLowerCase().endsWith('.gif');
-
   const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), type, quality);
   });
 
-  const openCategoryImageCrop = (file) => {
-    if (!validateCategoryImageFile(file)) return;
-
-    if (categoryImageCrop?.shouldRevoke && categoryImageCrop?.sourceUrl) {
-      URL.revokeObjectURL(categoryImageCrop.sourceUrl);
-    }
-
-    setCategoryImageCrop({
-      file,
-      sourceUrl: URL.createObjectURL(file),
-      sourceName: file.name,
-      shouldRevoke: true,
-    });
-    setCropZoom(1);
-    setCropPosition({ x: 0, y: 0 });
-  };
-
-  const openExistingCategoryImageCrop = () => {
-    if (!formData.image) {
-      toast.error('No category image available to re-crop');
-      return;
-    }
-
-    if (isGifUrl(formData.image)) {
-      toast.error('GIF category images are preserved as-is and cannot be re-cropped');
-      return;
-    }
-
-    setCategoryImageCrop({
-      file: null,
-      sourceUrl: formData.image,
-      sourceName: 'category-image.jpg',
-      shouldRevoke: false,
-    });
-    setCropZoom(1);
-    setCropPosition({ x: 0, y: 0 });
-  };
-
-  const closeCategoryImageCrop = () => {
-    if (categoryImageCrop?.shouldRevoke && categoryImageCrop?.sourceUrl) {
-      URL.revokeObjectURL(categoryImageCrop.sourceUrl);
-    }
-    setCategoryImageCrop(null);
-    setCropZoom(1);
-    setCropPosition({ x: 0, y: 0 });
-    cropDragStartRef.current = null;
-    setCroppingImage(false);
-  };
-
-  const loadImageForCrop = (src) => {
+  const loadImageForOptimization = (src) => {
     return new Promise((resolve, reject) => {
       const image = new Image();
-      image.crossOrigin = 'anonymous';
       image.onload = () => resolve(image);
       image.onerror = reject;
       image.src = src;
     });
   };
 
-  const createCroppedCategoryImageFile = async () => {
-    if (!categoryImageCrop?.sourceUrl) return null;
+  const createOptimizedCategoryImageFile = async (file) => {
+    if (!file || isGifFile(file)) return file;
 
-    const image = await loadImageForCrop(categoryImageCrop.sourceUrl);
-    const outputWidth = CATEGORY_IMAGE_SIZE;
-    const outputHeight = Math.round(CATEGORY_IMAGE_SIZE / CATEGORY_IMAGE_ASPECT);
+    const sourceUrl = URL.createObjectURL(file);
+    let image;
+    try {
+      image = await loadImageForOptimization(sourceUrl);
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
 
     const imageWidth = image.naturalWidth || image.width;
     const imageHeight = image.naturalHeight || image.height;
-    const safeZoom = Math.max(1, Number(cropZoom) || 1);
-
-    // Fit the whole image inside the square frame first, then apply zoom and drag.
-    const containScale = Math.min(outputWidth / imageWidth, outputHeight / imageHeight);
-    const drawWidth = imageWidth * containScale * safeZoom;
-    const drawHeight = imageHeight * containScale * safeZoom;
-
-    // Calculate drag translation from the actual visible crop frame size
-    const cropFrameRect = cropFrameRef.current?.getBoundingClientRect();
-    const visibleWidth = cropFrameRect?.width || 520;
-    const visibleHeight = cropFrameRect?.height || visibleWidth / CATEGORY_IMAGE_ASPECT;
-    const positionScaleX = outputWidth / visibleWidth;
-    const positionScaleY = outputHeight / visibleHeight;
-    const drawX = (outputWidth - drawWidth) / 2 + Number(cropPosition.x || 0) * positionScaleX;
-    const drawY = (outputHeight - drawHeight) / 2 + Number(cropPosition.y || 0) * positionScaleY;
+    const scale = Math.min(1, CATEGORY_IMAGE_MAX_WIDTH / imageWidth);
+    const outputWidth = Math.round(imageWidth * scale);
+    const outputHeight = Math.round(imageHeight * scale);
 
     const canvas = document.createElement('canvas');
     canvas.width = outputWidth;
@@ -248,15 +173,7 @@ const AdminCategories = () => {
       throw new Error('Image optimization is not supported in this browser');
     }
 
-    context.fillStyle = '#f3f0eb';
-    context.fillRect(0, 0, outputWidth, outputHeight);
-    context.drawImage(
-      image,
-      drawX,
-      drawY,
-      drawWidth,
-      drawHeight
-    );
+    context.drawImage(image, 0, 0, outputWidth, outputHeight);
 
     let outputType = 'image/webp';
     let blob = await canvasToBlob(canvas, outputType, CATEGORY_IMAGE_QUALITY);
@@ -268,65 +185,9 @@ const AdminCategories = () => {
 
     if (!blob) return null;
 
-    const originalName = categoryImageCrop.sourceName || categoryImageCrop.file?.name || 'category-image.jpg';
-    const baseName = originalName.replace(/\.[^/.]+$/, '');
+    const baseName = file.name.replace(/\.[^/.]+$/, '');
     const extension = outputType === 'image/webp' ? 'webp' : 'jpg';
-    return new File([blob], `${baseName}-square.${extension}`, { type: outputType });
-  };
-
-  const applyCategoryImageCrop = async () => {
-    try {
-      setCroppingImage(true);
-      const croppedFile = await createCroppedCategoryImageFile();
-      if (!croppedFile) {
-        toast.error('Failed to crop image');
-        setCroppingImage(false);
-        return;
-      }
-
-      await uploadCategoryOptimizedImageFile(croppedFile);
-      closeCategoryImageCrop();
-    } catch (error) {
-      console.error('Error cropping category image:', error);
-      toast.error('Failed to crop image. Try replacing it with the original file.');
-      setCroppingImage(false);
-    }
-  };
-
-  const clampCropPosition = (position) => ({
-    x: Math.max(-220, Math.min(220, position.x)),
-    y: Math.max(-140, Math.min(140, position.y)),
-  });
-
-  const startCategoryCropDrag = (event) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    cropDragStartRef.current = {
-      pointerId: event.pointerId,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      startX: cropPosition.x,
-      startY: cropPosition.y,
-    };
-  };
-
-  const moveCategoryCropDrag = (event) => {
-    const dragStart = cropDragStartRef.current;
-    if (!dragStart || dragStart.pointerId !== event.pointerId) return;
-
-    const nextPosition = clampCropPosition({
-      x: dragStart.startX + event.clientX - dragStart.clientX,
-      y: dragStart.startY + event.clientY - dragStart.clientY,
-    });
-
-    setCropPosition(nextPosition);
-  };
-
-  const stopCategoryCropDrag = (event) => {
-    if (event?.currentTarget && cropDragStartRef.current?.pointerId !== undefined) {
-      event.currentTarget.releasePointerCapture?.(cropDragStartRef.current.pointerId);
-    }
-    cropDragStartRef.current = null;
+    return new File([blob], `${baseName}.${extension}`, { type: outputType });
   };
 
   const prepareCategoryImageFile = async (file) => {
@@ -334,12 +195,18 @@ const AdminCategories = () => {
 
     if (!validateCategoryImageFile(file)) return;
 
-    if (isGifFile(file)) {
-      await uploadCategoryOptimizedImageFile(file);
-      return;
-    }
+    try {
+      const uploadFile = isGifFile(file) ? file : await createOptimizedCategoryImageFile(file);
+      if (!uploadFile) {
+        toast.error('Failed to optimize image');
+        return;
+      }
 
-    openCategoryImageCrop(file);
+      await uploadCategoryOptimizedImageFile(uploadFile);
+    } catch (error) {
+      console.error('Error optimizing category image:', error);
+      toast.error('Failed to optimize image');
+    }
   };
 
   const uploadCategoryOptimizedImageFile = async (file) => {
@@ -613,7 +480,7 @@ const AdminCategories = () => {
                   <div>
                     <Label>Category Image</Label>
                     <p className="text-xs text-muted-foreground">
-                      Upload JPG, PNG, WEBP or GIF image, up to 30MB. Non-GIF images are cropped square and optimized before upload.
+                      Upload JPG, PNG, WEBP or GIF image, up to 30MB. Non-GIF images are resized and optimized before upload.
                     </p>
                   </div>
                 </div>
@@ -665,15 +532,6 @@ const AdminCategories = () => {
                           {uploadingImage ? 'Uploading...' : 'Replace'}
                         </div>
                       </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={openExistingCategoryImageCrop}
-                        disabled={isGifUrl(formData.image)}
-                        className="w-full sm:w-auto"
-                      >
-                        Re-crop
-                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -803,83 +661,6 @@ const AdminCategories = () => {
           ))}
         </div>
       )}
-      {categoryImageCrop ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 py-6">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-heading text-xl">Crop Category Image</h2>
-                <p className="text-sm text-muted-foreground">
-                  Fit the image into a square category card. Portrait images will keep the full image visible by default.
-                </p>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeCategoryImageCrop(); }}>
-                <X className="h-4 w-4" strokeWidth={1.5} />
-              </Button>
-            </div>
-
-            <div className="overflow-hidden rounded-lg border bg-muted">
-              <div
-                ref={cropFrameRef}
-                className="relative aspect-square w-full cursor-grab touch-none overflow-hidden bg-[#f3f0eb] active:cursor-grabbing"
-                onPointerDown={startCategoryCropDrag}
-                onPointerMove={moveCategoryCropDrag}
-                onPointerUp={stopCategoryCropDrag}
-                onPointerCancel={stopCategoryCropDrag}
-                onPointerLeave={stopCategoryCropDrag}
-              >
-                <img
-                  src={categoryImageCrop.sourceUrl}
-                  alt="Crop category"
-                  draggable="false"
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-full w-full select-none object-contain"
-                  style={{
-                    transform: `translate(calc(-50% + ${cropPosition.x}px), calc(-50% + ${cropPosition.y}px)) scale(${cropZoom})`,
-                    transformOrigin: 'center',
-                  }}
-                />
-                <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3">
-                  {Array.from({ length: 9 }).map((_, index) => (
-                    <div key={index} className="border border-white/35" />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <Label>Zoom</Label>
-                <span className="text-xs text-muted-foreground">Square category card</span>
-              </div>
-              <Input
-                type="range"
-                min="1"
-                max="2.5"
-                step="0.05"
-                value={cropZoom}
-                onChange={(e) => setCropZoom(Number(e.target.value))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Portrait images are fitted fully inside the square first. Drag to reposition and zoom only if you want to fill more of the card.
-              </p>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeCategoryImageCrop(); }}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="btn-primary"
-                onClick={applyCategoryImageCrop}
-                disabled={croppingImage || uploadingImage}
-              >
-                {croppingImage || uploadingImage ? 'Uploading...' : 'Crop & Upload'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 };

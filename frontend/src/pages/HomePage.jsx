@@ -218,6 +218,12 @@ const getCategoryCardClass = (template, index) => {
   return '';
 };
 
+const getCategoryCardFrameClass = (template, index) => (
+  getCategoryCardClass(template, index)
+    ? 'min-h-[18rem] aspect-square md:aspect-auto md:h-full'
+    : 'aspect-[4/3]'
+);
+
 const HomePage = ({ previewContent = null, isPreview = false }) => {
   const defaults = createHomePageAdminDefaults();
   const [homepageContent, setHomepageContent] = useState(() => mergeHomepageContent(isPreview ? previewContent : null));
@@ -529,23 +535,22 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
               <div className={getCategoryGridClass(categoryTemplate, effectiveCategoryCount)}>
                 {activeCategoryCards.map((card, index) => {
                   const target = getSafeLink(card.link);
-                  const cardClass = `group relative overflow-hidden rounded-[1.25rem] shadow-[0_8px_30px_rgba(0,0,0,0.06)] ${getCategoryCardClass(categoryTemplate, index)}`;
-                  const isFeaturedCategoryCard = Boolean(getCategoryCardClass(categoryTemplate, index));
+                  const cardClass = `group relative block overflow-hidden rounded-[1.25rem] shadow-[0_8px_30px_rgba(0,0,0,0.06)] ${getCategoryCardClass(categoryTemplate, index)} ${getCategoryCardFrameClass(categoryTemplate, index)}`;
                   const content = (
-                    <div className={`relative ${isFeaturedCategoryCard ? 'h-full min-h-[18rem] aspect-square md:aspect-auto' : 'aspect-[4/3]'}`}>
+                    <>
                       <img
                         src={getSafeMediaUrl(card.image, defaultCategoryImage)}
                         alt={card.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                         loading="lazy"
                         decoding="async"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent" />
-                      <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
+                      <div className="absolute inset-x-0 bottom-0 p-6 md:p-8">
                         <h3 className="font-heading text-2xl md:text-[2rem] tracking-[-0.02em] text-white mb-2">{card.title}</h3>
                         {card.subtitle ? <p className="text-white/80 text-sm hidden md:block">{card.subtitle}</p> : null}
                       </div>
-                    </div>
+                    </>
                   );
 
                   return target ? (
@@ -566,24 +571,22 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 <Link
                   key={category.id}
                   to={`/shop?category=${category.id}`}
-                  className={`group relative overflow-hidden rounded-[1.25rem] shadow-[0_8px_30px_rgba(0,0,0,0.06)] ${
+                  className={`group relative block overflow-hidden rounded-[1.25rem] shadow-[0_8px_30px_rgba(0,0,0,0.06)] ${
                     index === 0 ? 'md:col-span-2 md:row-span-2' : ''
-                  }`}
+                  } ${index === 0 ? 'min-h-[18rem] aspect-square md:aspect-auto md:h-full' : 'aspect-[4/3]'}`}
                   data-testid={`category-card-${category.id}`}
                 >
-                  <div className={`relative ${index === 0 ? 'h-full min-h-[18rem] aspect-square md:aspect-auto' : 'aspect-[4/3]'}`}>
-                    <img
-                      src={category.image || defaultCategoryImage}
-                      alt={category.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent" />
-                    <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
-                      <h3 className="font-heading text-2xl md:text-[2rem] tracking-[-0.02em] text-white mb-2">{category.name}</h3>
-                      <p className="text-white/80 text-sm hidden md:block">{category.description}</p>
-                    </div>
+                  <img
+                    src={category.image || defaultCategoryImage}
+                    alt={category.name}
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/10 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-6 md:p-8">
+                    <h3 className="font-heading text-2xl md:text-[2rem] tracking-[-0.02em] text-white mb-2">{category.name}</h3>
+                    <p className="text-white/80 text-sm hidden md:block">{category.description}</p>
                   </div>
                 </Link>
               ))}

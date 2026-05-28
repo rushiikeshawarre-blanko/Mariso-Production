@@ -848,16 +848,18 @@ const CategoryCollagePreview = ({ section, categories }) => {
             return (
               <div
                 key={card.id || `${card.title}-${index}`}
-                className={`relative overflow-hidden rounded-lg bg-muted ${getPreviewCategoryCardClass(section.template, index)}`}
+                className={`relative overflow-hidden rounded-lg bg-muted ${getPreviewCategoryCardClass(section.template, index)} ${
+                  featured ? 'min-h-52 aspect-square sm:aspect-auto sm:h-full' : 'aspect-[4/3]'
+                }`}
               >
                 {card.image ? (
                   <img
                     src={card.image}
                     alt={card.title || 'Category preview'}
-                    className={`w-full object-cover ${featured ? 'h-52 sm:h-full sm:min-h-52' : 'h-36'}`}
+                    className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
-                  <div className={`bg-[#E8DFD5] ${featured ? 'h-52 sm:h-full sm:min-h-52' : 'h-36'}`} />
+                  <div className="absolute inset-0 bg-[#E8DFD5]" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
