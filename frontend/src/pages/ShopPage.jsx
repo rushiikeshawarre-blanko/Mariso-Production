@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { getProducts, getCategories } from '../lib/api';
+import { getCardImage, getFirstImageUrl, getProductCardImage, getProductPath } from '../lib/utils';
 
 const SHOP_REVALIDATE_INTERVAL_MS = 5 * 1000;
 
@@ -18,6 +19,22 @@ const parseCategoryParam = (value) => (
 );
 
 const normalizeId = (value) => (value == null ? '' : String(value));
+
+const hasActiveOptions = (options) => Array.isArray(options) && options.some((option) => option?.is_active !== false);
+
+const getColorQueryValue = (color) => (
+  normalizeId(color?.id) || normalizeId(color?.slug) || normalizeId(color?.name)
+);
+
+const buildColorProductPath = (product, color) => {
+  const productPath = getProductPath(product);
+  const colorValue = getColorQueryValue(color);
+
+  if (!productPath || !colorValue) return productPath;
+
+  const separator = productPath.includes('?') ? '&' : '?';
+  return `${productPath}${separator}color=${encodeURIComponent(colorValue)}`;
+};
 
 const matchesCategoryParam = (category, value) => {
   const normalizedValue = normalizeId(value);
@@ -302,7 +319,8 @@ const ShopPage = () => {
           product.name?.toLowerCase().includes(query) ||
           product.description?.toLowerCase().includes(query) ||
           product.short_description?.toLowerCase().includes(query) ||
-          product.sku?.toLowerCase().includes(query)
+          product.sku?.toLowerCase().includes(query) ||
+          (product.color_options || []).some((color) => color?.name?.toLowerCase().includes(query))
       );
     }
 
@@ -608,6 +626,38 @@ const ShopPage = () => {
     selectedCategoryIds.some((selectedCategoryId) => matchesCategoryParam(category, selectedCategoryId))
   );
 
+  const displayCards = useMemo(() => {
+    return products.flatMap((product) => {
+      const activeColors = hasActiveOptions(product.color_options)
+        ? (product.color_options || []).filter((color) => color?.is_active !== false)
+        : [];
+
+      if (!product.has_color_options || activeColors.length === 0) {
+        return [{
+          product,
+          key: normalizeId(product.id),
+          cardId: normalizeId(product.id),
+        }];
+      }
+
+      const fallbackImage = getProductCardImage(product);
+
+      return activeColors.map((color, colorIndex) => {
+        const colorId = getColorQueryValue(color) || String(colorIndex);
+        const colorImage = getFirstImageUrl(color?.images, getCardImage);
+
+        return {
+          product,
+          key: `${normalizeId(product.id)}-color-${colorId}`,
+          cardId: `${normalizeId(product.id)}-color-${colorId}`,
+          imageOverride: colorImage || fallbackImage,
+          linkOverride: buildColorProductPath(product, color),
+          selectedColorName: color?.name || '',
+        };
+      });
+    });
+  }, [products]);
+
   const CategoryCheckbox = ({ category, className = '', level = 'parent' }) => (
     <label
       className={`flex min-w-0 cursor-pointer items-center gap-3 text-sm transition-colors hover:text-foreground ${
@@ -737,7 +787,7 @@ const ShopPage = () => {
                   {pageTitle}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {loading ? 'Loading...' : productsStatus === 'error' ? 'Unable to load products' : `${products.length} products`}
+                  {loading ? 'Loading...' : productsStatus === 'error' ? 'Unable to load products' : `${displayCards.length} products`}
                 </p>
               </div>
 
@@ -940,8 +990,16 @@ const ShopPage = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-5 md:grid-cols-2 lg:grid-cols-3 xl:gap-6">
-                  {products.map((product) => (
-                    <ProductCard key={product.id} product={product} testIdPrefix="shop" />
+                  {displayCards.map((card) => (
+                    <ProductCard
+                      key={card.key}
+                      product={card.product}
+                      testIdPrefix="shop"
+                      imageOverride={card.imageOverride}
+                      linkOverride={card.linkOverride}
+                      selectedColorName={card.selectedColorName}
+                      cardId={card.cardId}
+                    />
                   ))}
                 </div>
               )}

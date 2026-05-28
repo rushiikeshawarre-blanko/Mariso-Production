@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
@@ -14,9 +14,28 @@ import { htmlToPlainText, sanitizeRichContent } from '../lib/richContent';
 import { getDetailImage, getThumbImage } from '../lib/utils';
 import { toast } from 'sonner';
 
+const normalizeOptionValue = (value) => (
+  value == null
+    ? ''
+    : String(value).trim().toLowerCase().replace(/\s+/g, '-')
+);
+
+const findColorByQuery = (colors, colorQuery) => {
+  const normalizedQuery = normalizeOptionValue(colorQuery);
+  if (!normalizedQuery) return null;
+
+  return (colors || []).find((color) => (
+    normalizeOptionValue(color?.id) === normalizedQuery ||
+    normalizeOptionValue(color?.slug) === normalizedQuery ||
+    normalizeOptionValue(color?.name) === normalizedQuery
+  )) || null;
+};
+
 const ProductPage = () => {
   const { id, slug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const colorQuery = searchParams.get('color');
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -179,12 +198,19 @@ const ProductPage = () => {
     const hasColors = product.has_color_options && colors.length > 0;
     const hasFlavors = product.has_flavor_options && flavors.length > 0;
 
-    if (!hasColors && !hasFlavors) return;
+    if (!hasColors && !hasFlavors) {
+      setSelectedColor(null);
+      setSelectedFlavor(null);
+      return;
+    }
+
+    const requestedColor = hasColors ? findColorByQuery(colors, colorQuery) : null;
 
     if (variants.length > 0) {
       const firstAvailableVariant = variants.find((variant) => {
         if (variant.is_active === false) return false;
         if ((variant.stock ?? 0) <= 0) return false;
+        if (requestedColor && variant.color_id !== requestedColor.id) return false;
 
         const colorOk = !hasColors || colors.some((color) => color.id === variant.color_id);
         const flavorOk = !hasFlavors || flavors.some((flavor) => flavor.id === variant.flavor_id);
@@ -194,7 +220,7 @@ const ProductPage = () => {
 
       if (firstAvailableVariant) {
         if (hasColors) {
-          const matchedColor = colors.find((color) => color.id === firstAvailableVariant.color_id) || null;
+          const matchedColor = requestedColor || colors.find((color) => color.id === firstAvailableVariant.color_id) || null;
           setSelectedColor(matchedColor);
         } else {
           setSelectedColor(null);
@@ -210,9 +236,9 @@ const ProductPage = () => {
       }
     }
 
-    setSelectedColor(hasColors ? colors[0] : null);
+    setSelectedColor(hasColors ? (requestedColor || colors[0]) : null);
     setSelectedFlavor(hasFlavors ? flavors[0] : null);
-  }, [product]);
+  }, [product, colorQuery]);
 
   // Reset quantity when variant changes
   useEffect(() => {

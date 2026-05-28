@@ -25,6 +25,11 @@ export const ProductCard = ({
   testIdPrefix = 'product',
   initialIsWishlisted = false,
   onWishlistStateChange,
+  imageOverride,
+  displayName,
+  linkOverride,
+  selectedColorName,
+  cardId,
 }) => {
   const { addItem } = useCart();
   const { isAuthenticated, loginWithRedirect } = useAuth0();
@@ -48,9 +53,11 @@ export const ProductCard = ({
   const shouldChooseOptions = requiresProductOptions(product);
   const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
   const isOutOfStock = effectiveStock <= 0;
-  const productPath = getProductPath(product);
+  const productPath = linkOverride || getProductPath(product);
 
-  const productCardImage = getProductCardImage(product);
+  const productCardImage = imageOverride || getProductCardImage(product);
+  const cardTitle = displayName || product.name;
+  const testId = cardId || product.id;
 
   useEffect(() => {
     setIsWishlisted(initialIsWishlisted);
@@ -69,7 +76,7 @@ export const ProductCard = ({
 
     addItem(product);
     toast.success('Added to cart', {
-      description: product.name
+      description: cardTitle
     });
   };
 
@@ -133,14 +140,14 @@ export const ProductCard = ({
       <Link 
       to={productPath || '/shop'}
       className="group flex h-full flex-col transition-transform duration-300 hover:-translate-y-0.5"
-      data-testid={`${testIdPrefix}-card-${product.id}`}
+      data-testid={`${testIdPrefix}-card-${testId}`}
     >
       {/* Image */}
       <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem] bg-[#F3EEE8]">
         
         <img
           src={productCardImage}
-          alt={product.name}
+          alt={cardTitle}
           className="block h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
           loading="lazy"
         />
@@ -161,8 +168,8 @@ export const ProductCard = ({
                 : ''
             }`}
             title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
-            aria-label={isWishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
-            data-testid={`${testIdPrefix}-wishlist-icon-${product.id}`}
+            aria-label={isWishlisted ? `Remove ${cardTitle} from wishlist` : `Add ${cardTitle} to wishlist`}
+            data-testid={`${testIdPrefix}-wishlist-icon-${testId}`}
             disabled={isWishlistBusy}
             aria-pressed={isWishlisted}
           >
@@ -175,8 +182,8 @@ export const ProductCard = ({
             onClick={handleAddToCart}
             className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg hover:bg-white hover:scale-110 transition-all"
             title={shouldChooseOptions ? 'Choose Options' : 'Quick Add to Cart'}
-            aria-label={shouldChooseOptions ? `Choose options for ${product.name}` : `Add ${product.name} to cart`}
-            data-testid={`${testIdPrefix}-quick-cart-icon-${product.id}`}
+            aria-label={shouldChooseOptions ? `Choose options for ${cardTitle}` : `Add ${cardTitle} to cart`}
+            data-testid={`${testIdPrefix}-quick-cart-icon-${testId}`}
           >
             <ShoppingBag className="h-4 w-4" strokeWidth={1.5} />
           </button>
@@ -202,8 +209,13 @@ export const ProductCard = ({
           {product.category_name}
         </p>
         <h3 className="mt-1 font-heading text-[1.08rem] leading-[1.3] tracking-[-0.01em] text-foreground group-hover:text-foreground/80 transition-colors duration-300" data-testid={`${testIdPrefix}-name`}>
-          {product.name}
+          {cardTitle}
         </h3>
+        {selectedColorName && (
+          <p className="mt-1 text-xs font-medium text-foreground/55" data-testid={`${testIdPrefix}-color-name`}>
+            {selectedColorName}
+          </p>
+        )}
         <div className="mt-1 space-y-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className={`text-[1.08rem] font-semibold tracking-[-0.01em] transition-colors duration-300 ${product.is_on_sale ? 'text-terracotta' : 'text-foreground'}`} data-testid={`${testIdPrefix}-price`}>
