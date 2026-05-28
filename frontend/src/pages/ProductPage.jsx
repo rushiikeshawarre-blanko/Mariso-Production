@@ -390,7 +390,7 @@ const ProductPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+        <div className="pt-8 pb-24 min-h-screen flex items-center justify-center md:pt-10">
           <MarisoLoader label="Loading product..." />
         </div>
       </Layout>
@@ -400,7 +400,7 @@ const ProductPage = () => {
   if (productStatus === 'error') {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+        <div className="pt-8 pb-24 min-h-screen flex items-center justify-center md:pt-10">
           <div className="text-center">
             <h1 className="font-heading text-3xl mb-4">Unable to Load Product</h1>
             <p className="mb-6 text-muted-foreground">Please try again in a moment.</p>
@@ -416,7 +416,7 @@ const ProductPage = () => {
   if (!product || productStatus === 'not-found') {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+        <div className="pt-8 pb-24 min-h-screen flex items-center justify-center md:pt-10">
           <div className="text-center">
             <h1 className="font-heading text-3xl mb-4">Product Not Found</h1>
             <Link to="/shop">
@@ -430,7 +430,7 @@ const ProductPage = () => {
 
   return (
     <Layout>
-      <div className="pt-28 pb-20 md:pt-32 md:pb-24" data-testid="product-page">
+      <div className="pt-8 pb-20 md:pt-10 md:pb-24" data-testid="product-page">
         <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <Link 

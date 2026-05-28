@@ -5,7 +5,7 @@ const HOME_PAGE_ADMIN_DEFAULTS = {
     announcement_enabled: true,
     announcement_text: 'Use code MARISO10 for 10% off on selected candles',
     announcement_link: '',
-    announcement_bg_color: '#B89B7E',
+    announcement_bg_color: '#8A6F55',
     announcement_text_color: '#FFFFFF',
   },
   hero: {
@@ -13,6 +13,10 @@ const HOME_PAGE_ADMIN_DEFAULTS = {
     heading: 'Handcrafted Candles\n& Homewares',
     subheading: 'Designed to Glow with Your Space',
     background_image: 'https://images.unsplash.com/photo-1759157273068-42e6d441f772?crop=entropy&cs=srgb&fm=jpg&q=85',
+    hero_overlay_opacity: 55,
+    hero_eyebrow_color: '#5F554F',
+    hero_title_color: '#1C1917',
+    hero_subtitle_color: '#4A403A',
     buttons: [
       {
         id: 'default-hero-candles',
@@ -175,6 +179,25 @@ const HOME_PAGE_ADMIN_DEFAULTS = {
     button_label: 'Subscribe',
     is_active: true,
   },
+};
+
+export const clampHeroOverlayOpacity = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return 55;
+  return Math.min(Math.max(Math.round(numericValue), 0), 80);
+};
+
+export const isValidHeroHexColor = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || '').trim());
+
+export const getSafeHeroHexColor = (value, fallback) => (
+  isValidHeroHexColor(value) ? String(value).trim() : fallback
+);
+
+export const getHeroOverlayGradient = (opacity) => {
+  const opacityRatio = clampHeroOverlayOpacity(opacity) / 100;
+  const stopAlpha = (multiplier) => Math.min(Math.max(opacityRatio * multiplier, 0), 0.96).toFixed(3);
+
+  return `linear-gradient(to bottom, rgba(248, 245, 241, ${stopAlpha(0.64)}), rgba(248, 245, 241, ${stopAlpha(0.82)}), rgba(248, 245, 241, ${stopAlpha(1.27)}))`;
 };
 
 export const createHomePageAdminDefaults = () => JSON.parse(JSON.stringify(HOME_PAGE_ADMIN_DEFAULTS));

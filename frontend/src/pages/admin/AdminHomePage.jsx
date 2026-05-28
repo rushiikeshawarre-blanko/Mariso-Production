@@ -11,9 +11,15 @@ import {
   updateAdminHomepageContent,
   uploadFileToPresignedUrl,
 } from '../../lib/api';
-import { createHomePageAdminDefaults } from '../../lib/homePageDefaults';
+import {
+  clampHeroOverlayOpacity,
+  createHomePageAdminDefaults,
+  getHeroOverlayGradient,
+  getSafeHeroHexColor,
+  isValidHeroHexColor,
+} from '../../lib/homePageDefaults';
 import { Button } from '../../components/ui/button';
-import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
@@ -309,6 +315,67 @@ const Field = ({ label, value, onChange, placeholder = '', type = 'text', requir
   </div>
 );
 
+const HeroOpacityField = ({ value, onChange }) => {
+  const normalizedValue = clampHeroOverlayOpacity(value);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <Label>Overlay Opacity</Label>
+        <span className="text-xs text-muted-foreground">{normalizedValue}%</span>
+      </div>
+      <div className="mt-1 grid gap-3 sm:grid-cols-[1fr_96px]">
+        <Input
+          type="range"
+          min="0"
+          max="80"
+          value={normalizedValue}
+          onChange={(event) => onChange(clampHeroOverlayOpacity(event.target.value))}
+        />
+        <Input
+          type="number"
+          min="0"
+          max="80"
+          value={value ?? ''}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={(event) => onChange(clampHeroOverlayOpacity(event.target.value))}
+        />
+      </div>
+    </div>
+  );
+};
+
+const ColorField = ({ label, value, fallback, onChange }) => {
+  const textValue = value ?? '';
+  const pickerValue = getSafeHeroHexColor(textValue, fallback);
+  const isInvalid = textValue && !isValidHeroHexColor(textValue);
+
+  return (
+    <div className="w-full max-w-[260px]">
+      <Label>{label}</Label>
+      <div className="mt-1 flex items-center gap-2">
+        <Input
+          type="color"
+          value={pickerValue}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={`${label} picker`}
+          className="h-10 w-10 shrink-0 cursor-pointer p-1"
+        />
+        <Input
+          value={textValue}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={fallback}
+          aria-invalid={isInvalid ? 'true' : 'false'}
+          className="h-10 w-[138px] max-w-[calc(100vw-6rem)] font-mono text-sm uppercase"
+        />
+      </div>
+      {isInvalid ? (
+        <p className="mt-1 text-xs text-muted-foreground">Use a 6-digit hex color, for example {fallback}.</p>
+      ) : null}
+    </div>
+  );
+};
+
 const MediaField = ({ label, value, onChange, folder, mediaType = 'image', cropAspect = null, cropTitle = '' }) => {
   const inputRef = React.useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -526,10 +593,10 @@ const MediaField = ({ label, value, onChange, folder, mediaType = 'image', cropA
       >
         <DialogContent className="max-w-3xl">
           <div className="flex flex-col space-y-1.5 text-center sm:text-left">
-            <h2 className="text-lg font-semibold leading-none tracking-tight">{cropTitle || `Crop ${label}`}</h2>
-            <p className="text-sm text-muted-foreground">
+            <DialogTitle>{cropTitle || `Crop ${label}`}</DialogTitle>
+            <DialogDescription>
               Compose the image before uploading. GIF images upload without cropping.
-            </p>
+            </DialogDescription>
           </div>
           <div className="space-y-4">
             <div className="relative h-[420px] overflow-hidden rounded-md bg-black">
@@ -673,7 +740,7 @@ const AnnouncementPreview = ({ announcement }) => {
         <div
           className="rounded-lg px-4 py-2 text-center text-sm font-medium"
           style={{
-            backgroundColor: announcement.announcement_bg_color || '#B89B7E',
+            backgroundColor: announcement.announcement_bg_color || '#8A6F55',
             color: announcement.announcement_text_color || '#FFFFFF',
           }}
         >
@@ -687,7 +754,20 @@ const AnnouncementPreview = ({ announcement }) => {
 };
 
 const HeroPreview = ({ hero }) => {
+  const defaults = createHomePageAdminDefaults();
   const buttons = sortedActiveItems(hero.buttons);
+  const heroOverlayStyle = {
+    background: getHeroOverlayGradient(hero.hero_overlay_opacity),
+  };
+  const heroEyebrowStyle = {
+    color: getSafeHeroHexColor(hero.hero_eyebrow_color, defaults.hero.hero_eyebrow_color),
+  };
+  const heroTitleStyle = {
+    color: getSafeHeroHexColor(hero.hero_title_color, defaults.hero.hero_title_color),
+  };
+  const heroSubtitleStyle = {
+    color: getSafeHeroHexColor(hero.hero_subtitle_color, defaults.hero.hero_subtitle_color),
+  };
 
   return (
     <PreviewPanel>
@@ -695,12 +775,12 @@ const HeroPreview = ({ hero }) => {
         {hero.background_image ? (
           <img src={hero.background_image} alt="" className="absolute inset-0 -z-10 h-full w-full object-cover" />
         ) : null}
-        <div className="absolute inset-0 -z-10 bg-[#F8F5F1]/65" />
-        <p className="text-[10px] uppercase tracking-[0.3em] text-foreground/65">{hero.eyebrow}</p>
-        <h4 className="mx-auto mt-3 max-w-lg whitespace-pre-line font-heading text-3xl leading-tight text-foreground">
+        <div className="absolute inset-0 -z-10" style={heroOverlayStyle} />
+        <p className="text-[10px] uppercase tracking-[0.3em]" style={heroEyebrowStyle}>{hero.eyebrow}</p>
+        <h4 className="mx-auto mt-3 max-w-lg whitespace-pre-line font-heading text-3xl leading-tight" style={heroTitleStyle}>
           {hero.heading}
         </h4>
-        <p className="mt-3 font-serif-accent text-sm italic text-foreground/75">{hero.subheading}</p>
+        <p className="mt-3 font-serif-accent text-sm italic" style={heroSubtitleStyle}>{hero.subheading}</p>
         {buttons.length > 0 ? (
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             {buttons.map((button, index) => (
@@ -977,7 +1057,11 @@ const validateDraft = (draft, categories) => {
   return '';
 };
 
-const createPayload = (draft, categories) => ({
+const resolveHeroColorForSave = (value, previousValue, fallback) => (
+  getSafeHeroHexColor(value, getSafeHeroHexColor(previousValue, fallback))
+);
+
+const createPayload = (draft, categories, previousDraft) => ({
   ...draft,
   announcement: {
     ...draft.announcement,
@@ -985,6 +1069,22 @@ const createPayload = (draft, categories) => ({
   },
   hero: {
     ...draft.hero,
+    hero_overlay_opacity: clampHeroOverlayOpacity(draft.hero.hero_overlay_opacity),
+    hero_eyebrow_color: resolveHeroColorForSave(
+      draft.hero.hero_eyebrow_color,
+      previousDraft?.hero?.hero_eyebrow_color,
+      createHomePageAdminDefaults().hero.hero_eyebrow_color
+    ),
+    hero_title_color: resolveHeroColorForSave(
+      draft.hero.hero_title_color,
+      previousDraft?.hero?.hero_title_color,
+      createHomePageAdminDefaults().hero.hero_title_color
+    ),
+    hero_subtitle_color: resolveHeroColorForSave(
+      draft.hero.hero_subtitle_color,
+      previousDraft?.hero?.hero_subtitle_color,
+      createHomePageAdminDefaults().hero.hero_subtitle_color
+    ),
     buttons: draft.hero.buttons.map((button) => ({
       ...button,
       sort_order: toSortOrder(button.sort_order),
@@ -1201,7 +1301,7 @@ const AdminHomePage = () => {
     try {
       setSaving(true);
       setError('');
-      const saved = await updateAdminHomepageContent(createPayload(draft, categories));
+      const saved = await updateAdminHomepageContent(createPayload(draft, categories, loadedDraft));
       const nextDraft = normalizeDraft(saved);
       setDraft(nextDraft);
       setLoadedDraft(cloneDraft(nextDraft));
@@ -1281,18 +1381,20 @@ const AdminHomePage = () => {
               onChange={(value) => updateSection('announcement', 'announcement_link', value)}
               placeholder="/shop?featured=true"
             />
-            <Field
-              label="Background Color"
-              type="color"
-              value={draft.announcement.announcement_bg_color}
-              onChange={(value) => updateSection('announcement', 'announcement_bg_color', value)}
-            />
-            <Field
-              label="Text Color"
-              type="color"
-              value={draft.announcement.announcement_text_color}
-              onChange={(value) => updateSection('announcement', 'announcement_text_color', value)}
-            />
+            <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
+              <ColorField
+                label="Background Color"
+                value={draft.announcement.announcement_bg_color}
+                fallback={createHomePageAdminDefaults().announcement.announcement_bg_color}
+                onChange={(value) => updateSection('announcement', 'announcement_bg_color', value)}
+              />
+              <ColorField
+                label="Text Color"
+                value={draft.announcement.announcement_text_color}
+                fallback={createHomePageAdminDefaults().announcement.announcement_text_color}
+                onChange={(value) => updateSection('announcement', 'announcement_text_color', value)}
+              />
+            </div>
           </div>
           <Toggle
             label="Show announcement banner"
@@ -1319,6 +1421,32 @@ const AdminHomePage = () => {
                 folder="homepage/hero"
                 cropAspect={16 / 9}
                 cropTitle="Crop Hero Image"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <HeroOpacityField
+                value={draft.hero.hero_overlay_opacity}
+                onChange={(value) => updateSection('hero', 'hero_overlay_opacity', value)}
+              />
+            </div>
+            <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
+              <ColorField
+                label="Eyebrow Color"
+                value={draft.hero.hero_eyebrow_color}
+                fallback={createHomePageAdminDefaults().hero.hero_eyebrow_color}
+                onChange={(value) => updateSection('hero', 'hero_eyebrow_color', value)}
+              />
+              <ColorField
+                label="Title Color"
+                value={draft.hero.hero_title_color}
+                fallback={createHomePageAdminDefaults().hero.hero_title_color}
+                onChange={(value) => updateSection('hero', 'hero_title_color', value)}
+              />
+              <ColorField
+                label="Subtitle Color"
+                value={draft.hero.hero_subtitle_color}
+                fallback={createHomePageAdminDefaults().hero.hero_subtitle_color}
+                onChange={(value) => updateSection('hero', 'hero_subtitle_color', value)}
               />
             </div>
           </div>

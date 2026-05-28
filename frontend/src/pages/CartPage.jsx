@@ -471,7 +471,7 @@ const CartPage = () => {
   if (items.length === 0) {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen" data-testid="cart-page-empty">
+        <div className="pt-8 pb-24 min-h-screen md:pt-10" data-testid="cart-page-empty">
           <div className="max-w-[1440px] mx-auto container-padding text-center">
             <ShoppingBag className="h-16 w-16 mx-auto text-muted-foreground mb-6" strokeWidth={1} />
             <h1 className="font-heading text-3xl md:text-4xl mb-4">Your Cart is Empty</h1>
@@ -489,7 +489,7 @@ const CartPage = () => {
 
   return (
     <Layout>
-      <div className="pt-32 pb-24 min-h-screen" data-testid="cart-page">
+      <div className="pt-8 pb-24 min-h-screen md:pt-10" data-testid="cart-page">
         <div className="max-w-[1440px] mx-auto container-padding">
           <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-12">Shopping Cart</h1>
 

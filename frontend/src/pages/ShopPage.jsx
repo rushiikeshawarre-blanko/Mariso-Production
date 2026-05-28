@@ -430,7 +430,7 @@ const ShopPage = () => {
 
   return (
     <Layout>
-      <div className="pt-24 pb-20 min-h-screen" data-testid="shop-page">
+      <div className="pt-8 pb-20 min-h-screen md:pt-10" data-testid="shop-page">
         <div className="max-w-[1360px] mx-auto px-5 lg:px-6">
           <div className="mb-8 border-b border-border/70 pb-4">
             <div className="flex items-end justify-between gap-6">

@@ -35,7 +35,7 @@ const OrderSuccessPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="pt-32 pb-24 min-h-screen flex items-center justify-center">
+        <div className="pt-8 pb-24 min-h-screen flex items-center justify-center md:pt-10">
           <div className="animate-pulse text-center">
             <div className="h-16 w-16 bg-muted rounded-full mx-auto mb-4" />
             <div className="h-8 bg-muted rounded w-48 mx-auto mb-2" />
@@ -48,7 +48,7 @@ const OrderSuccessPage = () => {
 
   return (
     <Layout>
-      <div className="pt-32 pb-24 min-h-screen" data-testid="order-success-page">
+      <div className="pt-8 pb-24 min-h-screen md:pt-10" data-testid="order-success-page">
         <div className="max-w-2xl mx-auto container-padding text-center">
           {/* Success Icon */}
           <div className="w-20 h-20 bg-[#8B9D83]/20 rounded-full flex items-center justify-center mx-auto mb-6 animate-scale-in">

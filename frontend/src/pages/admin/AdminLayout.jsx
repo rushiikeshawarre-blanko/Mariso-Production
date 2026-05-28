@@ -514,7 +514,7 @@ const AdminLayout = () => {
               </span>
             </div>
 
-            <div className="h-64 min-h-[256px] min-w-[280px]">
+            <div className="h-64 min-h-[256px] min-w-0">
               {!hasPeriodData || isZeroPeriod ? (
                 <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-[#FAF7F3] px-6 text-center">
                   <div className="max-w-md">
@@ -528,8 +528,8 @@ const AdminLayout = () => {
                   </div>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%" minWidth={280}>
-                  <AreaChart data={chartData} width={560} height={256}>
+                <ResponsiveContainer width="100%" height={256} minHeight={256}>
+                  <AreaChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E6E1DC" />
                     <XAxis dataKey="date" stroke="#57534E" fontSize={12} />
                     <YAxis stroke="#57534E" fontSize={12} />

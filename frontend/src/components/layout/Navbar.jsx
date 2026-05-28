@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { forwardRef, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -36,7 +36,7 @@ const getSafeAnnouncementLink = (value) => {
   return null;
 };
 
-export const Navbar = () => {
+export const Navbar = forwardRef((props, ref) => {
   const announcementDefaults = useMemo(() => createHomePageAdminDefaults().announcement, []);
   const [scrolled, setScrolled] = useState(() => (typeof window === 'undefined' ? false : window.scrollY > 40));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -314,7 +314,8 @@ export const Navbar = () => {
   );
 
   return (
-    <nav 
+    <nav
+      ref={ref}
       className={`fixed top-0 w-full z-50 transition-all duration-300 ${navBg}`}
       data-testid="navbar"
     >
@@ -617,6 +618,8 @@ export const Navbar = () => {
       </Dialog>
     </nav>
   );
-};
+});
+
+Navbar.displayName = 'Navbar';
 
 export default Navbar;

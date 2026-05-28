@@ -8,7 +8,11 @@ import { Button } from '../components/ui/button';
 import MarisoLoader from '../components/ui/MarisoLoader';
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '../components/ui/carousel';
 import { getCategories, getFeaturedProducts, getBestsellers, getHomepageContent, getHomepageFaqs, getHomepageFeedbackReviews } from '../lib/api';
-import { createHomePageAdminDefaults } from '../lib/homePageDefaults';
+import {
+  createHomePageAdminDefaults,
+  getHeroOverlayGradient,
+  getSafeHeroHexColor,
+} from '../lib/homePageDefaults';
 
 const defaultTestimonials = [
   {
@@ -362,6 +366,18 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
   const badgeText = String(homepageContent.crafted_with_intention.floating_badge_text || '').trim();
   const [badgeTitle, ...badgeSubtitleParts] = badgeText.split(/\s+/);
   const badgeSubtitle = badgeSubtitleParts.join(' ');
+  const heroOverlayStyle = {
+    background: getHeroOverlayGradient(homepageContent.hero.hero_overlay_opacity),
+  };
+  const heroEyebrowStyle = {
+    color: getSafeHeroHexColor(homepageContent.hero.hero_eyebrow_color, defaults.hero.hero_eyebrow_color),
+  };
+  const heroTitleStyle = {
+    color: getSafeHeroHexColor(homepageContent.hero.hero_title_color, defaults.hero.hero_title_color),
+  };
+  const heroSubtitleStyle = {
+    color: getSafeHeroHexColor(homepageContent.hero.hero_subtitle_color, defaults.hero.hero_subtitle_color),
+  };
 
   return (
     <Layout>
@@ -383,21 +399,21 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
             className="w-full h-full object-cover object-center"
             loading="eager"
             decoding="async"
-            fetchPriority="high"
+            fetchpriority="high"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#F8F5F1]/35 via-[#F8F5F1]/45 to-[#F8F5F1]/70" />
+          <div className="absolute inset-0" style={heroOverlayStyle} />
         </div>
 
         {/* Content */}
         <div className="relative z-10 max-w-[1280px] mx-auto px-6 md:px-10 lg:px-12 text-center">
           <div className="max-w-4xl mx-auto animate-fade-up">
-            <p className="text-[11px] md:text-xs tracking-[0.38em] uppercase text-foreground/65 mb-6">
+            <p className="text-[11px] md:text-xs tracking-[0.38em] uppercase mb-6" style={heroEyebrowStyle}>
               {homepageContent.hero.eyebrow}
             </p>
-            <h1 className="font-heading text-5xl md:text-7xl lg:text-[7rem] tracking-[-0.03em] text-foreground leading-[0.98] mb-7">
+            <h1 className="font-heading text-5xl md:text-7xl lg:text-[7rem] tracking-[-0.03em] leading-[0.98] mb-7" style={heroTitleStyle}>
               {renderMultilineText(homepageContent.hero.heading)}
             </h1>
-            <p className="text-lg md:text-[1.35rem] text-foreground/75 mb-12 font-serif-accent italic">
+            <p className="text-lg md:text-[1.35rem] mb-12 font-serif-accent italic" style={heroSubtitleStyle}>
               {homepageContent.hero.subheading}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">

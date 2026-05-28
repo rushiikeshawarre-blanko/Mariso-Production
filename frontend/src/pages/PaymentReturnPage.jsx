@@ -152,7 +152,7 @@ const PaymentReturnPage = () => {
 
   return (
     <Layout>
-      <div className="pt-32 pb-24 min-h-screen" data-testid="cashfree-return-page">
+      <div className="pt-8 pb-24 min-h-screen md:pt-10" data-testid="cashfree-return-page">
         <div className="max-w-2xl mx-auto container-padding text-center">
           <div className="bg-white rounded-xl p-8 card-shadow">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">

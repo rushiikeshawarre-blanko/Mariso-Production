@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import List, Literal, Optional
 
@@ -116,6 +117,21 @@ def validate_required_homepage_link(value: str) -> str:
     return normalized
 
 
+def clamp_homepage_hero_overlay_opacity(value: Optional[int]) -> int:
+    try:
+        numeric_value = int(value)
+    except (TypeError, ValueError):
+        return 55
+    return min(max(numeric_value, 0), 80)
+
+
+def validate_homepage_hex_color(value: Optional[str], fallback: str) -> str:
+    normalized = (value or "").strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", normalized):
+        return normalized.upper()
+    return fallback
+
+
 def normalize_item_id(value: Optional[str]) -> str:
     normalized = (value or "").strip()
     return normalized or str(uuid.uuid4())
@@ -147,7 +163,7 @@ class HomepageAnnouncementSettings(BaseModel):
         max_length=180,
     )
     announcement_link: Optional[str] = Field(None, max_length=500)
-    announcement_bg_color: str = Field("#B89B7E", max_length=20)
+    announcement_bg_color: str = Field("#8A6F55", max_length=20)
     announcement_text_color: str = Field("#FFFFFF", max_length=20)
 
     @field_validator("announcement_link")
@@ -155,13 +171,47 @@ class HomepageAnnouncementSettings(BaseModel):
     def validate_announcement_link(cls, value: Optional[str]) -> Optional[str]:
         return validate_homepage_link(value)
 
+    @field_validator("announcement_bg_color", mode="before")
+    @classmethod
+    def validate_announcement_bg_color(cls, value: Optional[str]) -> str:
+        return validate_homepage_hex_color(value, "#8A6F55")
+
+    @field_validator("announcement_text_color", mode="before")
+    @classmethod
+    def validate_announcement_text_color(cls, value: Optional[str]) -> str:
+        return validate_homepage_hex_color(value, "#FFFFFF")
+
 
 class HomepageHeroSettings(BaseModel):
     eyebrow: str = Field(..., max_length=120)
     heading: str = Field(..., min_length=1, max_length=240)
     subheading: str = Field(..., max_length=300)
     background_image: str = Field(..., max_length=1000)
+    hero_overlay_opacity: int = Field(55, ge=0, le=80)
+    hero_eyebrow_color: str = Field("#5F554F", max_length=20)
+    hero_title_color: str = Field("#1C1917", max_length=20)
+    hero_subtitle_color: str = Field("#4A403A", max_length=20)
     buttons: List[HomepageHeroButton] = Field(default_factory=list)
+
+    @field_validator("hero_overlay_opacity", mode="before")
+    @classmethod
+    def validate_hero_overlay_opacity(cls, value: Optional[int]) -> int:
+        return clamp_homepage_hero_overlay_opacity(value)
+
+    @field_validator("hero_eyebrow_color", mode="before")
+    @classmethod
+    def validate_hero_eyebrow_color(cls, value: Optional[str]) -> str:
+        return validate_homepage_hex_color(value, "#5F554F")
+
+    @field_validator("hero_title_color", mode="before")
+    @classmethod
+    def validate_hero_title_color(cls, value: Optional[str]) -> str:
+        return validate_homepage_hex_color(value, "#1C1917")
+
+    @field_validator("hero_subtitle_color", mode="before")
+    @classmethod
+    def validate_hero_subtitle_color(cls, value: Optional[str]) -> str:
+        return validate_homepage_hex_color(value, "#4A403A")
 
 
 class HomepageProductSectionSettings(BaseModel):

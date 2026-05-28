@@ -96,7 +96,7 @@ const TrackOrderPage = () => {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-[#F8F5F1] pt-28 pb-20 text-foreground">
+      <div className="min-h-screen bg-[#F8F5F1] pt-8 pb-20 text-foreground md:pt-10">
         <div className="mx-auto max-w-5xl px-5 md:px-8">
           <div className="mb-10">
             <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">

@@ -110,7 +110,7 @@ const ContentPage = () => {
   }, [slug]);
 
   return (
-    <div className="min-h-screen bg-[#F8F3EF] pt-28 text-[#211816] md:pt-32">
+    <div className="min-h-screen bg-[#F8F3EF] pt-8 text-[#211816] md:pt-10">
       <style>{`
         .content-page-rich-text h1,
         .content-page-rich-text h2,
