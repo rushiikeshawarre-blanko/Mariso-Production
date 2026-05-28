@@ -71,13 +71,18 @@ export const Navbar = forwardRef((props, ref) => {
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
+    const updateScrolled = () => {
       setScrolled(window.scrollY > 40);
+    };
+
+    const handleScroll = () => {
+      updateScrolled();
       if (searchOpen || mobileSearchOpen) {
         closeSearch();
       }
     };
-    handleScroll();
+
+    updateScrolled();
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [closeSearch, mobileSearchOpen, searchOpen]);
