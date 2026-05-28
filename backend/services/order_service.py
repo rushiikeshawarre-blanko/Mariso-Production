@@ -41,7 +41,7 @@ from services.admin_service import build_order_period_filter
 from services.cashfree_service import create_cashfree_refund, get_cashfree_order, get_cashfree_refund
 from services.coupon_service import increment_coupon_usage, validate_coupon
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
-from whatsapp_service import send_order_status_whatsapp
+from whatsapp_service import send_feedback_reward_whatsapp, send_order_status_whatsapp
 import logging
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -371,6 +371,7 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("customer_email_sent_at", None)
     order.setdefault("admin_email_sent_at", None)
     order.setdefault("whatsapp_sent_at", None)
+    order.setdefault("feedback_whatsapp_sent_at", None)
     order.setdefault("coupon_code", None)
     order.setdefault("coupon_id", None)
     order.setdefault("coupon_discount_amount", 0)
@@ -1079,6 +1080,7 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "customer_email_sent_at": None,
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
+        "feedback_whatsapp_sent_at": None,
         "payment_events": [],
         "cancellation_status": "none",
         "cancellation_requested_at": None,
@@ -1234,6 +1236,7 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "customer_email_sent_at": None,
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
+        "feedback_whatsapp_sent_at": None,
         "payment_events": [
             _payment_event(
                 "stock_reserved",
@@ -2251,6 +2254,22 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
                 send_order_status_whatsapp(order)
             except Exception as e:
                 logger.error(f"Failed to send status WhatsApp: {e}")
+
+        if status == "delivered":
+            if order.get("feedback_whatsapp_sent_at"):
+                logger.info("Feedback reward WhatsApp skipped: already sent for order_id=%s", order_id)
+            else:
+                try:
+                    feedback_whatsapp_result = send_feedback_reward_whatsapp(order)
+                    if feedback_whatsapp_result and feedback_whatsapp_result.get("success"):
+                        feedback_whatsapp_sent_at = _now_iso()
+                        await db.orders.update_one(
+                            {"id": order_id, "feedback_whatsapp_sent_at": {"$in": [None, ""]}},
+                            {"$set": {"feedback_whatsapp_sent_at": feedback_whatsapp_sent_at}},
+                        )
+                        order["feedback_whatsapp_sent_at"] = feedback_whatsapp_sent_at
+                except Exception as e:
+                    logger.error(f"Failed to send feedback reward WhatsApp: {e}")
 
     else:
         logger.info("DEBUG status did not change, skipping notifications")

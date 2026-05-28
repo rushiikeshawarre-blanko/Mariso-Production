@@ -70,6 +70,7 @@ class OrderPaymentFields(BaseModel):
     customer_email_sent_at: Optional[str] = None
     admin_email_sent_at: Optional[str] = None
     whatsapp_sent_at: Optional[str] = None
+    feedback_whatsapp_sent_at: Optional[str] = None
     coupon_code: Optional[str] = None
     coupon_id: Optional[str] = None
     coupon_discount_amount: float = 0

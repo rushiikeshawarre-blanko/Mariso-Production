@@ -5,7 +5,8 @@ import pytest
 from fastapi import HTTPException
 
 import email_service
-from models.order import CashfreeCheckoutCreate
+import whatsapp_service
+from models.order import CashfreeCheckoutCreate, OrderStatusUpdate
 from services import feedback_service, order_service
 
 
@@ -50,6 +51,56 @@ class EmptyQuestions:
 class EmptyCoupons:
     async def find_one(self, query, projection=None):
         return None
+
+
+MISSING = object()
+
+
+def matches(document, query):
+    for key, expected in query.items():
+        if key == "$or":
+            if not any(matches(document, candidate) for candidate in expected):
+                return False
+            continue
+        actual = document.get(key, MISSING)
+        if isinstance(expected, dict):
+            if "$in" in expected and actual not in expected["$in"] and not (
+                actual is MISSING and None in expected["$in"]
+            ):
+                return False
+            if "$exists" in expected and (actual is not MISSING) != expected["$exists"]:
+                return False
+            if "$nin" in expected and actual in expected["$nin"]:
+                return False
+        elif actual is MISSING or actual != expected:
+            return False
+    return True
+
+
+class StatusUpdateOrders:
+    def __init__(self, order):
+        self.order = dict(order)
+
+    async def find_one(self, query, projection=None):
+        return dict(self.order) if matches(self.order, query) else None
+
+    async def update_one(self, query, update):
+        if not matches(self.order, query):
+            return SimpleNamespace(modified_count=0)
+        self.order.update(update.get("$set", {}))
+        return SimpleNamespace(modified_count=1)
+
+
+class StatusUpdateUsers:
+    async def find_one(self, query, projection=None):
+        return {"id": query.get("id"), "name": "Customer", "email": "customer@example.com"}
+
+
+def setup_status_update_database(monkeypatch, order):
+    orders = StatusUpdateOrders(order)
+    database = SimpleNamespace(orders=orders, users=StatusUpdateUsers())
+    monkeypatch.setattr(order_service, "db", database)
+    return orders
 
 
 class CheckoutCollection:
@@ -191,3 +242,144 @@ def test_delivered_email_uses_feedback_token_and_suppresses_broken_link(monkeypa
     })
 
     assert sent_html == []
+
+
+def test_delivered_status_triggers_feedback_whatsapp_once(monkeypatch):
+    orders = setup_status_update_database(monkeypatch, {
+        "id": "order-1",
+        "user_id": "user-1",
+        "status": "shipped",
+        "billing_phone": "9876543210",
+        "billing_email": "customer@example.com",
+        "billing_name": "Customer",
+        "tracking_token": "tracking-token",
+        "feedback_token": "feedback-token",
+        "cancellation_status": "none",
+    })
+    sent_orders = []
+    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: None)
+    monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
+    monkeypatch.setattr(
+        order_service,
+        "send_feedback_reward_whatsapp",
+        lambda order: sent_orders.append(order["id"]) or {"success": True},
+    )
+
+    result = asyncio.run(order_service.update_order_status(
+        "order-1",
+        OrderStatusUpdate(status="delivered"),
+        "admin-1",
+    ))
+
+    assert sent_orders == ["order-1"]
+    assert result["feedback_whatsapp_sent_at"]
+    assert orders.order["feedback_whatsapp_sent_at"] == result["feedback_whatsapp_sent_at"]
+
+
+def test_re_saving_delivered_status_does_not_duplicate_feedback_whatsapp(monkeypatch):
+    setup_status_update_database(monkeypatch, {
+        "id": "order-1",
+        "user_id": "user-1",
+        "status": "delivered",
+        "billing_phone": "9876543210",
+        "billing_email": "customer@example.com",
+        "billing_name": "Customer",
+        "tracking_token": "tracking-token",
+        "feedback_token": "feedback-token",
+        "feedback_whatsapp_sent_at": "already-sent",
+        "cancellation_status": "none",
+    })
+    sent_orders = []
+    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: None)
+    monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
+    monkeypatch.setattr(
+        order_service,
+        "send_feedback_reward_whatsapp",
+        lambda order: sent_orders.append(order["id"]) or {"success": True},
+    )
+
+    asyncio.run(order_service.update_order_status(
+        "order-1",
+        OrderStatusUpdate(status="delivered"),
+        "admin-1",
+    ))
+
+    assert sent_orders == []
+
+
+def test_missing_feedback_whatsapp_sid_skips_gracefully(monkeypatch):
+    monkeypatch.delenv("TWILIO_WHATSAPP_FEEDBACK_REWARD_CONTENT_SID", raising=False)
+    monkeypatch.setattr(
+        whatsapp_service,
+        "send_whatsapp_template",
+        lambda *args, **kwargs: pytest.fail("send_whatsapp_template should not be called without feedback SID"),
+    )
+
+    result = whatsapp_service.send_feedback_reward_whatsapp({
+        "id": "order-1",
+        "billing_phone": "9876543210",
+        "billing_name": "Customer",
+        "feedback_token": "feedback-token",
+    })
+
+    assert result == {"success": False, "sid": None, "error": "missing_feedback_reward_template_sid"}
+
+
+def test_feedback_whatsapp_uses_feedback_link_and_three_template_variables(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("TWILIO_WHATSAPP_FEEDBACK_REWARD_CONTENT_SID", "HX_test")
+    monkeypatch.setattr(whatsapp_service, "FRONTEND_URL", "https://mariso.example")
+
+    def fake_send_whatsapp_template(to_number, content_sid, content_variables):
+        captured["to_number"] = to_number
+        captured["content_sid"] = content_sid
+        captured["content_variables"] = content_variables
+        return {"success": True, "sid": "SM_test", "error": None}
+
+    monkeypatch.setattr(whatsapp_service, "send_whatsapp_template", fake_send_whatsapp_template)
+
+    result = whatsapp_service.send_feedback_reward_whatsapp({
+        "id": "order-123456789",
+        "billing_phone": "9876543210",
+        "billing_name": "Customer",
+        "feedback_token": "feedback-token",
+    })
+
+    assert result["success"] is True
+    assert captured == {
+        "to_number": "9876543210",
+        "content_sid": "HX_test",
+        "content_variables": {
+            "1": "Customer",
+            "2": "ORDER-12",
+            "3": "https://mariso.example/feedback/feedback-token",
+        },
+    }
+
+
+def test_non_delivered_status_does_not_send_feedback_reward_whatsapp(monkeypatch):
+    setup_status_update_database(monkeypatch, {
+        "id": "order-1",
+        "user_id": "user-1",
+        "status": "confirmed",
+        "billing_phone": "9876543210",
+        "billing_email": "customer@example.com",
+        "billing_name": "Customer",
+        "tracking_token": "tracking-token",
+        "cancellation_status": "none",
+    })
+    sent_orders = []
+    monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
+    monkeypatch.setattr(
+        order_service,
+        "send_feedback_reward_whatsapp",
+        lambda order: sent_orders.append(order["id"]) or {"success": True},
+    )
+
+    asyncio.run(order_service.update_order_status(
+        "order-1",
+        OrderStatusUpdate(status="packed"),
+        "admin-1",
+    ))
+
+    assert sent_orders == []
