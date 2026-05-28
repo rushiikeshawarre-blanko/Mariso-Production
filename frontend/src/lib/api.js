@@ -1120,11 +1120,12 @@ export const createHomepagePresignedUpload = async (payload) => {
   }
 };
 
-export const uploadFileToPresignedUrl = async (uploadUrl, file, contentType) => {
+export const uploadFileToPresignedUrl = async (uploadUrl, file, contentType, cacheControl) => {
   try {
     await axios.put(uploadUrl, file, {
       headers: {
         'Content-Type': contentType || file.type,
+        ...(cacheControl ? { 'Cache-Control': cacheControl } : {}),
       },
     });
   } catch (error) {

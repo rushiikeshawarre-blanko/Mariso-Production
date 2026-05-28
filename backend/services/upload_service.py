@@ -33,6 +33,7 @@ ALLOWED_MEDIA_TYPES = {
 }
 MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
+STATIC_MEDIA_CACHE_CONTROL = "public, max-age=31536000, immutable"
 HOMEPAGE_UPLOAD_FOLDERS = {
     "homepage/hero",
     "homepage/category-cards",
@@ -157,6 +158,7 @@ async def create_presigned_upload(
             "Bucket": S3_BUCKET_NAME,
             "Key": object_key,
             "ContentType": validated_content_type,
+            "CacheControl": STATIC_MEDIA_CACHE_CONTROL,
         },
         ExpiresIn=900,
     )
@@ -166,6 +168,7 @@ async def create_presigned_upload(
         "key": object_key,
         "file_url": build_delivery_url(object_key),
         "content_type": validated_content_type,
+        "cache_control": STATIC_MEDIA_CACHE_CONTROL,
         "max_size_bytes": resolved_max_size_bytes,
         "expires_in": 900,
     }

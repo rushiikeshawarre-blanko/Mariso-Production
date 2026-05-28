@@ -140,6 +140,22 @@ class HomepageHeroButton(BaseModel):
         return validate_required_homepage_link(value)
 
 
+class HomepageAnnouncementSettings(BaseModel):
+    announcement_enabled: bool = True
+    announcement_text: str = Field(
+        "Use code MARISO10 for 10% off on selected candles",
+        max_length=180,
+    )
+    announcement_link: Optional[str] = Field(None, max_length=500)
+    announcement_bg_color: str = Field("#B89B7E", max_length=20)
+    announcement_text_color: str = Field("#FFFFFF", max_length=20)
+
+    @field_validator("announcement_link")
+    @classmethod
+    def validate_announcement_link(cls, value: Optional[str]) -> Optional[str]:
+        return validate_homepage_link(value)
+
+
 class HomepageHeroSettings(BaseModel):
     eyebrow: str = Field(..., max_length=120)
     heading: str = Field(..., min_length=1, max_length=240)
@@ -303,6 +319,7 @@ class HomepageNewsletterSettings(BaseModel):
 
 
 class HomepageSettingsPayload(BaseModel):
+    announcement: HomepageAnnouncementSettings = Field(default_factory=HomepageAnnouncementSettings)
     hero: HomepageHeroSettings
     featured_collection: HomepageProductSectionSettings
     shop_by_category: HomepageCategorySectionSettings

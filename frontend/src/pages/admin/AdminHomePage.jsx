@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Cropper from 'react-easy-crop';
 import { PlayCircle, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,6 +13,7 @@ import {
 } from '../../lib/api';
 import { createHomePageAdminDefaults } from '../../lib/homePageDefaults';
 import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
@@ -25,6 +27,7 @@ const TEMPLATE_OPTIONS = {
 };
 
 const EDITOR_SECTIONS = [
+  { id: 'announcement', label: 'Announcement' },
   { id: 'hero', label: 'Hero' },
   { id: 'featured_collection', label: 'Featured' },
   { id: 'shop_by_category', label: 'Categories' },
@@ -51,6 +54,17 @@ const IMAGE_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const VIDEO_MEDIA_TYPES = ['video/mp4'];
 const MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+const HOMEPAGE_IMAGE_UPLOAD_OPTIONS = {
+  'homepage/hero': { maxWidth: 1920, quality: 0.82 },
+  'homepage/story': { maxWidth: 1200, quality: 0.82 },
+  'homepage/artisans': { maxWidth: 1200, quality: 0.82 },
+  'homepage/craft-process/images': { maxWidth: 1200, quality: 0.82 },
+  'homepage/journey': { maxWidth: 1200, quality: 0.82 },
+  'homepage/category-cards': { maxWidth: 900, quality: 0.8 },
+};
+const DEFAULT_HOMEPAGE_IMAGE_UPLOAD_OPTIONS = { maxWidth: 1200, quality: 0.82 };
+const isGifFile = (file) => file?.type === 'image/gif';
+const isGifUrl = (url) => String(url || '').split('?')[0].toLowerCase().endsWith('.gif');
 
 const createHeroButton = () => ({
   id: createClientId(),
@@ -98,11 +112,132 @@ const normalizeItemIds = (items = []) => items.map((item) => ({
   id: item.id || createClientId(),
 }));
 
+const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+  canvas.toBlob((blob) => resolve(blob), type, quality);
+});
+
+const loadImageSource = (src) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => {
+    resolve(image);
+  };
+  image.onerror = () => {
+    reject(new Error('Failed to load image for optimization'));
+  };
+  image.setAttribute('crossOrigin', 'anonymous');
+  image.src = src;
+});
+
+const loadImageFile = (file) => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(file);
+  loadImageSource(objectUrl)
+    .then((image) => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    })
+    .catch(() => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load image for optimization'));
+    });
+});
+
+const getOptimizedFilename = (filename, contentType) => {
+  const extension = contentType === 'image/webp' ? 'webp' : 'jpg';
+  const baseName = String(filename || 'homepage-image').replace(/\.[^.]+$/, '') || 'homepage-image';
+  return `${baseName}.${extension}`;
+};
+
+const getHomepageImageUploadOptions = (folder) => (
+  HOMEPAGE_IMAGE_UPLOAD_OPTIONS[folder] || DEFAULT_HOMEPAGE_IMAGE_UPLOAD_OPTIONS
+);
+
+const createOptimizedHomepageImageFile = async ({
+  image,
+  filename,
+  folder,
+  cropPixels = null,
+}) => {
+  const { maxWidth, quality } = getHomepageImageUploadOptions(folder);
+  const sourceWidth = cropPixels?.width || image.naturalWidth || image.width;
+  const sourceHeight = cropPixels?.height || image.naturalHeight || image.height;
+
+  if (!sourceWidth || !sourceHeight) {
+    throw new Error('Could not read image dimensions');
+  }
+
+  const scale = Math.min(1, maxWidth / sourceWidth);
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Image optimization is not supported in this browser');
+  }
+
+  if (cropPixels) {
+    context.drawImage(
+      image,
+      cropPixels.x,
+      cropPixels.y,
+      cropPixels.width,
+      cropPixels.height,
+      0,
+      0,
+      targetWidth,
+      targetHeight
+    );
+  } else {
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+  }
+
+  let optimizedType = 'image/webp';
+  let optimizedBlob = await canvasToBlob(canvas, optimizedType, quality);
+
+  if (!optimizedBlob || optimizedBlob.type !== optimizedType) {
+    optimizedType = 'image/jpeg';
+    optimizedBlob = await canvasToBlob(canvas, optimizedType, quality);
+  }
+
+  if (!optimizedBlob) {
+    throw new Error('Failed to optimize image');
+  }
+
+  return new File(
+    [optimizedBlob],
+    getOptimizedFilename(filename, optimizedType),
+    { type: optimizedType }
+  );
+};
+
+const optimizeHomepageImageFile = async (file, folder) => {
+  if (!file || file.type === 'image/gif') return file;
+
+  const image = await loadImageFile(file);
+  return createOptimizedHomepageImageFile({ image, filename: file.name, folder });
+};
+
+const cropHomepageImageFile = async (imageSrc, cropPixels, originalFilename, folder) => {
+  const image = await loadImageSource(imageSrc);
+  return createOptimizedHomepageImageFile({
+    image,
+    filename: originalFilename,
+    folder,
+    cropPixels,
+  });
+};
+
 const normalizeDraft = (savedContent) => {
   const defaults = createHomePageAdminDefaults();
   if (!savedContent) return defaults;
 
   return {
+    announcement: {
+      ...defaults.announcement,
+      ...savedContent.announcement,
+    },
     hero: {
       ...defaults.hero,
       ...savedContent.hero,
@@ -174,15 +309,117 @@ const Field = ({ label, value, onChange, placeholder = '', type = 'text', requir
   </div>
 );
 
-const MediaField = ({ label, value, onChange, folder, mediaType = 'image' }) => {
+const MediaField = ({ label, value, onChange, folder, mediaType = 'image', cropAspect = null, cropTitle = '' }) => {
   const inputRef = React.useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [pendingCropFile, setPendingCropFile] = useState(null);
+  const [pendingCropImageUrl, setPendingCropImageUrl] = useState('');
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const isVideo = mediaType === 'video';
   const acceptedTypes = isVideo ? VIDEO_MEDIA_TYPES : IMAGE_MEDIA_TYPES;
   const maxSizeBytes = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
   const sizeLabel = isVideo ? '100MB' : '30MB';
   const formatLabel = isVideo ? 'MP4' : 'JPG, JPEG, PNG, GIF, or WEBP';
+  const shouldCrop = !isVideo && Boolean(cropAspect);
+
+  const uploadMediaFile = async (file) => {
+    setUploading(true);
+    setUploadError('');
+    const uploadFile = isVideo ? file : await optimizeHomepageImageFile(file, folder);
+    const presigned = await createHomepagePresignedUpload({
+      filename: uploadFile.name,
+      content_type: uploadFile.type,
+      folder,
+    });
+
+    await uploadFileToPresignedUrl(
+      presigned.upload_url,
+      uploadFile,
+      presigned.content_type,
+      presigned.cache_control
+    );
+    onChange(presigned.file_url);
+    toast.success(`${label} uploaded. Save Homepage to publish this change.`);
+  };
+
+  const uploadCroppedImage = async () => {
+    if (!pendingCropFile || !pendingCropImageUrl || !croppedAreaPixels) {
+      const message = 'Please adjust the crop before uploading.';
+      setUploadError(message);
+      toast.error(message);
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError('');
+      const uploadFile = await cropHomepageImageFile(
+        pendingCropImageUrl,
+        croppedAreaPixels,
+        pendingCropFile.name,
+        folder
+      );
+      const presigned = await createHomepagePresignedUpload({
+        filename: uploadFile.name,
+        content_type: uploadFile.type,
+        folder,
+      });
+
+      await uploadFileToPresignedUrl(
+        presigned.upload_url,
+        uploadFile,
+        presigned.content_type,
+        presigned.cache_control
+      );
+      onChange(presigned.file_url);
+      toast.success(`${label} uploaded. Save Homepage to publish this change.`);
+      closeCropDialog();
+    } catch (error) {
+      console.error(`Error uploading ${label}:`, error);
+      const detail = error?.response?.data?.detail;
+      const message = typeof detail === 'string' ? detail : `Failed to upload ${label.toLowerCase()}.`;
+      setUploadError(message);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const closeCropDialog = () => {
+    if (pendingCropImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingCropImageUrl);
+    }
+
+    setCropDialogOpen(false);
+    setPendingCropFile(null);
+    setPendingCropImageUrl('');
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+  };
+
+  const openCropDialog = (file, imageUrl) => {
+    if (pendingCropImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingCropImageUrl);
+    }
+
+    setPendingCropFile(file);
+    setPendingCropImageUrl(imageUrl);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setCropDialogOpen(true);
+  };
+
+  const openExistingCropDialog = () => {
+    if (!value || isGifUrl(value)) return;
+    const filename = `${String(label || 'homepage-image').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'homepage-image'}.jpg`;
+    openCropDialog(new File([], filename, { type: 'image/jpeg' }), value);
+  };
 
   const handleUrlChange = (event) => {
     setUploadError('');
@@ -209,17 +446,12 @@ const MediaField = ({ label, value, onChange, folder, mediaType = 'image' }) => 
     }
 
     try {
-      setUploading(true);
-      setUploadError('');
-      const presigned = await createHomepagePresignedUpload({
-        filename: file.name,
-        content_type: file.type,
-        folder,
-      });
+      if (shouldCrop && !isGifFile(file)) {
+        openCropDialog(file, URL.createObjectURL(file));
+        return;
+      }
 
-      await uploadFileToPresignedUrl(presigned.upload_url, file, presigned.content_type);
-      onChange(presigned.file_url);
-      toast.success(`${label} uploaded. Save Homepage to publish this change.`);
+      await uploadMediaFile(file);
     } catch (error) {
       console.error(`Error uploading ${label}:`, error);
       const detail = error?.response?.data?.detail;
@@ -258,6 +490,17 @@ const MediaField = ({ label, value, onChange, folder, mediaType = 'image' }) => 
         <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
           {uploading ? 'Uploading...' : value ? 'Replace' : 'Upload'}
         </Button>
+        {value && shouldCrop && !isGifUrl(value) ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={openExistingCropDialog}
+          >
+            Re-crop
+          </Button>
+        ) : null}
         {value ? (
           <Button
             type="button"
@@ -275,6 +518,59 @@ const MediaField = ({ label, value, onChange, folder, mediaType = 'image' }) => 
         <span className="text-xs text-muted-foreground">{formatLabel}, up to {sizeLabel}</span>
       </div>
       {uploadError ? <p className="text-sm text-red-700">{uploadError}</p> : null}
+      <Dialog
+        open={cropDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !uploading) closeCropDialog();
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <div className="flex flex-col space-y-1.5 text-center sm:text-left">
+            <h2 className="text-lg font-semibold leading-none tracking-tight">{cropTitle || `Crop ${label}`}</h2>
+            <p className="text-sm text-muted-foreground">
+              Compose the image before uploading. GIF images upload without cropping.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div className="relative h-[420px] overflow-hidden rounded-md bg-black">
+              {pendingCropImageUrl ? (
+                <Cropper
+                  image={pendingCropImageUrl}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={cropAspect || 1}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                />
+              ) : null}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label htmlFor={`${folder}-crop-zoom`} className="min-w-[48px] text-sm">
+                Zoom
+              </Label>
+              <Input
+                id={`${folder}-crop-zoom`}
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={zoom}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                disabled={uploading}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+            <Button type="button" variant="outline" disabled={uploading} onClick={closeCropDialog}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={uploading} onClick={uploadCroppedImage}>
+              {uploading ? 'Uploading...' : 'Apply Crop'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
@@ -367,6 +663,28 @@ const SectionHeadingPreview = ({ section, note }) => (
     {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
   </PreviewPanel>
 );
+
+const AnnouncementPreview = ({ announcement }) => {
+  const text = String(announcement.announcement_text || '').trim();
+
+  return (
+    <PreviewPanel>
+      {announcement.announcement_enabled && text ? (
+        <div
+          className="rounded-lg px-4 py-2 text-center text-sm font-medium"
+          style={{
+            backgroundColor: announcement.announcement_bg_color || '#B89B7E',
+            color: announcement.announcement_text_color || '#FFFFFF',
+          }}
+        >
+          {text}
+        </div>
+      ) : (
+        <EmptyPreviewNote>The announcement banner is hidden.</EmptyPreviewNote>
+      )}
+    </PreviewPanel>
+  );
+};
 
 const HeroPreview = ({ hero }) => {
   const buttons = sortedActiveItems(hero.buttons);
@@ -604,6 +922,8 @@ const validateLink = (value, label, required = false) => {
 
 const validateDraft = (draft, categories) => {
   if (!draft.hero.heading.trim()) return 'Hero heading is required.';
+  const announcementLinkError = validateLink(draft.announcement.announcement_link, 'Announcement link');
+  if (announcementLinkError) return announcementLinkError;
   for (const button of draft.hero.buttons) {
     if (!button.label.trim()) return 'Every hero button needs a label.';
     const linkError = validateLink(button.link, 'Hero button link', true);
@@ -659,6 +979,10 @@ const validateDraft = (draft, categories) => {
 
 const createPayload = (draft, categories) => ({
   ...draft,
+  announcement: {
+    ...draft.announcement,
+    announcement_link: optionalLink(draft.announcement.announcement_link),
+  },
   hero: {
     ...draft.hero,
     buttons: draft.hero.buttons.map((button) => ({
@@ -939,6 +1263,45 @@ const AdminHomePage = () => {
         ))}
       </nav>
 
+      {activeSection === 'announcement' ? (
+        <SectionPanel title="Announcement Banner" description="A thin promotional banner shown above the homepage navbar.">
+          <AnnouncementPreview announcement={draft.announcement} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <TextField
+                label="Text"
+                value={draft.announcement.announcement_text}
+                onChange={(value) => updateSection('announcement', 'announcement_text', value)}
+                rows={2}
+              />
+            </div>
+            <Field
+              label="Optional Link"
+              value={draft.announcement.announcement_link}
+              onChange={(value) => updateSection('announcement', 'announcement_link', value)}
+              placeholder="/shop?featured=true"
+            />
+            <Field
+              label="Background Color"
+              type="color"
+              value={draft.announcement.announcement_bg_color}
+              onChange={(value) => updateSection('announcement', 'announcement_bg_color', value)}
+            />
+            <Field
+              label="Text Color"
+              type="color"
+              value={draft.announcement.announcement_text_color}
+              onChange={(value) => updateSection('announcement', 'announcement_text_color', value)}
+            />
+          </div>
+          <Toggle
+            label="Show announcement banner"
+            checked={draft.announcement.announcement_enabled}
+            onChange={(value) => updateSection('announcement', 'announcement_enabled', value)}
+          />
+        </SectionPanel>
+      ) : null}
+
       {activeSection === 'hero' ? (
         <SectionPanel title="Hero" description="Headline, backdrop, and hero action buttons.">
           <HeroPreview hero={draft.hero} />
@@ -954,6 +1317,8 @@ const AdminHomePage = () => {
                 value={draft.hero.background_image}
                 onChange={(value) => updateSection('hero', 'background_image', value)}
                 folder="homepage/hero"
+                cropAspect={16 / 9}
+                cropTitle="Crop Hero Image"
               />
             </div>
           </div>
@@ -1136,6 +1501,8 @@ const AdminHomePage = () => {
                 value={draft.crafted_with_intention.image}
                 onChange={(value) => updateSection('crafted_with_intention', 'image', value)}
                 folder="homepage/story"
+                cropAspect={4 / 5}
+                cropTitle="Crop Our Story Image"
               />
             </div>
           </div>
@@ -1182,6 +1549,8 @@ const AdminHomePage = () => {
                 value={draft.supporting_artisans.image}
                 onChange={(value) => updateSection('supporting_artisans', 'image', value)}
                 folder="homepage/artisans"
+                cropAspect={4 / 5}
+                cropTitle="Crop Supporting Artisans Image"
               />
             </div>
           </div>

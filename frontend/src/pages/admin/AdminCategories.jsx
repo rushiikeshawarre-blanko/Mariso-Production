@@ -319,7 +319,8 @@ const AdminCategories = () => {
       await uploadFileToPresignedUrl(
         presigned.upload_url,
         file,
-        presigned.content_type
+        presigned.content_type,
+        presigned.cache_control
       );
 
       const uploadedImageUrl = presigned.file_url;

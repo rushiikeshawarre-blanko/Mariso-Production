@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -20,11 +20,25 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
-import { searchCatalogSuggestions, getCategories } from '../../lib/api';
+import { searchCatalogSuggestions, getCategories, getHomepageContent } from '../../lib/api';
+import { createHomePageAdminDefaults } from '../../lib/homePageDefaults';
 import { getProductPath } from '../../lib/utils';
 
+const getSafeAnnouncementLink = (value) => {
+  const normalized = String(value || '').trim();
+  if (
+    (normalized.startsWith('/') && !normalized.startsWith('//')) ||
+    normalized.startsWith('#') ||
+    /^https?:\/\//i.test(normalized)
+  ) {
+    return normalized;
+  }
+  return null;
+};
+
 export const Navbar = () => {
-  const [scrolled, setScrolled] = useState(false);
+  const announcementDefaults = useMemo(() => createHomePageAdminDefaults().announcement, []);
+  const [scrolled, setScrolled] = useState(() => (typeof window === 'undefined' ? false : window.scrollY > 40));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -32,6 +46,7 @@ export const Navbar = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [navCategories, setNavCategories] = useState([]);
+  const [announcement, setAnnouncement] = useState(announcementDefaults);
   const desktopSearchPanelRef = useRef(null);
   const desktopSearchButtonRef = useRef(null);
   const searchRequestIdRef = useRef(0);
@@ -57,11 +72,12 @@ export const Navbar = () => {
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
+      setScrolled(window.scrollY > 40);
       if (searchOpen || mobileSearchOpen) {
         closeSearch();
       }
     };
+    handleScroll();
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [closeSearch, mobileSearchOpen, searchOpen]);
@@ -110,6 +126,34 @@ export const Navbar = () => {
 
     fetchNavCategories();
   }, []);
+
+  const isAdminRoute = location.pathname.startsWith('/admin');
+
+  useEffect(() => {
+    if (isAdminRoute) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    getHomepageContent()
+      .then((content) => {
+        if (!cancelled) {
+          setAnnouncement({
+            ...announcementDefaults,
+            ...(content?.announcement || {}),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAnnouncement(announcementDefaults);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [announcementDefaults, isAdminRoute]);
 
   useEffect(() => {
     const query = searchInput.trim();
@@ -208,9 +252,25 @@ export const Navbar = () => {
   };
 
   const isHomePage = location.pathname === '/';
-  const navBg = scrolled || !isHomePage 
-    ? 'bg-[#F8F5F1]/95 backdrop-blur-md border-b border-border/50' 
-    : 'bg-transparent';
+  const hasHeaderDepth = scrolled || !isHomePage || mobileMenuOpen || searchOpen || mobileSearchOpen;
+  const navBg = `bg-[#F8F5F1]/95 backdrop-blur-md border-b border-border/50 ${
+    hasHeaderDepth ? 'shadow-[0_8px_24px_rgba(36,28,24,0.06)]' : ''
+  }`;
+  const announcementText = String(announcement?.announcement_text || '').trim();
+  const announcementLink = getSafeAnnouncementLink(announcement?.announcement_link);
+  const showAnnouncement = !isAdminRoute && announcement?.announcement_enabled !== false && announcementText;
+  const announcementStyle = {
+    backgroundColor: announcement?.announcement_bg_color || announcementDefaults.announcement_bg_color,
+    color: announcement?.announcement_text_color || announcementDefaults.announcement_text_color,
+  };
+  const announcementClassName = 'block w-full px-4 py-2 text-center text-[11px] font-medium uppercase tracking-[0.14em] sm:text-xs';
+  const isExternalAnnouncementLink = /^https?:\/\//i.test(announcementLink || '');
+  const AnnouncementWrapper = announcementLink ? (isExternalAnnouncementLink ? 'a' : Link) : 'div';
+  const announcementProps = announcementLink
+    ? isExternalAnnouncementLink
+      ? { href: announcementLink, target: '_blank', rel: 'noopener noreferrer' }
+      : { to: announcementLink }
+    : {};
 
   const renderSuggestionGroups = (testIdPrefix) => (
     <>
@@ -258,6 +318,16 @@ export const Navbar = () => {
       className={`fixed top-0 w-full z-50 transition-all duration-300 ${navBg}`}
       data-testid="navbar"
     >
+      {showAnnouncement ? (
+        <AnnouncementWrapper
+          {...announcementProps}
+          className={`${announcementClassName} ${announcementLink ? 'transition-opacity hover:opacity-90' : ''}`}
+          style={announcementStyle}
+          data-testid="announcement-banner"
+        >
+          {announcementText}
+        </AnnouncementWrapper>
+      ) : null}
       <div className="max-w-[1440px] mx-auto px-4 md:px-8 lg:px-12">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}

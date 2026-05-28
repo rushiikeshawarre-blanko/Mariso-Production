@@ -1,6 +1,13 @@
 export const HOMEPAGE_PREVIEW_STORAGE_KEY = 'mariso.homepage.previewDraft';
 
 const HOME_PAGE_ADMIN_DEFAULTS = {
+  announcement: {
+    announcement_enabled: true,
+    announcement_text: 'Use code MARISO10 for 10% off on selected candles',
+    announcement_link: '',
+    announcement_bg_color: '#B89B7E',
+    announcement_text_color: '#FFFFFF',
+  },
   hero: {
     eyebrow: 'Handcrafted with Love',
     heading: 'Handcrafted Candles\n& Homewares',

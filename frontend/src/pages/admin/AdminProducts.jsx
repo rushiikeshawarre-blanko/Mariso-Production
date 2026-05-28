@@ -276,7 +276,8 @@ const AdminProducts = () => {
         await uploadFileToPresignedUrl(
           presigned.upload_url,
           file,
-          presigned.content_type
+          presigned.content_type,
+          presigned.cache_control
         );
 
         return presigned.file_url;
@@ -909,7 +910,8 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       await uploadFileToPresignedUrl(
         presigned.upload_url,
         file,
-        presigned.content_type
+        presigned.content_type,
+        presigned.cache_control
       );
 
       setFormData((prev) => ({
@@ -967,7 +969,8 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       await uploadFileToPresignedUrl(
         presigned.upload_url,
         file,
-        presigned.content_type
+        presigned.content_type,
+        presigned.cache_control
       );
 
       updateColorOption(colorIndex, 'video', presigned.file_url);
@@ -1018,7 +1021,8 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       await uploadFileToPresignedUrl(
         presigned.upload_url,
         file,
-        presigned.content_type
+        presigned.content_type,
+        presigned.cache_control
       );
 
       setNewColor((prev) => ({

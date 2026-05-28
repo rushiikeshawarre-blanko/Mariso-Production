@@ -126,6 +126,7 @@ const mergeHomepageContent = (content) => {
   if (!content) return defaults;
 
   return {
+    announcement: mergeSection(defaults.announcement, content.announcement),
     hero: mergeSection(defaults.hero, content.hero, ['buttons']),
     featured_collection: mergeSection(defaults.featured_collection, content.featured_collection),
     shop_by_category: mergeSection(defaults.shop_by_category, content.shop_by_category, ['cards']),
