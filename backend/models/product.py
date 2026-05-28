@@ -60,6 +60,8 @@ class ProductCreate(BaseModel):
     subcategory: Optional[str] = ""
     sku: Optional[str] = ""
     stock: int = Field(0, ge=0)
+    shop_priority: int = 0
+    shop_order: int = 0
     images: List[ProductImageValue] = Field(default_factory=list)
     video: Optional[str] = ""
     # Variant options
@@ -114,6 +116,8 @@ class ProductUpdate(BaseModel):
     subcategory: Optional[str] = None
     sku: Optional[str] = None
     stock: Optional[int] = Field(None, ge=0)
+    shop_priority: Optional[int] = None
+    shop_order: Optional[int] = Field(None, ge=0)
     images: Optional[List[ProductImageValue]] = None
     video: Optional[str] = ""
     has_color_options: Optional[bool] = None
@@ -165,6 +169,8 @@ class ProductResponse(BaseModel):
     subcategory: str
     sku: str
     stock: int
+    shop_priority: int = 0
+    shop_order: int = 0
     images: List[ProductImageValue]
     video: Optional[str] = ""
     has_color_options: bool
@@ -233,6 +239,8 @@ class ProductCardResponse(BaseModel):
     discount_price: Optional[float]
     is_on_sale: bool
     stock: int
+    shop_priority: int = 0
+    shop_order: int = 0
     images: List[ProductImageValue]
     has_color_options: bool
     has_flavor_options: bool
@@ -250,6 +258,15 @@ class ProductCardResponse(BaseModel):
     gift_message_enabled: bool = True
     gift_packaging_options: List[GiftPackagingOption] = Field(default_factory=list)
     created_at: str
+
+
+class ProductShopOrderItem(BaseModel):
+    product_id: str
+    shop_order: int = Field(..., ge=0)
+
+
+class ProductShopOrderUpdate(BaseModel):
+    items: List[ProductShopOrderItem]
 
 
 def normalize_color_options(color_options: List[ColorOption]) -> List[dict]:

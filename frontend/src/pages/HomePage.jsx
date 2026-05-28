@@ -425,7 +425,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                 return (
                   <ContentLink key={button.id || `${button.label}-${index}`} href={button.link}>
                     <Button
-                      className={`min-w-[215px] h-12 rounded-full transition-all duration-300 text-[12px] tracking-[0.22em] px-8 shadow-sm ${
+                      className={`min-w-[215px] h-12 rounded-full px-8 text-[11px] font-medium uppercase tracking-[0.26em] shadow-sm transition-all duration-300 ${
                         isFilled
                           ? 'bg-black text-white hover:bg-black/90'
                           : 'border border-black/80 text-black bg-transparent hover:bg-[#F3ECE4] hover:text-black hover:border-black hover:shadow-md'

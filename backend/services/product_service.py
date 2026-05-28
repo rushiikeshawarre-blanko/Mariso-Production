@@ -4,10 +4,11 @@ from fastapi import HTTPException
 from datetime import datetime, timezone
 from models.product import ColorOption, FlavorOption, GiftPackagingOption, ProductVariant
 import logging
+from pymongo import UpdateOne
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from core.database import db
-from models.product import ProductCreate, ProductUpdate
+from models.product import ProductCreate, ProductUpdate, ProductShopOrderItem
 from core.constants import MAX_LIMIT
 from services.category_service import ensure_category_exists, build_category_map_from_products
 from utils.helpers import allocate_unique_slug, generate_slug, get_selected_variant, ensure_product_defaults, slug_exists
@@ -27,6 +28,8 @@ PRODUCT_CARD_PROJECTION = {
     "discount_price": 1,
     "is_on_sale": 1,
     "stock": 1,
+    "shop_priority": 1,
+    "shop_order": 1,
     "images": 1,
     "has_color_options": 1,
     "has_flavor_options": 1,
@@ -45,6 +48,29 @@ PRODUCT_CARD_PROJECTION = {
     "gift_packaging_options": 1,
     "created_at": 1,
 }
+
+SHOP_PRODUCT_SORT = {
+    "shop_priority": -1,
+    "shop_order": 1,
+    "created_at": -1,
+}
+
+
+async def find_shop_ordered_products(query: dict, projection: Optional[dict] = None, limit: int = MAX_LIMIT) -> List[dict]:
+    pipeline = [
+        {"$match": query},
+        {
+            "$addFields": {
+                "shop_priority": {"$ifNull": ["$shop_priority", 0]},
+                "shop_order": {"$ifNull": ["$shop_order", 0]},
+            }
+        },
+        {"$sort": SHOP_PRODUCT_SORT},
+    ]
+    if projection:
+        pipeline.append({"$project": projection})
+
+    return await db.products.aggregate(pipeline).to_list(limit)
 
 def validate_sale_pricing_payload(price, discount_price, is_on_sale):
     if is_on_sale:
@@ -143,6 +169,8 @@ def map_product_to_card_response(product: dict) -> dict:
         "discount_price": product.get("discount_price"),
         "is_on_sale": product.get("is_on_sale", False),
         "stock": product.get("stock", 0),
+        "shop_priority": product.get("shop_priority", 0),
+        "shop_order": product.get("shop_order", 0),
         "images": _first_image(product.get("images")),
         "has_color_options": product.get("has_color_options", False),
         "has_flavor_options": product.get("has_flavor_options", False),
@@ -286,7 +314,7 @@ async def get_products(
     if active_only is not None:
         query["is_active"] = active_only
     
-    products = await db.products.find(query, {"_id": 0}).to_list(MAX_LIMIT)
+    products = await find_shop_ordered_products(query, {"_id": 0})
     
     return await enrich_products(products)
 
@@ -319,7 +347,7 @@ async def get_product_cards(
     if active_only is not None:
         query["is_active"] = active_only
 
-    products = await db.products.find(query, PRODUCT_CARD_PROJECTION).to_list(MAX_LIMIT)
+    products = await find_shop_ordered_products(query, PRODUCT_CARD_PROJECTION)
 
     return await map_products_to_card_responses(products)
 
@@ -462,6 +490,8 @@ async def create_product(product: ProductCreate):
         "subcategory": product.subcategory or "",
         "sku": product.sku or f"SKU-{product_id[:8].upper()}",
         "stock": product.stock,
+        "shop_priority": product.shop_priority,
+        "shop_order": product.shop_order,
         "images": product.model_dump()["images"],
         "video": product.video or "",
         "has_color_options": product.has_color_options,
@@ -586,6 +616,37 @@ async def update_product(product_id: str, product: ProductUpdate):
         raise HTTPException(status_code=404, detail="Product not found")
 
     return (await enrich_products([updated]))[0]
+
+
+async def update_product_shop_order(items: List[ProductShopOrderItem]):
+    if not items:
+        raise HTTPException(status_code=400, detail="No products provided")
+
+    product_ids = [item.product_id for item in items]
+    if len(product_ids) != len(set(product_ids)):
+        raise HTTPException(status_code=400, detail="Duplicate products are not allowed")
+
+    existing_products = await db.products.find(
+        {"id": {"$in": product_ids}},
+        {"_id": 0, "id": 1},
+    ).to_list(len(product_ids))
+    existing_ids = {product["id"] for product in existing_products}
+    missing_ids = [product_id for product_id in product_ids if product_id not in existing_ids]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"Product not found: {missing_ids[0]}")
+
+    operations = [
+        UpdateOne(
+            {"id": item.product_id},
+            {"$set": {"shop_order": item.shop_order}},
+        )
+        for item in items
+    ]
+
+    if operations:
+        await db.products.bulk_write(operations, ordered=False)
+
+    return {"message": "Shop order updated", "updated_count": len(operations)}
 
 
 async def delete_product(product_id: str):

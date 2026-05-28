@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import {
   getAdminProducts,
   getAdminCategories,
   createProduct,
   updateProduct,
+  updateProductShopOrder,
   deleteProduct,
   createPresignedUpload,
   uploadFileToPresignedUrl,
@@ -22,7 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import RichTextEditor from '../../components/ui/rich-text-editor';
 import { normalizeEditorHtml } from '../../lib/richContent';
 import { getFirstImageUrl, getThumbImage, normalizeImageUrl } from '../../lib/utils';
-import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft, ChevronRight, Package, RefreshCw, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Palette, Droplets, X, Image, ChevronLeft, ChevronRight, Package, RefreshCw, Check, ArrowUp, ArrowDown, ListOrdered } from 'lucide-react';
 import { toast } from 'sonner';
 
 
@@ -44,6 +45,35 @@ const PRODUCT_IMAGE_VARIANTS = [
   { key: 'detail', width: 1200, height: 1600, quality: 0.84 },
 ];
 
+const SHOP_PRIORITY_OPTIONS = [
+  { value: '0', label: 'Normal' },
+  { value: '30', label: 'New Arrival' },
+  { value: '50', label: 'Promote / Show Higher' },
+  { value: '100', label: 'Show First / Festive' },
+];
+
+const SHOP_ORDER_GROUPS = [
+  { value: '100', label: 'Show First / Festive' },
+  { value: '50', label: 'Promote / Show Higher' },
+  { value: '30', label: 'New Arrival' },
+];
+
+const getShopPrioritySelectValue = (priority) => {
+  const numericPriority = Number(priority) || 0;
+  if (numericPriority >= 100) return '100';
+  if (numericPriority >= 50) return '50';
+  if (numericPriority >= 30) return '30';
+  return '0';
+};
+
+const sortProductsForShopOrder = (items) => (
+  [...items].sort((a, b) => (
+    (Number(a.shop_order) || 0) - (Number(b.shop_order) || 0) ||
+    new Date(b.created_at || 0) - new Date(a.created_at || 0) ||
+    (a.name || '').localeCompare(b.name || '')
+  ))
+);
+
 const newGiftPackagingOption = (source = {}) => ({
   id: source.id || '',
   title: source.title || source.gift_packaging_title || 'Add Gift Packaging',
@@ -60,13 +90,25 @@ const getEditableGiftOptions = (product = {}) => (
     : [newGiftPackagingOption(product)]
 );
 
-const AdminProducts = () => {
+const getProductFormSnapshot = ({ formData, newColor, newFlavor, slugManuallyEdited }) => JSON.stringify({
+  formData,
+  newColor,
+  newFlavor,
+  slugManuallyEdited,
+});
+
+export default function AdminProducts() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [shopOrderOpen, setShopOrderOpen] = useState(false);
+  const [shopOrderGroups, setShopOrderGroups] = useState({});
+  const [savingShopOrder, setSavingShopOrder] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [activeTab, setActiveTab] = useState('basic');
   const [generating, setGenerating] = useState(false);
   const [editingColorIndex, setEditingColorIndex] = useState(null);
@@ -100,9 +142,11 @@ const AdminProducts = () => {
   const [uploadingNewColorVideo, setUploadingNewColorVideo] = useState(false);
   const [uploadingColorVideoIndex, setUploadingColorVideoIndex] = useState(null);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [discardProductChangesOpen, setDiscardProductChangesOpen] = useState(false);
 
   const colorCropSectionRef = useRef(null);
   const newColorCropSectionRef = useRef(null);
+  const initialProductFormSnapshotRef = useRef(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -114,6 +158,7 @@ const AdminProducts = () => {
     category_id: '',
     sku: '',
     stock: '',
+    shop_priority: '0',
     images: [],
     video: '',
     is_on_sale: false,
@@ -168,6 +213,65 @@ const AdminProducts = () => {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const buildShopOrderGroups = (productList) => (
+    SHOP_ORDER_GROUPS.reduce((groups, group) => {
+      groups[group.value] = sortProductsForShopOrder(
+        (productList || []).filter((product) => getShopPrioritySelectValue(product.shop_priority) === group.value)
+      );
+      return groups;
+    }, {})
+  );
+
+  const openShopOrderDialog = () => {
+    setShopOrderGroups(buildShopOrderGroups(products));
+    setShopOrderOpen(true);
+  };
+
+  const moveShopOrderProduct = (groupValue, productIndex, direction) => {
+    setShopOrderGroups((current) => {
+      const groupProducts = [...(current[groupValue] || [])];
+      const targetIndex = direction === 'up' ? productIndex - 1 : productIndex + 1;
+
+      if (targetIndex < 0 || targetIndex >= groupProducts.length) {
+        return current;
+      }
+
+      [groupProducts[productIndex], groupProducts[targetIndex]] = [
+        groupProducts[targetIndex],
+        groupProducts[productIndex],
+      ];
+
+      return {
+        ...current,
+        [groupValue]: groupProducts,
+      };
+    });
+  };
+
+  const handleSaveShopOrder = async () => {
+    const items = SHOP_ORDER_GROUPS.flatMap((group) => (
+      (shopOrderGroups[group.value] || []).map((product, productIndex) => ({
+        product_id: product.id,
+        shop_order: productIndex + 1,
+      }))
+    ));
+
+    try {
+      setSavingShopOrder(true);
+      await updateProductShopOrder(items);
+      toast.success('Shop order saved');
+      clearPublicCatalogCache('products');
+      setShopOrderOpen(false);
+      await fetchData();
+    } catch (error) {
+      console.error('Error saving shop order:', error);
+      const message = error.response?.data?.detail || 'Failed to save shop order';
+      toast.error(message);
+    } finally {
+      setSavingShopOrder(false);
     }
   };
 
@@ -1054,8 +1158,28 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     }));
   };
 
-  const resetForm = () => {
-    setFormData({
+  const getCurrentProductFormSnapshot = () => getProductFormSnapshot({
+    formData,
+    newColor,
+    newFlavor,
+    slugManuallyEdited,
+  });
+
+  const hasProductFormChanged = () => (
+    Boolean(initialProductFormSnapshotRef.current) &&
+    initialProductFormSnapshotRef.current !== getCurrentProductFormSnapshot()
+  );
+
+  const captureProductFormSnapshot = (nextFormData, nextNewColor, nextNewFlavor, nextSlugManuallyEdited) => {
+    initialProductFormSnapshotRef.current = getProductFormSnapshot({
+      formData: nextFormData,
+      newColor: nextNewColor,
+      newFlavor: nextNewFlavor,
+      slugManuallyEdited: nextSlugManuallyEdited,
+    });
+  };
+
+  const getDefaultFormData = () => ({
       name: '',
       slug: '',
       description: '',
@@ -1065,6 +1189,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: '',
       sku: '',
       stock: '',
+      shop_priority: '0',
       images: [],
       video: '',
       is_on_sale: false,
@@ -1091,31 +1216,101 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       color_options: [],
       flavor_options: [],
       variants: []
-    });
-    setNewColor({
+  });
+
+  const getDefaultNewColor = () => ({
       name: '',
       hex_code: '#F5F0E8',
       hex_code_secondary: '',
       images: ['', '', '', '', ''],
       video: ''
-     });
-    setNewFlavor({ name: '', description: '' });
+  });
+
+  const getDefaultNewFlavor = () => ({ name: '', description: '' });
+
+  const resetForm = () => {
+    setFormData(getDefaultFormData());
+    setNewColor(getDefaultNewColor());
+    setNewFlavor(getDefaultNewFlavor());
     setActiveTab('basic');
     setEditingColorIndex(null);
     setEditingFlavorIndex(null);
     setSlugManuallyEdited(false);
   };
 
-  const openCreateDialog = () => {
+  const closeProductModal = () => {
+    setDialogOpen(false);
+    setDiscardProductChangesOpen(false);
+    initialProductFormSnapshotRef.current = null;
     setEditingProduct(null);
     resetForm();
+  };
+
+  const requestCloseProductModal = () => {
+    if (hasProductFormChanged()) {
+      setDiscardProductChangesOpen(true);
+      return;
+    }
+
+    closeProductModal();
+  };
+
+  const handleProductDialogOpenChange = (open) => {
+    if (open) {
+      setDialogOpen(true);
+      return;
+    }
+
+    requestCloseProductModal();
+  };
+
+  const handleProductDialogInteractOutside = (event) => {
+    if (discardProductChangesOpen) {
+      event.preventDefault();
+      return;
+    }
+
+    if (!hasProductFormChanged()) return;
+
+    event.preventDefault();
+    requestCloseProductModal();
+  };
+
+  const handleProductDialogEscapeKeyDown = (event) => {
+    if (discardProductChangesOpen) {
+      event.preventDefault();
+      continueEditingProduct();
+      return;
+    }
+
+    handleProductDialogInteractOutside(event);
+  };
+
+  const continueEditingProduct = () => {
+    setDiscardProductChangesOpen(false);
+  };
+
+  const openCreateDialog = () => {
+    const nextFormData = getDefaultFormData();
+    const nextNewColor = getDefaultNewColor();
+    const nextNewFlavor = getDefaultNewFlavor();
+
+    setEditingProduct(null);
+    setFormData(nextFormData);
+    setNewColor(nextNewColor);
+    setNewFlavor(nextNewFlavor);
+    setActiveTab('basic');
+    setEditingColorIndex(null);
+    setEditingFlavorIndex(null);
+    setSlugManuallyEdited(false);
+    setDiscardProductChangesOpen(false);
+    captureProductFormSnapshot(nextFormData, nextNewColor, nextNewFlavor, false);
     setDialogOpen(true);
   };
 
   const openEditDialog = (product) => {
-    setEditingProduct(product);
-    setSlugManuallyEdited(Boolean(product.slug));
-    setFormData({
+    const nextSlugManuallyEdited = Boolean(product.slug);
+    const nextFormData = {
       name: product.name,
       slug: product.slug || '',
       description: product.description,
@@ -1125,6 +1320,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: product.category_id,
       sku: product.sku || '',
       stock: product.stock.toString(),
+      shop_priority: getShopPrioritySelectValue(product.shop_priority),
       images: product.images || [],
       video: product.video || '',
       is_on_sale: product.is_on_sale || false,
@@ -1151,10 +1347,20 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       color_options: product.color_options || [],
       flavor_options: product.flavor_options || [],
       variants: product.variants || []
-    });
+    };
+    const nextNewColor = getDefaultNewColor();
+    const nextNewFlavor = getDefaultNewFlavor();
+
+    setEditingProduct(product);
+    setSlugManuallyEdited(nextSlugManuallyEdited);
+    setFormData(nextFormData);
+    setNewColor(nextNewColor);
+    setNewFlavor(nextNewFlavor);
     setActiveTab('basic');
     setEditingColorIndex(null);
     setEditingFlavorIndex(null);
+    setDiscardProductChangesOpen(false);
+    captureProductFormSnapshot(nextFormData, nextNewColor, nextNewFlavor, nextSlugManuallyEdited);
     setDialogOpen(true);
   };
 
@@ -1458,6 +1664,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: formData.category_id,
       sku: formData.sku,
       stock: parseInt(formData.stock, 10) || 0,
+      shop_priority: parseInt(formData.shop_priority, 10) || 0,
       images: (formData.images || []).filter(hasImageUrl).slice(0, 5),
       video: formData.video,
       is_on_sale: formData.is_on_sale,
@@ -1495,7 +1702,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
         toast.success('Product created successfully');
       }
       clearPublicCatalogCache('products');
-      setDialogOpen(false);
+      closeProductModal();
       await fetchData();
     } catch (error) {
       console.error('Error saving product:', error);
@@ -1522,6 +1729,23 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const totalProducts = filteredProducts.length;
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+  const showingStart = totalProducts === 0 ? 0 : startIndex + 1;
+  const showingEnd = Math.min(endIndex, totalProducts);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
+  const prioritizedProductCount = useMemo(
+    () => products.filter((product) => Number(product.shop_priority) > 0).length,
+    [products]
+  );
 
   // Get variant count summary
   const getAvailableVariantSummary = (product) => {
@@ -1534,40 +1758,56 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     <div data-testid="admin-products">
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <h1 className="font-heading text-3xl">Products</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openShopOrderDialog}
+            data-testid="manage-shop-order-button"
+          >
+            <ListOrdered className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            Manage Shop Order
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={handleProductDialogOpenChange}>
           <DialogTrigger asChild>
             <Button onClick={openCreateDialog} className="btn-primary" data-testid="add-product-button">
               <Plus className="h-4 w-4 mr-2" strokeWidth={1.5} />
               Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] max-w-none overflow-y-auto p-4 sm:max-w-[900px] sm:p-6">
-            <DialogHeader>
-              <DialogTitle className="font-heading text-xl">
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
-              </DialogTitle>
-              <DialogDescription>
-                Manage product details, variant options, pricing, and stock combinations.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-              <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-                <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="colors" data-testid="tab-colors">
-                  <Palette className="h-4 w-4 mr-1" /> Colors
-                </TabsTrigger>
-                <TabsTrigger value="fragrances" data-testid="tab-fragrances">
-                  <Droplets className="h-4 w-4 mr-1" /> Fragrances
-                </TabsTrigger>
-                <TabsTrigger value="variants" data-testid="tab-variants">
-                  <Package className="h-4 w-4 mr-1" /> Stock
-                </TabsTrigger>
-              </TabsList>
-              
-              <form onSubmit={handleSubmit}>
-                {/* ==================== BASIC INFO TAB ==================== */}
-                <TabsContent value="basic" className="space-y-4 mt-4">
+          <DialogContent
+            className="w-[calc(100vw-1rem)] max-h-[85vh] max-w-none overflow-hidden p-0 sm:max-w-[900px]"
+            onInteractOutside={handleProductDialogInteractOutside}
+            onEscapeKeyDown={handleProductDialogEscapeKeyDown}
+          >
+            <div className="relative max-h-[85vh] overflow-hidden">
+              <div className={`max-h-[85vh] p-4 sm:p-6 ${discardProductChangesOpen ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                <DialogHeader>
+                  <DialogTitle className="font-heading text-xl">
+                    {editingProduct ? 'Edit Product' : 'Add New Product'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Manage product details, variant options, pricing, and stock combinations.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+                  <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+                    <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
+                    <TabsTrigger value="colors" data-testid="tab-colors">
+                      <Palette className="h-4 w-4 mr-1" /> Colors
+                    </TabsTrigger>
+                    <TabsTrigger value="fragrances" data-testid="tab-fragrances">
+                      <Droplets className="h-4 w-4 mr-1" /> Fragrances
+                    </TabsTrigger>
+                    <TabsTrigger value="variants" data-testid="tab-variants">
+                      <Package className="h-4 w-4 mr-1" /> Stock
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <form onSubmit={handleSubmit}>
+                  {/* ==================== BASIC INFO TAB ==================== */}
+                  <TabsContent value="basic" className="space-y-4 mt-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                       <Label htmlFor="name">Product Name *</Label>
@@ -1697,6 +1937,27 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="shop_priority">Shop Visibility</Label>
+                    <Select
+                      value={formData.shop_priority || '0'}
+                      onValueChange={(value) => setFormData({ ...formData, shop_priority: value })}
+                    >
+                      <SelectTrigger id="shop_priority" className="mt-1" data-testid="product-shop-priority-select">
+                        <SelectValue placeholder="Select priority" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SHOP_PRIORITY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Controls where this product appears on the Shop page. Use Show First / Festive for sale, festive, or campaign products.
+                    </p>
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
@@ -1931,7 +2192,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                             type="button"
                             variant="outline"
                             onClick={removeProductVideo}
-                            className="w-full sm:w-auto"
+                            className="w-full sm:w-[150px]"
                           >
                             Remove Video
                           </Button>
@@ -2104,7 +2365,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                       ))}
                     </div>
                   )}
-                  
+
                   {/* Additional Details */}
                   <div className="pt-4 border-t space-y-4">
                     <h3 className="font-medium">Additional Details</h3>
@@ -2190,7 +2451,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                     </div>
                     <p className="text-sm text-muted-foreground">{formData.color_options.length} colors</p>
                   </div>
-                  
+
                   {formData.has_color_options && (
                     <>
                       {colorCropModalOpen && pendingColorImageUrl && (
@@ -2567,7 +2828,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                     type="button"
                                     variant="outline"
                                     onClick={() => removeColorVideo(colorIndex)}
-                                    className="w-full sm:w-auto"
+                                    className="w-full sm:w-[150px]"
                                   >
                                     Remove Video
                                   </Button>
@@ -2871,7 +3132,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                 type="button"
                                 variant="outline"
                                 onClick={removeNewColorVideo}
-                                className="w-full sm:w-auto"
+                                className="w-full sm:w-[150px]"
                               >
                                 Remove Video
                               </Button>
@@ -3183,7 +3444,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={() => setDialogOpen(false)}
+                    onClick={requestCloseProductModal}
                     className="flex-1"
                   >
                     Cancel
@@ -3192,8 +3453,176 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                     {editingProduct ? 'Update Product' : 'Create Product'}
                   </Button>
                 </div>
-              </form>
-            </Tabs>
+                </form>
+                </Tabs>
+              </div>
+
+              {discardProductChangesOpen && (
+                <div
+                  className="absolute inset-0 z-[80] flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[1px]"
+                  role="presentation"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="discard-product-changes-title"
+                    aria-describedby="discard-product-changes-description"
+                    className="w-full max-w-[420px] rounded-2xl border border-border bg-background p-5 text-left shadow-2xl sm:p-6"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-700">
+                        <X className="h-4 w-4" strokeWidth={1.8} />
+                      </div>
+
+                      <div className="min-w-0">
+                        <h2 id="discard-product-changes-title" className="font-heading text-lg text-foreground">
+                          Discard unsaved changes?
+                        </h2>
+                        <p id="discard-product-changes-description" className="mt-2 text-sm leading-6 text-muted-foreground">
+                          You have unsaved product changes. If you leave now, your changes will be lost.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-col-reverse items-center justify-center gap-2 sm:flex-row">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-[150px]"
+                        onClick={continueEditingProduct}
+                      >
+                        Continue Editing
+                      </Button>
+
+                      <Button
+                        type="button"
+                        className="w-full bg-red-700 text-white hover:bg-red-800 sm:w-[150px]"
+                        onClick={closeProductModal}
+                      >
+                        Discard Changes
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+        </div>
+        <Dialog open={shopOrderOpen} onOpenChange={setShopOrderOpen}>
+          <DialogContent className="w-[calc(100vw-1rem)] max-h-[88dvh] max-w-none overflow-y-auto p-4 sm:max-w-[760px] sm:p-6">
+            <DialogHeader>
+              <DialogTitle className="font-heading text-xl">Manage Shop Order</DialogTitle>
+              <DialogDescription>
+                Products higher in this list appear earlier on the Shop page.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4 space-y-5">
+              {SHOP_ORDER_GROUPS.map((group) => {
+                const groupProducts = shopOrderGroups[group.value] || [];
+
+                return (
+                  <div key={group.value} className="rounded-lg border bg-white">
+                    <div className="border-b px-4 py-3">
+                      <h2 className="font-medium">{group.label}</h2>
+                    </div>
+                    <div className="divide-y">
+                      {groupProducts.length === 0 ? (
+                        <p className="px-4 py-5 text-sm text-muted-foreground">
+                          No products in this group yet.
+                        </p>
+                      ) : (
+                        groupProducts.map((product, productIndex) => {
+                          const productThumbnail =
+                            getFirstImageUrl(product.images, getThumbImage) ||
+                            getFirstImageUrl(
+                              (product.color_options || [])
+                                .filter((color) => color?.is_active !== false)
+                                .flatMap((color) => color?.images || []),
+                              getThumbImage
+                            ) ||
+                            'https://via.placeholder.com/40';
+
+                          return (
+                            <div
+                              key={product.id}
+                              className="flex items-center justify-between gap-3 px-4 py-3"
+                              data-testid={`shop-order-product-${product.id}`}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <img
+                                  src={productThumbnail}
+                                  alt={product.name}
+                                  className="h-12 w-10 rounded object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.src = 'https://via.placeholder.com/40';
+                                  }}
+                                />
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium">{product.name}</p>
+                                  {product.sku ? (
+                                    <p className="truncate text-xs text-muted-foreground">{product.sku}</p>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => moveShopOrderProduct(group.value, productIndex, 'up')}
+                                  disabled={productIndex === 0 || savingShopOrder}
+                                  aria-label={`Move ${product.name} up`}
+                                  data-testid={`shop-order-up-${product.id}`}
+                                >
+                                  <ArrowUp className="h-4 w-4" strokeWidth={1.5} />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => moveShopOrderProduct(group.value, productIndex, 'down')}
+                                  disabled={productIndex === groupProducts.length - 1 || savingShopOrder}
+                                  aria-label={`Move ${product.name} down`}
+                                  data-testid={`shop-order-down-${product.id}`}
+                                >
+                                  <ArrowDown className="h-4 w-4" strokeWidth={1.5} />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse items-center justify-center gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShopOrderOpen(false)}
+                disabled={savingShopOrder}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="btn-primary"
+                onClick={handleSaveShopOrder}
+                disabled={savingShopOrder || prioritizedProductCount === 0}
+                data-testid="save-shop-order-button"
+              >
+                {savingShopOrder ? 'Saving...' : 'Save Order'}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -3205,181 +3634,234 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
           aria-label="Search products"
           placeholder="Search products..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
+          }}
           className="pl-10"
           data-testid="product-search"
         />
       </div>
 
       {/* Products Table */}
-      <div className="overflow-x-auto rounded-xl bg-white card-shadow">
-        <Table className="min-w-[980px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Variants</TableHead>
-              <TableHead>Available Stock</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+      <div className="rounded-xl bg-white card-shadow">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[980px]">
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">Loading...</TableCell>
+                <TableHead>Product</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Variants</TableHead>
+                <TableHead>Available Stock</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : filteredProducts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  No products found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredProducts.map((product) => {
-                const variantSummary = getAvailableVariantSummary(product);
-                const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
-                const productThumbnail =
-                  getFirstImageUrl(product.images, getThumbImage) ||
-                  getFirstImageUrl(
-                    (product.color_options || [])
-                      .filter((color) => color?.is_active !== false)
-                      .flatMap((color) => color?.images || []),
-                    getThumbImage
-                  ) ||
-                  'https://via.placeholder.com/40';
-                
-                return (
-                  <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={productThumbnail}
-                          alt={product.name}
-                          className="w-10 h-12 object-cover rounded"
-                          onError={(e) => {
-                            e.currentTarget.src = 'https://via.placeholder.com/40';
-                          }}
-                        />
-                        <div>
-                          <span className="font-medium block">{product.name}</span>
-                          {product.sku && (
-                            <span className="text-xs text-muted-foreground">{product.sku}</span>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">Loading...</TableCell>
+                </TableRow>
+              ) : filteredProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No products found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedProducts.map((product) => {
+                  const variantSummary = getAvailableVariantSummary(product);
+                  const displayStock = variantSummary.count > 0 ? variantSummary.totalStock : product.stock;
+                  const productThumbnail =
+                    getFirstImageUrl(product.images, getThumbImage) ||
+                    getFirstImageUrl(
+                      (product.color_options || [])
+                        .filter((color) => color?.is_active !== false)
+                        .flatMap((color) => color?.images || []),
+                      getThumbImage
+                    ) ||
+                    'https://via.placeholder.com/40';
+
+                  return (
+                    <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={productThumbnail}
+                            alt={product.name}
+                            className="w-10 h-12 object-cover rounded"
+                            onError={(e) => {
+                              e.currentTarget.src = 'https://via.placeholder.com/40';
+                            }}
+                          />
+                          <div>
+                            <span className="font-medium block">{product.name}</span>
+                            {product.sku && (
+                              <span className="text-xs text-muted-foreground">{product.sku}</span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{product.category_name}</TableCell>
+                      <TableCell>
+                        {product.is_on_sale && product.discount_price ? (
+                          <div>
+                            <span className="text-terracotta font-medium">₹{product.discount_price.toLocaleString()}</span>
+                            <span className="text-muted-foreground line-through text-sm ml-2">
+                              ₹{product.price.toLocaleString()}
+                            </span>
+                          </div>
+                        ) : (
+                          <span>₹{product.price.toLocaleString()}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {product.has_color_options && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                              <Palette className="h-3 w-3" /> {product.color_options?.length || 0} colors
+                            </span>
+                          )}
+                          {product.has_flavor_options && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                              <Droplets className="h-3 w-3" /> {product.flavor_options?.length || 0} fragrances
+                            </span>
+                          )}
+                          {variantSummary.count > 0 && (
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
+                              <Package className="h-3 w-3" /> {variantSummary.count} combos
+                            </span>
+                          )}
+                          {!product.has_color_options && !product.has_flavor_options && (
+                            <span className="text-xs text-muted-foreground">No variants</span>
                           )}
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{product.category_name}</TableCell>
-                    <TableCell>
-                      {product.is_on_sale && product.discount_price ? (
-                        <div>
-                          <span className="text-terracotta font-medium">₹{product.discount_price.toLocaleString()}</span>
-                          <span className="text-muted-foreground line-through text-sm ml-2">
-                            ₹{product.price.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className={displayStock <= 5 ? 'text-destructive font-medium' : ''}>
+                            {displayStock}
                           </span>
+                          {displayStock === 0 ? (
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full w-fit">
+                              Out of Stock
+                            </span>
+                          ) : displayStock > 0 && displayStock <= 5 ? (
+                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full w-fit">
+                              Low Stock
+                            </span>
+                          ) : null}
                         </div>
-                      ) : (
-                        <span>₹{product.price.toLocaleString()}</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {product.has_color_options && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
-                            <Palette className="h-3 w-3" /> {product.color_options?.length || 0} colors
-                          </span>
-                        )}
-                        {product.has_flavor_options && (
-                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
-                            <Droplets className="h-3 w-3" /> {product.flavor_options?.length || 0} fragrances
-                          </span>
-                        )}
-                        {variantSummary.count > 0 && (
-                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit">
-                            <Package className="h-3 w-3" /> {variantSummary.count} combos
-                          </span>
-                        )}
-                        {!product.has_color_options && !product.has_flavor_options && (
-                          <span className="text-xs text-muted-foreground">No variants</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <span className={displayStock <= 5 ? 'text-destructive font-medium' : ''}>
-                          {displayStock}
-                        </span>
-                        {displayStock === 0 ? (
-                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full w-fit">
-                            Out of Stock
-                          </span>
-                        ) : displayStock > 0 && displayStock <= 5 ? (
-                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full w-fit">
-                            Low Stock
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {!product.is_active && (
-                          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
-                            Inactive
-                          </span>
-                        )}
-                        {product.is_on_sale && (
-                          <span className="text-xs bg-terracotta/20 text-terracotta px-2 py-0.5 rounded-full">
-                            Sale
-                          </span>
-                        )}
-                        {product.is_featured && (
-                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                            Featured
-                          </span>
-                        )}
-                        {product.is_bestseller && (
-                          <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
-                            Bestseller
-                          </span>
-                        )}
-                        {product.is_new_arrival && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            New
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(product)}
-                        data-testid={`edit-product-${product.id}`}
-                        aria-label={`Edit ${product.name}`}
-                      >
-                        <Pencil className="h-4 w-4" strokeWidth={1.5} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(product.id)}
-                        className="text-destructive hover:text-destructive"
-                        data-testid={`delete-product-${product.id}`}
-                        aria-label={`Delete ${product.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {!product.is_active && (
+                            <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+                              Inactive
+                            </span>
+                          )}
+                          {product.is_on_sale && (
+                            <span className="text-xs bg-terracotta/20 text-terracotta px-2 py-0.5 rounded-full">
+                              Sale
+                            </span>
+                          )}
+                          {product.is_featured && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                              Featured
+                            </span>
+                          )}
+                          {product.is_bestseller && (
+                            <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+                              Bestseller
+                            </span>
+                          )}
+                          {product.is_new_arrival && (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                              New
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(product)}
+                          data-testid={`edit-product-${product.id}`}
+                          aria-label={`Edit ${product.name}`}
+                        >
+                          <Pencil className="h-4 w-4" strokeWidth={1.5} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(product.id)}
+                          className="text-destructive hover:text-destructive"
+                          data-testid={`delete-product-${product.id}`}
+                          aria-label={`Delete ${product.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex flex-col gap-4 border-t px-4 py-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            Showing {showingStart}&ndash;{showingEnd} of {totalProducts} products
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-9 w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={safeCurrentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="min-w-[6.5rem] text-center">
+                Page {safeCurrentPage} of {totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={safeCurrentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>  
   );
-};
-
-export default AdminProducts;
+}

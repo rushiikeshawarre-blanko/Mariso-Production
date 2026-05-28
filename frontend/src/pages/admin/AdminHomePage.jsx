@@ -786,7 +786,7 @@ const HeroPreview = ({ hero }) => {
             {buttons.map((button, index) => (
               <span
                 key={button.id || `${button.label}-${index}`}
-                className={`rounded-full px-5 py-2 text-[10px] font-medium uppercase tracking-[0.18em] ${
+                className={`rounded-full px-5 py-2 text-[10px] font-medium uppercase tracking-[0.26em] ${
                   button.style === 'secondary'
                     ? 'border border-black/70 bg-transparent text-black'
                     : 'bg-black text-white'

@@ -109,6 +109,8 @@ def ensure_product_defaults(product: dict) -> dict:
         'discount_price': None,
         'subcategory': '',
         'sku': '',
+        'shop_priority': 0,
+        'shop_order': 0,
         'has_color_options': False,
         'has_flavor_options': False,
         'color_options': [],

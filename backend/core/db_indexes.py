@@ -42,6 +42,7 @@ async def create_indexes(db):
     await db.products.create_index([("is_active", 1), ("category_id", 1)])
     await db.products.create_index([("is_active", 1), ("is_featured", 1)])
     await db.products.create_index([("is_active", 1), ("is_bestseller", 1)])
+    await db.products.create_index([("is_active", 1), ("shop_priority", -1), ("shop_order", 1), ("created_at", -1)])
     await db.products.create_index("is_active")
     await db.products.create_index("slug", unique=True)
 

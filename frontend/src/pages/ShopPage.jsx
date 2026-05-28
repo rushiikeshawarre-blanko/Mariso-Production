@@ -21,7 +21,7 @@ const ShopPage = () => {
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState('recommended');
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedParentSlug, setSelectedParentSlug] = useState(searchParams.get('parent') || '');
   const [showOnSale, setShowOnSale] = useState(searchParams.get('sale') === 'true');
@@ -144,8 +144,18 @@ const ShopPage = () => {
       case 'name':
         filtered.sort((a, b) => a.name.localeCompare(b.name));
         break;
-      default:
+      case 'newest':
         filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        break;
+      case 'recommended':
+        filtered.sort((a, b) => (
+          (Number(b.shop_priority) || 0) - (Number(a.shop_priority) || 0) ||
+          (Number(a.shop_order) || 0) - (Number(b.shop_order) || 0) ||
+          new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        ));
+        break;
+      default:
+        break;
     }
 
     return filtered;
@@ -449,6 +459,7 @@ const ShopPage = () => {
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="recommended">Recommended</SelectItem>
                     <SelectItem value="newest">Newest</SelectItem>
                     <SelectItem value="price-low">Price: Low to High</SelectItem>
                     <SelectItem value="price-high">Price: High to Low</SelectItem>
@@ -493,6 +504,7 @@ const ShopPage = () => {
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="recommended">Recommended</SelectItem>
                     <SelectItem value="newest">Newest</SelectItem>
                     <SelectItem value="price-low">Price: Low to High</SelectItem>
                     <SelectItem value="price-high">Price: High to Low</SelectItem>

@@ -919,6 +919,16 @@ export const updateProduct = async (productId, productData) => {
   }
 };
 
+export const updateProductShopOrder = async (items) => {
+  try {
+    const response = await axiosInstance.put(`/products/admin/shop-order`, { items });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating shop order:', error);
+    throw error;
+  }
+};
+
 export const deleteProduct = async (productId) => {
   const response = await axiosInstance.delete(`/products/admin/${productId}`);
   return response.data;

@@ -10,11 +10,12 @@ from services.product_service import (
     get_product_by_slug as fetch_product_by_slug,
     create_product as create_product_doc,
     update_product as update_product_doc,
+    update_product_shop_order as update_product_shop_order_docs,
     delete_product as delete_product_doc,
     generate_product_variants as generate_product_variants_for_product,
     get_product_variant_stock as fetch_product_variant_stock,
 )
-from models.product import ProductCardResponse, ProductCreate, ProductUpdate, ProductResponse
+from models.product import ProductCardResponse, ProductCreate, ProductUpdate, ProductResponse, ProductShopOrderUpdate
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
@@ -91,6 +92,11 @@ async def get_product(product_id: str):
 @router.post("/admin", response_model=ProductResponse)
 async def create_product(product: ProductCreate, admin: dict = Depends(get_admin_user)):
     return await create_product_doc(product)
+
+
+@router.put("/admin/shop-order", response_model=dict)
+async def update_product_shop_order(payload: ProductShopOrderUpdate, admin: dict = Depends(get_admin_user)):
+    return await update_product_shop_order_docs(payload.items)
 
 
 @router.put("/admin/{product_id}", response_model=ProductResponse)
