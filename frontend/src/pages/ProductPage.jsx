@@ -31,6 +31,18 @@ const findColorByQuery = (colors, colorQuery) => {
   )) || null;
 };
 
+const getPackMultiplier = (pack) => Math.max(Number(pack?.multiplier ?? pack?.pack_quantity) || 1, 1);
+
+const getPackLabel = (pack) => (
+  pack?.label || (getPackMultiplier(pack) === 1 ? 'Single' : `Pack of ${getPackMultiplier(pack)}`)
+);
+
+const getPriceNumber = (value) => {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
 const ProductPage = () => {
   const { id, slug } = useParams();
   const navigate = useNavigate();
@@ -44,15 +56,21 @@ const ProductPage = () => {
   const [quantity, setQuantity] = useState(1);
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
+  const [selectedPack, setSelectedPack] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const { addItem } = useCart();
   const { isAuthenticated, loginWithRedirect } = useAuth0();
   const requiresColorSelection = Boolean(product?.has_color_options && product?.color_options?.length > 0);
   const requiresFlavorSelection = Boolean(product?.has_flavor_options && product?.flavor_options?.length > 0);
+  const activePackOptions = useMemo(() => (
+    (product?.pack_options || []).filter((pack) => pack?.is_active !== false)
+  ), [product]);
+  const requiresPackSelection = activePackOptions.length > 0;
 
   const isVariantSelectionComplete =
     (!requiresColorSelection ||  Boolean(selectedColor)) &&
-    (!requiresFlavorSelection || Boolean(selectedFlavor));
+    (!requiresFlavorSelection || Boolean(selectedFlavor)) &&
+    (!requiresPackSelection || Boolean(selectedPack));
 
   // Get variant combination stock
   const getVariantStock = useCallback(() => {
@@ -66,18 +84,21 @@ const ProductPage = () => {
     
     // If no variants exist, use base product stock
     if (variants.length === 0) {
+      if (requiresPackSelection) return 0;
       return product.stock || 0;
     }
     
     // Find matching variant for the selected combination
     const colorId = selectedColor?.id || null;
     const flavorId = selectedFlavor?.id || null;
+    const packOptionId = selectedPack?.id || null;
     
     for (const variant of variants) {
       if (
         variant.is_active !== false &&
         variant.color_id === colorId && 
-        variant.flavor_id === flavorId
+        variant.flavor_id === flavorId &&
+        (variant.pack_option_id || null) === packOptionId
       ) {
         return variant.stock ?? 0;
       }
@@ -85,7 +106,7 @@ const ProductPage = () => {
     
     // If variants exist but no active matching combination is found, treat as unavailable
     return 0;
-  }, [product, selectedColor, selectedFlavor, isVariantSelectionComplete]);
+  }, [product, selectedColor, selectedFlavor, selectedPack, isVariantSelectionComplete, requiresPackSelection]);
 
   // Get current variant info
   const currentVariant = useMemo(() => {
@@ -94,24 +115,57 @@ const ProductPage = () => {
     
     const colorId = selectedColor?.id || null;
     const flavorId = selectedFlavor?.id || null;
+    const packOptionId = selectedPack?.id || null;
     
     return product.variants.find(v => 
       v.is_active !== false &&
       v.color_id === colorId && 
-      v.flavor_id === flavorId
+      v.flavor_id === flavorId &&
+      (v.pack_option_id || null) === packOptionId
     ) || null;
-  }, [product, selectedColor, selectedFlavor, isVariantSelectionComplete]);
+  }, [product, selectedColor, selectedFlavor, selectedPack, isVariantSelectionComplete]);
 
   // Current stock based on selected variant combination
   const currentStock = useMemo(() => getVariantStock(), [getVariantStock]);
+  const isPackProduct = requiresPackSelection;
+  const packSize = selectedPack ? getPackMultiplier(selectedPack) : 1;
+  const basePiecesPerUnit = Math.max(Number(product?.base_pieces_per_unit) || 1, 1);
+  const piecesPerPack = selectedPack?.pieces_per_pack || (basePiecesPerUnit * packSize);
+  const availableQuantity = currentStock;
   
   // Is current combination available?
-  const isAvailable = currentStock > 0;
+  const isAvailable = availableQuantity > 0;
+
+  const selectedRegularPrice = useMemo(() => {
+    if (!product) return 0;
+    return getPriceNumber(currentVariant?.price_override) ?? getPriceNumber(product.price) ?? 0;
+  }, [product, currentVariant]);
+
+  const selectedSalePrice = useMemo(() => {
+    if (!product) return null;
+    return getPriceNumber(currentVariant?.sale_price) ?? getPriceNumber(product.sale_price) ?? getPriceNumber(product.discount_price);
+  }, [product, currentVariant]);
+
+  const hasSelectedSalePrice = selectedSalePrice != null && selectedSalePrice < selectedRegularPrice;
+  const displayPrice = hasSelectedSalePrice ? selectedSalePrice : selectedRegularPrice;
+  const originalPrice = hasSelectedSalePrice ? selectedRegularPrice : null;
+  const discountPercent = originalPrice
+    ? Math.round((1 - displayPrice / originalPrice) * 100)
+    : 0;
 
   // Get current images based on selected color (color-based gallery switching)
   const currentImages = useMemo(() => {
     if (!product) return [];
     
+    if (currentVariant?.images?.length > 0) {
+      return currentVariant.images.slice(0, 5);
+    }
+    if (selectedPack?.images?.length > 0) {
+      return selectedPack.images.slice(0, 5);
+    }
+    if (selectedPack?.image) {
+      return [selectedPack.image];
+    }
     // Priority: selected color's images (up to 5)
     if (selectedColor?.images?.length > 0) {
       return selectedColor.images.slice(0, 5);
@@ -119,7 +173,7 @@ const ProductPage = () => {
     
     // Fallback to default product images
     return product.images || [];
-  }, [product, selectedColor]);
+  }, [product, selectedColor, selectedPack, currentVariant]);
 
   // Build gallery media with images plus optional product video
   const galleryMedia = useMemo(() => {
@@ -193,14 +247,17 @@ const ProductPage = () => {
 
     const colors = product.color_options || [];
     const flavors = product.flavor_options || [];
+    const packs = (product.pack_options || []).filter((pack) => pack?.is_active !== false);
     const variants = product.variants || [];
 
     const hasColors = product.has_color_options && colors.length > 0;
     const hasFlavors = product.has_flavor_options && flavors.length > 0;
+    const hasPacks = packs.length > 0;
 
-    if (!hasColors && !hasFlavors) {
+    if (!hasColors && !hasFlavors && !hasPacks) {
       setSelectedColor(null);
       setSelectedFlavor(null);
+      setSelectedPack(null);
       return;
     }
 
@@ -209,13 +266,15 @@ const ProductPage = () => {
     if (variants.length > 0) {
       const firstAvailableVariant = variants.find((variant) => {
         if (variant.is_active === false) return false;
-        if ((variant.stock ?? 0) <= 0) return false;
+        const variantStock = Number(variant.stock) || 0;
+        if (variantStock <= 0) return false;
         if (requestedColor && variant.color_id !== requestedColor.id) return false;
 
         const colorOk = !hasColors || colors.some((color) => color.id === variant.color_id);
         const flavorOk = !hasFlavors || flavors.some((flavor) => flavor.id === variant.flavor_id);
+        const packOk = !hasPacks || packs.some((pack) => pack.id === variant.pack_option_id);
 
-        return colorOk && flavorOk;
+        return colorOk && flavorOk && packOk;
       });
 
       if (firstAvailableVariant) {
@@ -232,18 +291,25 @@ const ProductPage = () => {
         } else {
           setSelectedFlavor(null);
         }
+        if (hasPacks) {
+          const matchedPack = packs.find((pack) => pack.id === firstAvailableVariant.pack_option_id) || packs[0] || null;
+          setSelectedPack(matchedPack);
+        } else {
+          setSelectedPack(null);
+        }
         return;
       }
     }
 
     setSelectedColor(hasColors ? (requestedColor || colors[0]) : null);
     setSelectedFlavor(hasFlavors ? flavors[0] : null);
+    setSelectedPack(hasPacks ? packs[0] : null);
   }, [product, colorQuery]);
 
   // Reset quantity when variant changes
   useEffect(() => {
     setQuantity(1);
-  }, [selectedColor, selectedFlavor]);
+  }, [selectedColor, selectedFlavor, selectedPack]);
 
   // Clamp quantity if current stock changes
   useEffect(() => {
@@ -252,16 +318,17 @@ const ProductPage = () => {
       return;
     }
 
-    if (quantity > currentStock) {
-      setQuantity(currentStock);
+    if (quantity > availableQuantity) {
+      setQuantity(availableQuantity);
     }
-  }, [currentStock, isAvailable, quantity]);
+  }, [availableQuantity, isAvailable, quantity]);
 
   const handleAddToCart = () => {
     if (!isVariantSelectionComplete) {
       const missingSelections = [
         !selectedColor && requiresColorSelection ? 'color' : null,
-        !selectedFlavor && requiresFlavorSelection ? 'fragrance' : null
+        !selectedFlavor && requiresFlavorSelection ? 'fragrance' : null,
+        !selectedPack && requiresPackSelection ? 'pack' : null
       ].filter(Boolean);
 
       toast.error(`Please select ${missingSelections.join(' and ')}`);
@@ -276,25 +343,37 @@ const ProductPage = () => {
     const variantInfo = [];
     if (selectedColor) variantInfo.push(selectedColor.name);
     if (selectedFlavor) variantInfo.push(selectedFlavor.name);
+    if (selectedPack) variantInfo.push(getPackLabel(selectedPack));
     
-    // Get variant-specific price if exists
-   
     addItem({ 
       ...product,
-      price: product.price,
-      discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
-      sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
-      is_on_sale: Boolean((currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? product.price) < product.price),
+      original_price: selectedRegularPrice,
+      price: selectedRegularPrice,
+      discount_price: hasSelectedSalePrice ? selectedSalePrice : null,
+      sale_price: hasSelectedSalePrice ? selectedSalePrice : null,
+      is_on_sale: hasSelectedSalePrice,
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
       selectedFlavorId: selectedFlavor?.id,
+      selectedPackId: selectedPack?.id ?? null,
+      selectedPackLabel: selectedPack ? getPackLabel(selectedPack) : null,
+      pack_multiplier: packSize,
+      base_pieces_per_unit: basePiecesPerUnit,
+      pieces_per_pack: piecesPerPack,
+      total_pieces: quantity * piecesPerPack,
       variantId: currentVariant?.id ?? null,
-      variantStock: currentStock
+      variantStock: currentStock,
+      availableQuantity,
+      sell_as_pack: isPackProduct,
+      pack_size: packSize,
+      pack_label: selectedPack ? getPackLabel(selectedPack) : null,
+      effective_quantity: quantity,
+      total_units: quantity
     }, quantity);
     
     toast.success('Added to cart', {
-      description: `${quantity}x ${product.name}${variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : ''}`
+      description: `${quantity} ${isPackProduct ? 'pack' : 'item'}${quantity === 1 ? '' : 's'} of ${product.name}${variantInfo.length > 0 ? ` (${variantInfo.join(', ')})` : ''}`
     });
   };
 
@@ -302,7 +381,8 @@ const ProductPage = () => {
     if (!isVariantSelectionComplete) {
       const missingSelections = [
         !selectedColor && requiresColorSelection ? 'color' : null,
-        !selectedFlavor && requiresFlavorSelection ? 'fragrance' : null
+        !selectedFlavor && requiresFlavorSelection ? 'fragrance' : null,
+        !selectedPack && requiresPackSelection ? 'pack' : null
       ].filter(Boolean);
 
       toast.error(`Please select ${missingSelections.join(' and ')}`);
@@ -316,16 +396,29 @@ const ProductPage = () => {
     
     addItem({ 
       ...product,
-      price: product.price,
-      discount_price: currentVariant?.price_override ?? product.discount_price ?? null,
-      sale_price: currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? null,
-      is_on_sale: Boolean((currentVariant?.price_override ?? product.discount_price ?? product.sale_price ?? product.price) < product.price),
+      original_price: selectedRegularPrice,
+      price: selectedRegularPrice,
+      discount_price: hasSelectedSalePrice ? selectedSalePrice : null,
+      sale_price: hasSelectedSalePrice ? selectedSalePrice : null,
+      is_on_sale: hasSelectedSalePrice,
       selectedColor: selectedColor?.name,
       selectedColorId: selectedColor?.id,
       selectedFlavor: selectedFlavor?.name,
       selectedFlavorId: selectedFlavor?.id,
+      selectedPackId: selectedPack?.id ?? null,
+      selectedPackLabel: selectedPack ? getPackLabel(selectedPack) : null,
+      pack_multiplier: packSize,
+      base_pieces_per_unit: basePiecesPerUnit,
+      pieces_per_pack: piecesPerPack,
+      total_pieces: quantity * piecesPerPack,
       variantId: currentVariant?.id ?? null,
-      variantStock: currentStock
+      variantStock: currentStock,
+      availableQuantity,
+      sell_as_pack: isPackProduct,
+      pack_size: packSize,
+      pack_label: selectedPack ? getPackLabel(selectedPack) : null,
+      effective_quantity: quantity,
+      total_units: quantity
     }, quantity);
     
     navigate('/checkout');
@@ -347,40 +440,6 @@ const ProductPage = () => {
     }
   };
 
-  // Calculate price (considering variant price override)
-  const displayPrice = useMemo(() => {
-    if (!product) return 0;
-    
-    // Check for variant-specific price
-    if (currentVariant?.price_override != null) {
-      return currentVariant.price_override;
-    }
-    
-    // Use sale price if on sale
-    if (product.is_on_sale && product.discount_price) {
-      return product.discount_price;
-    }
-    
-    return product.price;
-  }, [product, currentVariant]);
-
-  const originalPrice = useMemo(() => {
-    if (!product) return null;
-
-    if (currentVariant?.price_override != null) {
-      return product.price;
-    }
-
-    if (product.is_on_sale && product.discount_price) {
-      return product.price;
-    }
-
-    return null;
-  }, [product, currentVariant]);
-
-  const discountPercent = originalPrice
-    ? Math.round((1 - displayPrice / originalPrice) * 100)
-    : 0;
   const summaryDescription = product?.short_description || htmlToPlainText(product?.description || '');
   const enabledBenefits = useMemo(() => {
     if (!product) return [];
@@ -616,28 +675,61 @@ const ProductPage = () => {
                 </div>
               )}
 
+              {requiresPackSelection && (
+                <div data-testid="pack-variants">
+                  <p className="text-sm font-medium mb-3 tracking-[0.01em]">
+                    Pack: <span className="text-foreground/55">{selectedPack ? getPackLabel(selectedPack) : 'Select a Pack'}</span>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {activePackOptions.map((pack) => (
+                      <button
+                        key={pack.id}
+                        onClick={() => setSelectedPack(pack)}
+                        className={`px-4 py-2 rounded-full border transition-all duration-300 text-sm ${
+                          selectedPack?.id === pack.id
+                            ? 'border-foreground bg-foreground text-primary-foreground'
+                            : 'border-border hover:border-foreground/50'
+                        }`}
+                        data-testid={`pack-${getPackLabel(pack).toLowerCase().replace(/\s+/g, '-')}`}
+                      >
+                        {getPackLabel(pack)}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedPack ? (
+                    <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                      <p>Includes {piecesPerPack} pieces</p>
+                      <p>Quantity means packs</p>
+                      <p data-testid="product-total-pieces">Total pieces: {quantity * piecesPerPack}</p>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {/* Stock Status - Based on selected variant combination */}
               <div data-testid="stock-status">
-                {!isVariantSelectionComplete && (requiresColorSelection || requiresFlavorSelection) ? (
+                {!isVariantSelectionComplete && (requiresColorSelection || requiresFlavorSelection || requiresPackSelection) ? (
                   <div className="flex items-center gap-2 text-[#9C6B5B]" data-testid="product-variant-selection-required">
                     <AlertCircle className="h-4 w-4" />
                     <p className="text-sm font-medium">
                       Please select
                         {requiresColorSelection ? ' a color' : ''}
-                        {requiresColorSelection && requiresFlavorSelection ? ' and' : ''}
+                        {requiresColorSelection && (requiresFlavorSelection || requiresPackSelection) ? ' and' : ''}
                         {requiresFlavorSelection ? ' a fragrance' : ''}
+                        {(requiresColorSelection || requiresFlavorSelection) && requiresPackSelection ? ' and' : ''}
+                        {requiresPackSelection ? ' a pack' : ''}
                         {' '}to check availability
                     </p>
                   </div>
                 ) : isAvailable ? (
-                  currentStock <= 5 ? (
+                  availableQuantity <= 5 ? (
                     <div className="flex items-center gap-2 text-terracotta/90" data-testid="product-stock-low">
                       <AlertCircle className="h-4 w-4" />
                       <p className="text-sm font-medium">
-                        Only {currentStock} left
-                        {(selectedColor || selectedFlavor) && (
+                        Only {availableQuantity} {isPackProduct ? 'packs' : 'left'}
+                        {(selectedColor || selectedFlavor || selectedPack) && (
                           <span className="text-muted-foreground font-normal">
-                            {' '}for {[selectedColor?.name, selectedFlavor?.name].filter(Boolean).join(' + ')}
+                            {' '}for {[selectedColor?.name, selectedFlavor?.name, selectedPack ? getPackLabel(selectedPack) : null].filter(Boolean).join(' + ')}
                           </span>
                         )}
                       </p>
@@ -652,9 +744,9 @@ const ProductPage = () => {
                     <AlertCircle className="h-4 w-4" />
                     <p className="text-sm font-medium">
                       Out of Stock
-                      {(selectedColor || selectedFlavor) && (
+                      {(selectedColor || selectedFlavor || selectedPack) && (
                         <span className="text-muted-foreground font-normal">
-                          {' '}for {[selectedColor?.name, selectedFlavor?.name].filter(Boolean).join(' + ')}
+                          {' '}for {[selectedColor?.name, selectedFlavor?.name, selectedPack ? getPackLabel(selectedPack) : null].filter(Boolean).join(' + ')}
                         </span>
                       )}
                     </p>
@@ -663,7 +755,7 @@ const ProductPage = () => {
               </div> 
               {/* Quantity Selector */}
               <div className="flex items-center gap-4">
-                <span className="text-sm font-medium">Quantity:</span>
+                <span className="text-sm font-medium">{isPackProduct ? 'Quantity (packs):' : 'Quantity:'}</span>
                 <div className="flex items-center border border-border/80 rounded-full bg-[#FBF8F4] shadow-sm">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -678,10 +770,10 @@ const ProductPage = () => {
                     {quantity}
                   </span>
                   <button
-                    onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
+                    onClick={() => setQuantity(Math.min(availableQuantity, quantity + 1))}
                     aria-label={`Increase quantity of ${product.name}`}
                     className="w-10 h-10 flex items-center justify-center hover:bg-muted rounded-full transition-colors disabled:opacity-50"
-                    disabled={!isAvailable || !isVariantSelectionComplete || currentStock <= 0 || quantity >= currentStock}
+                    disabled={!isAvailable || !isVariantSelectionComplete || availableQuantity <= 0 || quantity >= availableQuantity}
                     data-testid="quantity-increase"
                   >
                     <Plus className="h-4 w-4" strokeWidth={1.5} />

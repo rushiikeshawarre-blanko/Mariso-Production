@@ -45,6 +45,27 @@ const getSelectedGiftOption = (item, activeOptions = getActiveGiftOptions(item))
   return activeOptions.find((option) => option.id === item.gift_packaging.option_id) || null;
 };
 
+const isPackItem = (item) => item.sell_as_pack === true;
+const getPackSize = (item) => Math.max(Number(item.pack_size) || 1, 1);
+const getPackLabel = (item) => item.selectedPackLabel || item.pack_label || (getPackSize(item) === 1 ? 'Single' : `Pack of ${getPackSize(item)}`);
+const getPiecesPerPack = (item) => Math.max(Number(item.pieces_per_pack) || getPackSize(item) || 1, 1);
+const getTotalUnits = (item) => isPackItem(item) ? item.quantity * getPiecesPerPack(item) : item.quantity;
+const getPriceNumber = (value) => {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+const getItemPricing = (item) => {
+  const regularPrice = getPriceNumber(item.price) ?? 0;
+  const salePrice = getPriceNumber(item.sale_price) ?? getPriceNumber(item.discount_price);
+  const isOnSale = salePrice != null && salePrice < regularPrice;
+
+  return {
+    price: isOnSale ? salePrice : regularPrice,
+    originalPrice: isOnSale ? regularPrice : null,
+  };
+};
+
 const CartPage = () => {
   const { items, removeItem, updateQuantity, updateGiftPackaging, getCartCount } = useCart();
   const { user } = useAuth0();
@@ -66,7 +87,7 @@ const CartPage = () => {
     if (item.variantId) {
       return `${item.id}-${item.variantId}`;
     }
-    return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+    return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}-${item.selectedPackId || 'none'}`;
   }, []);
 
   const getCartStockKey = useCallback((item) => getCartItemKey(item), [getCartItemKey]);
@@ -79,10 +100,9 @@ const CartPage = () => {
       item.variantId || '',
       item.selectedColorId || '',
       item.selectedFlavorId || '',
+      item.selectedPackId || '',
       item.quantity,
-      item.is_on_sale && (item.sale_price || item.discount_price)
-        ? (item.sale_price || item.discount_price)
-        : item.price,
+      getItemPricing(item).price,
     ].join(':'))
     .join('|');
 
@@ -152,9 +172,11 @@ const CartPage = () => {
               );
             });
 
-            latestStockMap[getCartStockKey(item)] = variant ? (variant.stock || 0) : 0;
+            const stock = variant ? (variant.stock || 0) : 0;
+            latestStockMap[getCartStockKey(item)] = stock;
           } else {
-            latestStockMap[getCartStockKey(item)] = product.stock || 0;
+            const stock = product.stock || 0;
+            latestStockMap[getCartStockKey(item)] = stock;
           }
         });
 
@@ -188,9 +210,7 @@ const CartPage = () => {
           product_id: item.product_id || item.id || item.product?.id || '',
           category_id: item.category_id || item.categoryId || item.product?.category_id || '',
           quantity: item.quantity,
-          price: item.is_on_sale && (item.sale_price || item.discount_price)
-            ? (item.sale_price || item.discount_price)
-            : item.price,
+          price: getItemPricing(item).price,
         }));
 
         const result = await getAvailableCoupons({
@@ -224,9 +244,7 @@ const CartPage = () => {
   }, [cartSignature, items, user?.email, user?.id, user?.sub]);
 
   const getItemEffectivePrice = (item) => {
-    return item.is_on_sale && (item.sale_price || item.discount_price)
-      ? (item.sale_price || item.discount_price)
-      : item.price;
+    return getItemPricing(item).price;
   };
 
   const getOriginalSubtotal = () => {
@@ -498,11 +516,7 @@ const CartPage = () => {
             <div className="lg:col-span-2 space-y-6">
               {items.map((item) => {
                 const productPath = getProductPath(item) || '/shop';
-                const price = getItemEffectivePrice(item);
-                const originalPrice = 
-                  item.is_on_sale && (item.sale_price || item.discount_price) 
-                  ? item.price 
-                  : null;
+                const { price, originalPrice } = getItemPricing(item);
                 const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
                 const cartItemKey = getCartItemKey(item);
                 const giftSelected = item.gift_packaging?.selected === true;
@@ -538,22 +552,35 @@ const CartPage = () => {
                           {item.selectedColor && (
                             <p className="text-sm text-muted-foreground">Color: {item.selectedColor}</p>
                           )}
+                          {isPackItem(item) && (
+                            <>
+                              <p className="text-sm text-muted-foreground">
+                                {getPackLabel(item)} × {item.quantity}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Includes {getPiecesPerPack(item)} pieces each
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Total pieces: {getTotalUnits(item)}
+                              </p>
+                            </>
+                          )}
                           {!isItemAvailable(item) ? (
                             <p className="text-sm text-destructive font-medium">
                               Out of Stock
                             </p>
                           ) : getRemainingAddableStock(item) === 0 ? (
                             <p className="text-sm text-muted-foreground font-medium">
-                              No more available
+                              No more {isPackItem(item) ? 'packs' : 'available'}
                             </p>
                           ) : getRemainingAddableStock(item) <= 5 ? (
                             <p className="text-sm text-terracotta font-medium">
-                              Only {getRemainingAddableStock(item)} more available
+                              Only {getRemainingAddableStock(item)} more {isPackItem(item) ? 'packs' : 'available'}
                             </p>
                           ) : null}
                           {isItemAvailable(item) && !isItemQuantityValid(item) && (
                             <p className="text-sm text-destructive font-medium">
-                              Quantity exceeds available stock
+                              Quantity exceeds available {isPackItem(item) ? 'packs' : 'stock'}
                             </p>
                           )}
                         </div>
@@ -613,7 +640,7 @@ const CartPage = () => {
                             </div>
                           )}
                           <p className="text-xs text-muted-foreground">
-                            ₹{price.toLocaleString()} each
+                            ₹{price.toLocaleString()} {isPackItem(item) ? 'per pack' : 'each'}
                           </p>
                         </div>
                       </div>

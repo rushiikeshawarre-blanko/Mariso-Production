@@ -90,12 +90,67 @@ const getEditableGiftOptions = (product = {}) => (
     : [newGiftPackagingOption(product)]
 );
 
+const newPackOption = (source = {}, basePiecesPerUnit = 1) => {
+  const multiplier = Math.max(Number(source.multiplier ?? source.pack_quantity ?? 1) || 1, 1);
+  const label = source.label || (multiplier === 1 ? 'Single' : `Pack of ${multiplier}`);
+  return {
+    id: source.id || '',
+    label,
+    multiplier: String(multiplier),
+    pack_quantity: String(multiplier),
+    pieces_per_pack: Math.max(Number(basePiecesPerUnit) || 1, 1) * multiplier,
+    is_active: source.is_active !== false,
+    image: source.image || null,
+    images: source.images || [],
+  };
+};
+
 const getProductFormSnapshot = ({ formData, newColor, newFlavor, slugManuallyEdited }) => JSON.stringify({
   formData,
   newColor,
   newFlavor,
   slugManuallyEdited,
 });
+
+const safeStringify = (value) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const formatApiErrorDetail = (detail) => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (!item || typeof item !== 'object') return String(item);
+
+        const loc = Array.isArray(item.loc) ? item.loc.join('.') : item.loc;
+        const message = item.msg || item.message || safeStringify(item);
+
+        return loc ? `${loc}: ${message}` : message;
+      })
+      .join('; ');
+  }
+
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || safeStringify(detail);
+  }
+
+  return String(detail);
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  const responseData = error?.response?.data;
+  const detail = responseData?.detail ?? responseData?.message ?? responseData?.error ?? responseData;
+  const message = formatApiErrorDetail(detail);
+  return message || error?.message || fallback;
+};
 
 export default function AdminProducts() {
   const [products, setProducts] = useState([]);
@@ -158,6 +213,11 @@ export default function AdminProducts() {
     category_id: '',
     sku: '',
     stock: '',
+    sell_as_pack: false,
+    pack_size: '1',
+    pack_label: '',
+    base_pieces_per_unit: '1',
+    pack_options: [],
     shop_priority: '0',
     images: [],
     video: '',
@@ -268,7 +328,7 @@ export default function AdminProducts() {
       await fetchData();
     } catch (error) {
       console.error('Error saving shop order:', error);
-      const message = error.response?.data?.detail || 'Failed to save shop order';
+      const message = getApiErrorMessage(error, 'Failed to save shop order');
       toast.error(message);
     } finally {
       setSavingShopOrder(false);
@@ -1189,6 +1249,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: '',
       sku: '',
       stock: '',
+      sell_as_pack: false,
+      pack_size: '1',
+      pack_label: '',
+      base_pieces_per_unit: '1',
+      pack_options: [],
       shop_priority: '0',
       images: [],
       video: '',
@@ -1320,6 +1385,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: product.category_id,
       sku: product.sku || '',
       stock: product.stock.toString(),
+      sell_as_pack: product.sell_as_pack === true,
+      pack_size: String(product.pack_size || 1),
+      pack_label: product.pack_label || '',
+      base_pieces_per_unit: String(product.base_pieces_per_unit || 1),
+      pack_options: (product.pack_options || []).map((option) => newPackOption(option, product.base_pieces_per_unit || 1)),
       shop_priority: getShopPrioritySelectValue(product.shop_priority),
       images: product.images || [],
       video: product.video || '',
@@ -1486,70 +1556,97 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
     setFormData({ ...formData, flavor_options: updatedFlavors });
   };
 
+  // ==================== PACK OPTIONS ====================
+
+  const getBasePiecesPerUnit = () => Math.max(parseInt(formData.base_pieces_per_unit, 10) || 1, 1);
+
+  const addPackOption = () => {
+    setFormData((current) => ({
+      ...current,
+      pack_options: [
+        ...(current.pack_options || []),
+        newPackOption({ multiplier: (current.pack_options || []).length === 0 ? 1 : 2 }, current.base_pieces_per_unit),
+      ].map((option, index) => option.id ? option : { ...option, id: `temp-pack-${Date.now()}-${index}` }),
+    }));
+  };
+
+  const updatePackOption = (index, field, value) => {
+    setFormData((current) => {
+      const basePieces = Math.max(parseInt(current.base_pieces_per_unit, 10) || 1, 1);
+      const nextOptions = (current.pack_options || []).map((option, optionIndex) => {
+        if (optionIndex !== index) return option;
+        const updated = { ...option, [field]: value };
+        if (field === 'multiplier') {
+          const multiplier = Math.max(parseInt(value, 10) || 1, 1);
+          updated.multiplier = String(multiplier);
+          updated.pack_quantity = String(multiplier);
+          updated.pieces_per_pack = basePieces * multiplier;
+          if (!String(updated.label || '').trim()) {
+            updated.label = multiplier === 1 ? 'Single' : `Pack of ${multiplier}`;
+          }
+        }
+        return updated;
+      });
+      return { ...current, pack_options: nextOptions };
+    });
+  };
+
+  const removePackOption = (index) => {
+    const packToRemove = formData.pack_options[index];
+    setFormData({
+      ...formData,
+      pack_options: formData.pack_options.filter((_, optionIndex) => optionIndex !== index),
+      variants: formData.variants.filter((variant) => variant.pack_option_id !== packToRemove?.id),
+    });
+    toast.success('Pack option removed');
+  };
+
   // ==================== VARIANT COMBINATIONS ====================
 
   const buildVariantCombinationsFromForm = () => {
     const existingVariantMap = new Map(
       formData.variants.map((variant) => [
-        `${variant.color_id ?? 'null'}-${variant.flavor_id ?? 'null'}`,
+        `${variant.color_id ?? 'null'}-${variant.flavor_id ?? 'null'}-${variant.pack_option_id ?? 'null'}`,
         variant,
       ])
     );
 
     const generatedVariants = [];
+    const colors = formData.has_color_options ? (formData.color_options || []).filter((color) => color?.is_active !== false) : [];
+    const flavors = formData.has_flavor_options ? (formData.flavor_options || []).filter((flavor) => flavor?.is_active !== false) : [];
+    const packs = (formData.pack_options || []).filter((pack) => pack?.is_active !== false);
+    const colorValues = colors.length > 0 ? colors : [null];
+    const flavorValues = flavors.length > 0 ? flavors : [null];
+    const packValues = packs.length > 0 ? packs : [null];
 
-    if (formData.color_options.length > 0 && formData.flavor_options.length > 0) {
-      for (const color of formData.color_options) {
-        for (const flavor of formData.flavor_options) {
-          const comboKey = `${color.id}-${flavor.id}`;
+    if (colors.length === 0 && flavors.length === 0 && packs.length === 0) {
+      return [];
+    }
+
+    for (const color of colorValues) {
+      for (const flavor of flavorValues) {
+        for (const pack of packValues) {
+          const comboKey = `${color?.id ?? 'null'}-${flavor?.id ?? 'null'}-${pack?.id ?? 'null'}`;
           const existingVariant = existingVariantMap.get(comboKey);
+          const multiplier = Math.max(parseInt(pack?.multiplier ?? pack?.pack_quantity, 10) || 1, 1);
 
           generatedVariants.push({
             id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
-            color_id: color.id,
-            color_name: color.name,
-            flavor_id: flavor.id,
-            flavor_name: flavor.name,
+            color_id: color?.id || null,
+            color_name: color?.name || null,
+            flavor_id: flavor?.id || null,
+            flavor_name: flavor?.name || null,
+            pack_option_id: pack?.id || null,
+            pack_label: pack?.label || (pack ? (multiplier === 1 ? 'Single' : `Pack of ${multiplier}`) : null),
+            pack_multiplier: pack ? multiplier : null,
+            pieces_per_pack: pack?.pieces_per_pack ?? (pack ? getBasePiecesPerUnit() * multiplier : null),
             sku: existingVariant?.sku || '',
             price_override: existingVariant?.price_override ?? null,
+            sale_price: existingVariant?.sale_price ?? null,
             stock: existingVariant?.stock ?? 0,
             is_active: existingVariant?.is_active ?? true,
           });
         }
-      }
-    } else if (formData.color_options.length > 0) {
-      for (const color of formData.color_options) {
-        const comboKey = `${color.id}-null`;
-        const existingVariant = existingVariantMap.get(comboKey);
-
-        generatedVariants.push({
-          id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
-          color_id: color.id,
-          color_name: color.name,
-          flavor_id: null,
-          flavor_name: null,
-          sku: existingVariant?.sku || '',
-          price_override: existingVariant?.price_override ?? null,
-          stock: existingVariant?.stock ?? 0,
-          is_active: existingVariant?.is_active ?? true,
-        });
-      }
-    } else if (formData.flavor_options.length > 0) {
-      for (const flavor of formData.flavor_options) {
-        const comboKey = `null-${flavor.id}`;
-        const existingVariant = existingVariantMap.get(comboKey);
-
-        generatedVariants.push({
-          id: existingVariant?.id || `temp-${Date.now()}-${generatedVariants.length}`,
-          color_id: null,
-          color_name: null,
-          flavor_id: flavor.id,
-          flavor_name: flavor.name,
-          sku: existingVariant?.sku || '',
-          price_override: existingVariant?.price_override ?? null,
-          stock: existingVariant?.stock ?? 0,
-          is_active: existingVariant?.is_active ?? true,
-        });
       }
     }
 
@@ -1578,6 +1675,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       updatedVariants[index] = {
         ...updatedVariants[index],
         price_override: value === '' ? null : parseFloat(value)
+      };
+    } else if (field === 'sale_price') {
+      updatedVariants[index] = {
+        ...updatedVariants[index],
+        sale_price: value === '' ? null : parseFloat(value)
       };
     } else if (field === 'is_active') {
       updatedVariants[index] = { ...updatedVariants[index], [field]: value };
@@ -1636,7 +1738,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
         return;
       }
     }
-    
+
     // Clean up color images (remove empty strings)
     const cleanedColorOptions = formData.color_options.map(color => ({
       ...color,
@@ -1653,6 +1755,21 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       sort_order: parseInt(option.sort_order, 10) || 0,
     }));
     const legacyGiftOption = cleanedGiftOptions[0] || newGiftPackagingOption(formData);
+    const basePiecesPerUnit = Math.max(parseInt(formData.base_pieces_per_unit, 10) || 1, 1);
+    const cleanedPackOptions = (formData.pack_options || []).map((option) => {
+      const multiplier = Math.max(parseInt(option.multiplier ?? option.pack_quantity, 10) || 1, 1);
+      const label = String(option.label || '').trim() || (multiplier === 1 ? 'Single' : `Pack of ${multiplier}`);
+      return {
+        id: option.id || '',
+        label,
+        multiplier,
+        pack_quantity: multiplier,
+        pieces_per_pack: basePiecesPerUnit * multiplier,
+        is_active: option.is_active !== false,
+        image: option.image || null,
+        images: (option.images || []).filter(hasImageUrl),
+      };
+    });
     
     const productData = {
       name: formData.name,
@@ -1664,6 +1781,11 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       category_id: formData.category_id,
       sku: formData.sku,
       stock: parseInt(formData.stock, 10) || 0,
+      sell_as_pack: false,
+      pack_size: 1,
+      pack_label: null,
+      base_pieces_per_unit: basePiecesPerUnit,
+      pack_options: cleanedPackOptions,
       shop_priority: parseInt(formData.shop_priority, 10) || 0,
       images: (formData.images || []).filter(hasImageUrl).slice(0, 5),
       video: formData.video,
@@ -1706,7 +1828,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       await fetchData();
     } catch (error) {
       console.error('Error saving product:', error);
-      const message = error.response?.data?.detail || 'Failed to save product';
+      const message = getApiErrorMessage(error, 'Failed to save product');
       toast.error(message);
     }
   };
@@ -1721,7 +1843,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       await fetchData();
     } catch (error) {
       console.error('Error deleting product:', error);
-      const message = error.response?.data?.detail || 'Failed to delete product';
+      const message = getApiErrorMessage(error, 'Failed to delete product');
       toast.error(message);
     }
   };
@@ -1792,13 +1914,16 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-                  <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-5">
                     <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
                     <TabsTrigger value="colors" data-testid="tab-colors">
                       <Palette className="h-4 w-4 mr-1" /> Colors
                     </TabsTrigger>
                     <TabsTrigger value="fragrances" data-testid="tab-fragrances">
                       <Droplets className="h-4 w-4 mr-1" /> Fragrances
+                    </TabsTrigger>
+                    <TabsTrigger value="packs" data-testid="tab-packs">
+                      <Package className="h-4 w-4 mr-1" /> Packs
                     </TabsTrigger>
                     <TabsTrigger value="variants" data-testid="tab-variants">
                       <Package className="h-4 w-4 mr-1" /> Stock
@@ -1937,6 +2062,31 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-4">
+                    <Label htmlFor="base_pieces_per_unit">Base pieces per unit</Label>
+                    <Input
+                      id="base_pieces_per_unit"
+                      name="base_pieces_per_unit"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={formData.base_pieces_per_unit}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        const basePieces = Math.max(parseInt(value, 10) || 1, 1);
+                        setFormData((current) => ({
+                          ...current,
+                          base_pieces_per_unit: value,
+                          pack_options: (current.pack_options || []).map((option) => {
+                            const multiplier = Math.max(parseInt(option.multiplier ?? option.pack_quantity, 10) || 1, 1);
+                            return { ...option, pieces_per_pack: basePieces * multiplier };
+                          }),
+                        }));
+                      }}
+                      className="mt-1 max-w-xs"
+                      data-testid="product-base-pieces-input"
+                    />
                   </div>
                   <div>
                     <Label htmlFor="shop_priority">Shop Visibility</Label>
@@ -3276,13 +3426,91 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                   )}
                 </TabsContent>
 
+                {/* ==================== PACK OPTIONS TAB ==================== */}
+                <TabsContent value="packs" className="space-y-6 mt-4">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <Label className="text-base font-medium">Pack Options</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Pack options let customers choose Single, Pack of 2, Pack of 4, etc. Price and stock are managed per generated combination.
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addPackOption}>
+                      <Plus className="h-4 w-4 mr-2" /> Add Pack Option
+                    </Button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(formData.pack_options || []).length === 0 ? (
+                      <div className="rounded-lg border border-dashed py-10 text-center">
+                        <Package className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+                        <p className="text-sm text-muted-foreground">No pack options</p>
+                      </div>
+                    ) : (
+                      formData.pack_options.map((pack, index) => {
+                        const multiplier = Math.max(parseInt(pack.multiplier ?? pack.pack_quantity, 10) || 1, 1);
+                        const piecesIncluded = getBasePiecesPerUnit() * multiplier;
+                        return (
+                          <div key={pack.id || index} className="rounded-lg border p-4">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_180px_100px_48px] md:items-end">
+                              <div>
+                                <Label className="text-xs">Label</Label>
+                                <Input
+                                  value={pack.label || ''}
+                                  onChange={(e) => updatePackOption(index, 'label', e.target.value)}
+                                  placeholder={multiplier === 1 ? 'Single' : `Pack of ${multiplier}`}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Pack multiplier</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={pack.multiplier || '1'}
+                                  onChange={(e) => updatePackOption(index, 'multiplier', e.target.value)}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Pieces included</Label>
+                                <div className="mt-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                                  {piecesIncluded}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 pb-2">
+                                <Switch
+                                  checked={pack.is_active !== false}
+                                  onCheckedChange={(checked) => updatePackOption(index, 'is_active', checked)}
+                                />
+                                <span className="text-sm">Active</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removePackOption(index)}
+                                className="h-9 w-9 p-0 text-destructive hover:text-destructive"
+                                aria-label={`Remove pack ${pack.label || index + 1}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </TabsContent>
+
                 {/* ==================== VARIANT STOCK TAB ==================== */}
                 <TabsContent value="variants" className="space-y-4 mt-4">
                   <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                     <div>
                       <h3 className="font-medium">Variant Combination Stock</h3>
                       <p className="text-sm text-muted-foreground">
-                        Manage stock for each color + fragrance combination
+                        Manage price, sale price, SKU, and stock for each color + fragrance + pack combination
                       </p>
                     </div>
                     <Button
@@ -3290,7 +3518,7 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                       variant="outline"
                       size="sm"
                       onClick={generateVariantCombinations}
-                      disabled={generating || (formData.color_options.length === 0 && formData.flavor_options.length === 0)}
+                      disabled={generating || (formData.color_options.length === 0 && formData.flavor_options.length === 0 && formData.pack_options.length === 0)}
                       data-testid="generate-variants-button"
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${generating ? 'animate-spin' : ''}`} />
@@ -3303,18 +3531,20 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                       <Package className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
                       <p className="text-muted-foreground">No variant combinations yet</p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Add colors and/or fragrances, then click "Generate Combinations"
+                        Add colors, fragrances, and/or pack options, then click "Generate Combinations"
                       </p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border">
-                      <Table className="min-w-[760px]">
+                      <Table className="min-w-[940px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Color</TableHead>
                             <TableHead>Fragrance</TableHead>
+                            <TableHead>Pack</TableHead>
                             <TableHead className="w-24">SKU</TableHead>
-                            <TableHead className="w-28">Price Override</TableHead>
+                            <TableHead className="w-28">Price</TableHead>
+                            <TableHead className="w-28">Sale Price</TableHead>
                             <TableHead className="w-24">Stock</TableHead>
                             <TableHead className="w-20">Active</TableHead>
                             <TableHead className="w-12"></TableHead>
@@ -3324,8 +3554,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                           {formData.variants.map((variant, index) => {
                             const colorOption = (formData.color_options || []).find((color) => color.id === variant.color_id);
                             const flavorOption = (formData.flavor_options || []).find((flavor) => flavor.id === variant.flavor_id);
+                            const packOption = (formData.pack_options || []).find((pack) => pack.id === variant.pack_option_id);
                             const colorName = colorOption?.name || variant.color_name || '—';
                             const flavorName = flavorOption?.name || variant.flavor_name || '—';
+                            const packName = packOption?.label || variant.pack_label || '—';
                             const hasDualColor = colorOption?.hex_code_secondary && colorOption?.hex_code_secondary !== colorOption?.hex_code;
                             return (
                             <TableRow key={variant.id} data-testid={`variant-row-${index}`}>
@@ -3357,6 +3589,20 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                 {flavorName !== '—' ? flavorName : <span className="text-muted-foreground">—</span>}
                               </TableCell>
                               <TableCell>
+                                {packName !== '—' ? (
+                                  <div>
+                                    <p>{packName}</p>
+                                    {(packOption?.pieces_per_pack || variant.pieces_per_pack) ? (
+                                      <p className="text-xs text-muted-foreground">
+                                        {packOption?.pieces_per_pack || variant.pieces_per_pack} pieces
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
                                 <Input
                                   value={variant.sku || ''}
                                   onChange={(e) => updateVariant(index, 'sku', e.target.value)}
@@ -3372,6 +3618,17 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                                   value={variant.price_override ?? ''}
                                   onChange={(e) => updateVariant(index, 'price_override', e.target.value)}
                                   placeholder="Base"
+                                  className="h-8 text-xs"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={variant.sale_price ?? ''}
+                                  onChange={(e) => updateVariant(index, 'sale_price', e.target.value)}
+                                  placeholder="None"
                                   className="h-8 text-xs"
                                 />
                               </TableCell>

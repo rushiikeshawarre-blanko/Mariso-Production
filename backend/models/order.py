@@ -21,6 +21,7 @@ class CartItem(BaseModel):
     variant_id: Optional[str] = None
     color_id: Optional[str] = None
     flavor_id: Optional[str] = None
+    selected_pack_id: Optional[str] = None
     gift_packaging: Optional[CartItemGiftPackaging] = None
 
 class OrderCreate(BaseModel):

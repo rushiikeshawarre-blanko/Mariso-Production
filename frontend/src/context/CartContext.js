@@ -24,15 +24,45 @@ const normalizeGiftPackaging = (item, quantity) => {
   };
 };
 
+const getPriceNumber = (value) => {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const getEffectiveCartItemPrice = (item) => {
+  const regularPrice = getPriceNumber(item.price) ?? 0;
+  const salePrice = getPriceNumber(item.sale_price) ?? getPriceNumber(item.discount_price);
+
+  return salePrice != null && salePrice < regularPrice ? salePrice : regularPrice;
+};
+
 const normalizeCartItem = (product, quantity = 1) => {
   const normalizedQuantity = Math.max(Number(quantity) || 1, 1);
+  const sellAsPack = product.sell_as_pack === true;
+  const packSize = sellAsPack ? Math.max(Number(product.pack_size) || 1, 1) : 1;
+  const piecesPerPack = Math.max(Number(product.pieces_per_pack) || packSize || 1, 1);
+  const regularPrice = getPriceNumber(product.original_price) ?? getPriceNumber(product.price) ?? 0;
+  const salePrice = getPriceNumber(product.sale_price) ?? getPriceNumber(product.discount_price);
+  const isOnSale = salePrice != null && salePrice < regularPrice;
 
   return {
     ...product,
-    price: Number(product.original_price ?? product.price) || 0,
-    discount_price: product.discount_price != null ? Number(product.discount_price) : null,
-    sale_price: product.sale_price != null ? Number(product.sale_price) : null,
-    is_on_sale: Boolean(product.is_on_sale && (product.sale_price != null || product.discount_price != null)),
+    price: regularPrice,
+    discount_price: isOnSale ? salePrice : null,
+    sale_price: isOnSale ? salePrice : null,
+    is_on_sale: isOnSale,
+    sell_as_pack: sellAsPack,
+    pack_size: packSize,
+    pack_label: product.selectedPackLabel || product.pack_label || null,
+    selectedPackId: product.selectedPackId || null,
+    selectedPackLabel: product.selectedPackLabel || product.pack_label || null,
+    pack_multiplier: product.pack_multiplier ?? packSize,
+    base_pieces_per_unit: product.base_pieces_per_unit ?? 1,
+    pieces_per_pack: piecesPerPack,
+    total_pieces: sellAsPack ? normalizedQuantity * piecesPerPack : null,
+    effective_quantity: normalizedQuantity,
+    total_units: normalizedQuantity,
     quantity: normalizedQuantity,
     gift_packaging: normalizeGiftPackaging(product, normalizedQuantity),
   };
@@ -40,7 +70,7 @@ const normalizeCartItem = (product, quantity = 1) => {
 
 const getCartItemKey = (item) => {
   if (item.variantId) return `${item.id}-${item.variantId}`;
-  return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}`;
+  return `${item.id}-${item.selectedColorId || 'none'}-${item.selectedFlavorId || 'none'}-${item.selectedPackId || 'none'}`;
 };
 
 
@@ -53,13 +83,18 @@ const cartReducer = (state, action) => {
       if (existingIndex >= 0) {
         const newItems = [...state.items];
         const nextQuantity = newItems[existingIndex].quantity + (action.payload.quantity || 1); 
-        const maxStock = Number(newItems[existingIndex].variantStock ?? newItems[existingIndex].stock) || Infinity;
+        const maxStock = Number(newItems[existingIndex].availableQuantity ?? newItems[existingIndex].variantStock ?? newItems[existingIndex].stock) || Infinity;
         const quantity = Math.min(nextQuantity, maxStock);
+        const packSize = action.payload.sell_as_pack ? Math.max(Number(action.payload.pack_size) || 1, 1) : 1;
+        const piecesPerPack = Math.max(Number(action.payload.pieces_per_pack) || packSize || 1, 1);
 
         const updatedItem = {
           ...newItems[existingIndex],
           ...action.payload,
           quantity,
+          effective_quantity: quantity,
+          total_units: quantity,
+          total_pieces: action.payload.sell_as_pack ? quantity * piecesPerPack : null,
           gift_packaging: newItems[existingIndex].gift_packaging,
         };
         updatedItem.gift_packaging = normalizeGiftPackaging(updatedItem, quantity);
@@ -86,12 +121,17 @@ const cartReducer = (state, action) => {
 
         const quantity = Math.min(
           action.payload.quantity,
-          item.variantStock ?? item.stock ?? Infinity
+          item.availableQuantity ?? item.variantStock ?? item.stock ?? Infinity
         );
+        const packSize = item.sell_as_pack ? Math.max(Number(item.pack_size) || 1, 1) : 1;
+        const piecesPerPack = Math.max(Number(item.pieces_per_pack) || packSize || 1, 1);
 
         return {
           ...item,
           quantity,
+          effective_quantity: quantity,
+          total_units: quantity,
+          total_pieces: item.sell_as_pack ? quantity * piecesPerPack : null,
           gift_packaging: normalizeGiftPackaging(item, quantity),
         };
       });
@@ -177,11 +217,7 @@ export const CartProvider = ({ children }) => {
 
   const getCartTotal = () => {
     return state.items.reduce((total, item) => {
-      const discountedPrice =
-        item.is_on_sale && (item.sale_price || item.discount_price)
-          ? (item.sale_price || item.discount_price)
-          : item.price;
-      return total + (discountedPrice * item.quantity);
+      return total + (getEffectiveCartItemPrice(item) * item.quantity);
     }, 0);
   };
 

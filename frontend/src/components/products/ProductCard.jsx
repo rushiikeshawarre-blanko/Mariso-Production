@@ -16,8 +16,15 @@ const requiresProductOptions = (product) => {
   const hasColorOptions = Boolean(product.has_color_options && hasActiveOptions(product.color_options));
   const hasFlavorOptions = Boolean(product.has_flavor_options && hasActiveOptions(product.flavor_options));
   const hasFragranceOptions = hasActiveOptions(product.fragrance_options);
+  const hasPackOptions = hasActiveOptions(product.pack_options);
 
-  return hasActiveVariants || hasColorOptions || hasFlavorOptions || hasFragranceOptions;
+  return hasActiveVariants || hasColorOptions || hasFlavorOptions || hasFragranceOptions || hasPackOptions;
+};
+
+const getPriceNumber = (value) => {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 };
 
 export const ProductCard = ({
@@ -39,9 +46,11 @@ export const ProductCard = ({
   const [isWishlistAnimating, setIsWishlistAnimating] = useState(false);
   const [isWishlistBusy, setIsWishlistBusy] = useState(false);
 
-
-  const price = product.is_on_sale && product.discount_price ? product.discount_price : product.price;
-  const originalPrice = product.is_on_sale && product.discount_price ? product.price : null;
+  const regularPrice = getPriceNumber(product.price) ?? 0;
+  const salePrice = getPriceNumber(product.sale_price) ?? getPriceNumber(product.discount_price);
+  const isSalePriceValid = salePrice != null && salePrice < regularPrice;
+  const price = isSalePriceValid ? salePrice : regularPrice;
+  const originalPrice = isSalePriceValid ? regularPrice : null;
   const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : 0;
 
   const activeVariants = Array.isArray(product.variants)
@@ -52,7 +61,8 @@ export const ProductCard = ({
   const hasVariants = activeVariants.length > 0;
   const shouldChooseOptions = requiresProductOptions(product);
   const effectiveStock = hasVariants ? totalVariantStock : (Number(product.stock) || 0);
-  const isOutOfStock = effectiveStock <= 0;
+  const availableQuantity = effectiveStock;
+  const isOutOfStock = availableQuantity <= 0;
   const productPath = linkOverride || getProductPath(product);
 
   const productCardImage = imageOverride || getProductCardImage(product);
@@ -74,7 +84,12 @@ export const ProductCard = ({
       return;
     }
 
-    addItem(product);
+    addItem({
+      ...product,
+      availableQuantity,
+      effective_quantity: 1,
+      total_units: 1,
+    });
     toast.success('Added to cart', {
       description: cardTitle
     });
@@ -218,7 +233,7 @@ export const ProductCard = ({
         )}
         <div className="mt-1 space-y-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className={`text-[1.08rem] font-semibold tracking-[-0.01em] transition-colors duration-300 ${product.is_on_sale ? 'text-terracotta' : 'text-foreground'}`} data-testid={`${testIdPrefix}-price`}>
+            <span className={`text-[1.08rem] font-semibold tracking-[-0.01em] transition-colors duration-300 ${originalPrice ? 'text-terracotta' : 'text-foreground'}`} data-testid={`${testIdPrefix}-price`}>
               ₹{price.toLocaleString()}
             </span>
             {originalPrice && (

@@ -201,6 +201,57 @@ def test_admin_approval_cancels_and_restores_stock_once(monkeypatch):
     assert orders.order["refund_status"] == "pending"
 
 
+def test_admin_approval_restores_pack_effective_quantity(monkeypatch):
+    _, products = setup_database(monkeypatch, make_order(
+        cancellation_status="requested",
+        cancellation_reason="Ordered by mistake",
+        items=[{
+            "product_id": "product-1",
+            "quantity": 2,
+            "sell_as_pack": True,
+            "pack_size": 4,
+            "effective_quantity": 8,
+            "total_units": 8,
+        }],
+    ))
+
+    result = asyncio.run(order_service.approve_order_cancellation(
+        "order-1",
+        OrderCancellationDecision(note="Approved"),
+        "admin-1",
+    ))
+
+    assert result["status"] == "cancelled"
+    assert result["stock_restored_at"]
+    assert products.product["stock"] == 11
+
+
+def test_admin_approval_restores_pack_option_quantity(monkeypatch):
+    _, products = setup_database(monkeypatch, make_order(
+        cancellation_status="requested",
+        cancellation_reason="Ordered by mistake",
+        items=[{
+            "product_id": "product-1",
+            "quantity": 2,
+            "selected_pack_id": "pack-4",
+            "selected_pack_label": "Pack of 4",
+            "pack_multiplier": 4,
+            "pieces_per_pack": 100,
+            "total_pieces": 200,
+        }],
+    ))
+
+    result = asyncio.run(order_service.approve_order_cancellation(
+        "order-1",
+        OrderCancellationDecision(note="Approved"),
+        "admin-1",
+    ))
+
+    assert result["status"] == "cancelled"
+    assert result["stock_restored_at"]
+    assert products.product["stock"] == 5
+
+
 def test_admin_rejection_keeps_order_confirmed(monkeypatch):
     setup_database(monkeypatch, make_order(cancellation_status="requested"))
 

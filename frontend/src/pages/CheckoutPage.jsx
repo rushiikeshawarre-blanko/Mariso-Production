@@ -30,6 +30,23 @@ const getSelectedGiftOption = (item) => {
   ) || null;
 };
 
+const isPackItem = (item) => item.sell_as_pack === true;
+const getPackSize = (item) => Math.max(Number(item.pack_size) || 1, 1);
+const getPackLabel = (item) => item.selectedPackLabel || item.pack_label || (getPackSize(item) === 1 ? 'Single' : `Pack of ${getPackSize(item)}`);
+const getPiecesPerPack = (item) => Math.max(Number(item.pieces_per_pack) || getPackSize(item) || 1, 1);
+const getTotalUnits = (item) => isPackItem(item) ? item.quantity * getPiecesPerPack(item) : item.quantity;
+const getPriceNumber = (value) => {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+const getCheckoutItemPrice = (item) => {
+  const regularPrice = getPriceNumber(item.price) ?? 0;
+  const salePrice = getPriceNumber(item.sale_price) ?? getPriceNumber(item.discount_price);
+
+  return salePrice != null && salePrice < regularPrice ? salePrice : regularPrice;
+};
+
 const CheckoutPage = () => {
   const location = useLocation();
   const { couponCode: couponCodeFromCart = '' } = location.state || {};
@@ -55,9 +72,7 @@ const CheckoutPage = () => {
   };
   
   const getCheckoutEffectivePrice =(item) => {
-    return item.is_on_sale && (item.sale_price || item.discount_price)
-      ? (item.sale_price || item.discount_price)
-      : item.price;
+    return getCheckoutItemPrice(item);
   };
 
   const getCheckoutDiscountSubtotal = () => {
@@ -85,6 +100,7 @@ const CheckoutPage = () => {
       item.variantId || '',
       item.selectedColorId || '',
       item.selectedFlavorId || '',
+      item.selectedPackId || '',
       item.quantity,
       getCheckoutEffectivePrice(item),
     ].join(':'))
@@ -169,9 +185,7 @@ const CheckoutPage = () => {
       product_id: item.product_id || item.id || item.product?.id || '',
       category_id: item.category_id || item.categoryId || item.product?.category_id || '',
       quantity: item.quantity,
-      price: item.is_on_sale && (item.sale_price || item.discount_price)
-        ? (item.sale_price || item.discount_price)
-        : item.price,
+      price: getCheckoutItemPrice(item),
     }));
   }, [items]);
 
@@ -192,9 +206,7 @@ const CheckoutPage = () => {
           product_id: item.product_id || item.id || item.product?.id || '',
           category_id: item.category_id || item.categoryId || item.product?.category_id || '',
           quantity: item.quantity,
-          price: item.is_on_sale && (item.sale_price || item.discount_price)
-            ? (item.sale_price || item.discount_price)
-            : item.price,
+          price: getCheckoutItemPrice(item),
         }));
 
         const result = await getAvailableCoupons({
@@ -335,6 +347,7 @@ const CheckoutPage = () => {
           variant_id: item.variantId ?? null,
           color_id: item.selectedColorId ?? null,
           flavor_id: item.selectedFlavorId ?? null,
+          selected_pack_id: item.selectedPackId ?? null,
           gift_packaging: item.gift_packaging?.selected === true
               ? {
                 selected: true,
@@ -664,7 +677,15 @@ const CheckoutPage = () => {
                           />
                           <div className="flex-1">
                             <p className="font-medium text-sm">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {isPackItem(item) ? `${getPackLabel(item)} × ${item.quantity}` : `Qty: ${item.quantity}`}
+                            </p>
+                            {isPackItem(item) && (
+                              <>
+                                <p className="text-xs text-muted-foreground">Includes {getPiecesPerPack(item)} pieces each</p>
+                                <p className="text-xs text-muted-foreground">Total pieces: {getTotalUnits(item)}</p>
+                              </>
+                            )}
                             {item.selectedColor && (
                               <p className="text-xs text-muted-foreground">Color: {item.selectedColor}</p>
                             )}

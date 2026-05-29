@@ -3,6 +3,20 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 import uuid
 
 
+def normalize_pack_fields(sell_as_pack: bool, pack_size: int, pack_label: Optional[str]) -> tuple[bool, int, Optional[str]]:
+    sell_as_pack = bool(sell_as_pack)
+    pack_size = int(pack_size or 1)
+    pack_label = (pack_label or "").strip() or None
+
+    if not sell_as_pack:
+        return False, 1, pack_label
+
+    if pack_size < 2:
+        raise ValueError("pack_size must be at least 2 when sell_as_pack is true")
+
+    return True, pack_size, pack_label
+
+
 class ProductImage(BaseModel):
     url: str = ""
     thumb_url: Optional[str] = ""
@@ -27,12 +41,24 @@ class FlavorOption(BaseModel):
     description: Optional[str] = ""
     images: List[ProductImageValue] = Field(default_factory=list)
 
+class PackOption(BaseModel):
+    id: str = ""
+    label: Optional[str] = None
+    multiplier: int = Field(1, ge=1)
+    pack_quantity: Optional[int] = Field(None, ge=1)
+    pieces_per_pack: Optional[int] = Field(None, ge=1)
+    is_active: bool = True
+    image: Optional[ProductImageValue] = None
+    images: List[ProductImageValue] = Field(default_factory=list)
+
 class ProductVariant(BaseModel):
     id: str = ""
     color_id: Optional[str] = None
     flavor_id: Optional[str] = None
+    pack_option_id: Optional[str] = None
     sku: Optional[str] = None
     price_override: Optional[float] = None
+    sale_price: Optional[float] = None
     stock: Optional[int] = None
     images: List[ProductImageValue] = Field(default_factory=list)
     is_active: bool = True
@@ -60,6 +86,11 @@ class ProductCreate(BaseModel):
     subcategory: Optional[str] = ""
     sku: Optional[str] = ""
     stock: int = Field(0, ge=0)
+    sell_as_pack: bool = False
+    pack_size: int = 1
+    pack_label: Optional[str] = None
+    base_pieces_per_unit: int = Field(1, ge=1)
+    pack_options: List[PackOption] = Field(default_factory=list)
     shop_priority: int = 0
     shop_order: int = 0
     images: List[ProductImageValue] = Field(default_factory=list)
@@ -96,6 +127,11 @@ class ProductCreate(BaseModel):
     burn_time: Optional[str] = ""
     @model_validator(mode="after")
     def validate_sale_pricing(self):
+        self.sell_as_pack, self.pack_size, self.pack_label = normalize_pack_fields(
+            self.sell_as_pack,
+            self.pack_size,
+            self.pack_label,
+        )
         if self.is_on_sale:
             if self.discount_price is None:
                 raise ValueError("discount_price is required when is_on_sale is true")
@@ -116,6 +152,11 @@ class ProductUpdate(BaseModel):
     subcategory: Optional[str] = None
     sku: Optional[str] = None
     stock: Optional[int] = Field(None, ge=0)
+    sell_as_pack: Optional[bool] = None
+    pack_size: Optional[int] = None
+    pack_label: Optional[str] = None
+    base_pieces_per_unit: Optional[int] = Field(None, ge=1)
+    pack_options: Optional[List[PackOption]] = None
     shop_priority: Optional[int] = None
     shop_order: Optional[int] = Field(None, ge=0)
     images: Optional[List[ProductImageValue]] = None
@@ -169,6 +210,11 @@ class ProductResponse(BaseModel):
     subcategory: str
     sku: str
     stock: int
+    sell_as_pack: bool = False
+    pack_size: int = 1
+    pack_label: Optional[str] = None
+    base_pieces_per_unit: int = 1
+    pack_options: List[dict] = Field(default_factory=list)
     shop_priority: int = 0
     shop_order: int = 0
     images: List[ProductImageValue]
@@ -221,7 +267,10 @@ class ProductCardVariant(BaseModel):
     id: str = ""
     color_id: Optional[str] = None
     flavor_id: Optional[str] = None
+    pack_option_id: Optional[str] = None
     stock: Optional[int] = None
+    price_override: Optional[float] = None
+    sale_price: Optional[float] = None
     is_active: bool = True
 
 
@@ -239,6 +288,11 @@ class ProductCardResponse(BaseModel):
     discount_price: Optional[float]
     is_on_sale: bool
     stock: int
+    sell_as_pack: bool = False
+    pack_size: int = 1
+    pack_label: Optional[str] = None
+    base_pieces_per_unit: int = 1
+    pack_options: List[dict] = Field(default_factory=list)
     shop_priority: int = 0
     shop_order: int = 0
     images: List[ProductImageValue]

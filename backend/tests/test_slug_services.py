@@ -61,6 +61,30 @@ def product_payload(name, slug=""):
     )
 
 
+def test_product_pack_size_normalized_when_not_selling_as_pack():
+    product = product_payload("Single Candle")
+    product.sell_as_pack = False
+    product.pack_size = 6
+
+    normalized = ProductCreate(**product.model_dump())
+
+    assert normalized.sell_as_pack is False
+    assert normalized.pack_size == 1
+
+
+def test_product_pack_size_rejected_when_selling_as_pack():
+    with pytest.raises(ValueError):
+        ProductCreate(
+            name="Pack Candle",
+            description="Description",
+            price=100,
+            category_id="cat-1",
+            color_options=[],
+            sell_as_pack=True,
+            pack_size=1,
+        )
+
+
 def configure_product_service(monkeypatch, documents=None):
     database = SimpleNamespace(products=FakeCollection(documents))
 

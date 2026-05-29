@@ -77,7 +77,8 @@ def get_selected_variant(
         product: dict, 
         variant_id: str = None, 
         color_id: str = None, 
-        flavor_id: str = None
+        flavor_id: str = None,
+        pack_option_id: str = None,
     ) -> Optional[dict]:
     variants = product.get("variants", [])
 
@@ -94,6 +95,7 @@ def get_selected_variant(
         if (
             variant.get("color_id") == color_id 
             and variant.get("flavor_id") == flavor_id 
+            and variant.get("pack_option_id") == pack_option_id
             and variant.get("is_active", True)
         ):
             return variant
@@ -109,6 +111,11 @@ def ensure_product_defaults(product: dict) -> dict:
         'discount_price': None,
         'subcategory': '',
         'sku': '',
+        'sell_as_pack': False,
+        'pack_size': 1,
+        'pack_label': None,
+        'base_pieces_per_unit': 1,
+        'pack_options': [],
         'shop_priority': 0,
         'shop_order': 0,
         'has_color_options': False,

@@ -113,6 +113,25 @@ class CheckoutCollection:
         return None
 
 
+class StockUpdateProducts:
+    def __init__(self, product):
+        self.product = dict(product)
+
+    async def update_one(self, query, update):
+        if self.product.get("id") != query.get("id"):
+            return SimpleNamespace(modified_count=0)
+
+        if "stock" in query:
+            minimum = query["stock"].get("$gte", 0)
+            if self.product.get("stock", 0) < minimum:
+                return SimpleNamespace(modified_count=0)
+
+        for key, amount in update.get("$inc", {}).items():
+            self.product[key] = self.product.get(key, 0) + amount
+
+        return SimpleNamespace(modified_count=1)
+
+
 def checkout_payload(**item_fields):
     return CashfreeCheckoutCreate(
         items=[{"product_id": "product-1", "quantity": 1, **item_fields}],
@@ -185,6 +204,136 @@ def test_checkout_rejects_inactive_variant(monkeypatch):
 
     assert error.value.status_code == 400
     assert "Selected variant is inactive" in error.value.detail
+
+
+def test_pack_only_product_checkout_uses_pack_quantity_and_piece_metadata(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({
+            "id": "product-1",
+            "name": "Tealight Set",
+            "is_active": True,
+            "price": 499,
+            "stock": 10,
+            "base_pieces_per_unit": 25,
+            "pack_options": [
+                {"id": "pack-1", "label": "Single", "multiplier": 1, "pieces_per_pack": 25, "is_active": True},
+                {"id": "pack-4", "label": "Pack of 4", "multiplier": 4, "pieces_per_pack": 100, "is_active": True},
+            ],
+            "variants": [
+                {"id": "variant-pack-1", "pack_option_id": "pack-1", "stock": 10, "price_override": 499, "is_active": True},
+                {"id": "variant-pack-4", "pack_option_id": "pack-4", "stock": 3, "price_override": 1699, "sale_price": 1499, "is_active": True},
+            ],
+        }),
+        categories=CheckoutCollection(),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    items, _ = asyncio.run(order_service._build_order_items(
+        checkout_payload(quantity=2, variant_id="variant-pack-4", selected_pack_id="pack-4")
+    ))
+
+    assert items[0]["quantity"] == 2
+    assert items[0]["selected_pack_id"] == "pack-4"
+    assert items[0]["selected_pack_label"] == "Pack of 4"
+    assert items[0]["pack_multiplier"] == 4
+    assert items[0]["pieces_per_pack"] == 100
+    assert items[0]["total_pieces"] == 200
+    assert items[0]["effective_quantity"] == 2
+    assert items[0]["price"] == 1499
+    assert items[0]["line_total"] == 2998
+
+
+def test_pack_product_checkout_rejects_insufficient_pack_stock(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({
+            "id": "product-1",
+            "name": "Tealight Set",
+            "is_active": True,
+            "price": 499,
+            "base_pieces_per_unit": 25,
+            "pack_options": [
+                {"id": "pack-4", "label": "Pack of 4", "multiplier": 4, "pieces_per_pack": 100, "is_active": True},
+            ],
+            "variants": [
+                {"id": "variant-pack-4", "pack_option_id": "pack-4", "stock": 1, "price_override": 1699, "is_active": True},
+            ],
+        }),
+        categories=CheckoutCollection(),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(order_service._build_order_items(
+            checkout_payload(quantity=2, variant_id="variant-pack-4", selected_pack_id="pack-4")
+        ))
+
+    assert error.value.status_code == 400
+    assert "Insufficient stock" in error.value.detail
+
+
+def test_color_pack_product_variant_stock_uses_selected_combination(monkeypatch):
+    database = SimpleNamespace(
+        products=CheckoutCollection({
+            "id": "product-1",
+            "name": "Blush Tealights",
+            "is_active": True,
+            "price": 499,
+            "base_pieces_per_unit": 25,
+            "pack_options": [
+                {"id": "pack-2", "label": "Pack of 2", "multiplier": 2, "pieces_per_pack": 50, "is_active": True},
+            ],
+            "variants": [
+                {"id": "variant-1", "color_id": "blush", "flavor_id": None, "pack_option_id": "pack-2", "stock": 10, "is_active": True},
+                {"id": "variant-2", "color_id": "ivory", "flavor_id": None, "pack_option_id": "pack-2", "stock": 0, "is_active": True},
+            ],
+        }),
+        categories=CheckoutCollection(),
+    )
+    monkeypatch.setattr(order_service, "db", database)
+
+    items, _ = asyncio.run(order_service._build_order_items(
+        checkout_payload(quantity=2, variant_id="variant-1", color_id="blush", selected_pack_id="pack-2")
+    ))
+    assert items[0]["effective_quantity"] == 2
+    assert items[0]["total_pieces"] == 100
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(order_service._build_order_items(
+            checkout_payload(quantity=1, variant_id="variant-2", color_id="ivory", selected_pack_id="pack-2")
+        ))
+
+    assert error.value.status_code == 400
+    assert "Insufficient stock" in error.value.detail
+
+
+def test_normal_product_stock_deduction_uses_quantity(monkeypatch):
+    products = StockUpdateProducts({"id": "product-1", "name": "Candle", "stock": 10})
+    monkeypatch.setattr(order_service, "db", SimpleNamespace(products=products))
+
+    asyncio.run(order_service._apply_stock_updates(
+        [{"product_id": "product-1", "quantity": 2}],
+        {"product-1": {"id": "product-1", "name": "Candle", "stock": 10}},
+    ))
+
+    assert products.product["stock"] == 8
+
+
+def test_pack_product_stock_deduction_uses_pack_quantity(monkeypatch):
+    products = StockUpdateProducts({"id": "product-1", "name": "Tealight Set", "stock": 10})
+    monkeypatch.setattr(order_service, "db", SimpleNamespace(products=products))
+
+    asyncio.run(order_service._apply_stock_updates(
+        [{
+            "product_id": "product-1",
+            "quantity": 2,
+            "selected_pack_id": "pack-4",
+            "pieces_per_pack": 100,
+            "total_pieces": 200,
+        }],
+        {"product-1": {"id": "product-1", "name": "Tealight Set", "stock": 10}},
+    ))
+
+    assert products.product["stock"] == 8
 
 
 def test_feedback_token_is_recovered_from_submission_and_reused(monkeypatch):

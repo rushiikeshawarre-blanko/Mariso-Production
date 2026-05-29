@@ -95,6 +95,103 @@ def _round_money(value: float) -> float:
     return round(max(float(value or 0), 0), 2)
 
 
+def _get_pack_snapshot(product: dict) -> dict:
+    sell_as_pack = bool(product.get("sell_as_pack", False))
+    try:
+        pack_size = int(product.get("pack_size") or 1)
+    except (TypeError, ValueError):
+        pack_size = 1
+
+    if not sell_as_pack:
+        pack_size = 1
+
+    pack_label = (product.get("pack_label") or "").strip() or None
+    return {
+        "sell_as_pack": sell_as_pack,
+        "pack_size": pack_size,
+        "pack_label": pack_label,
+    }
+
+
+def _get_active_pack_options(product: dict) -> List[dict]:
+    return [
+        option for option in (product.get("pack_options") or [])
+        if option.get("is_active", True) is not False
+    ]
+
+
+def _find_pack_option(product: dict, pack_option_id: Optional[str]) -> Optional[dict]:
+    if not pack_option_id:
+        return None
+    return next(
+        (
+            option for option in _get_active_pack_options(product)
+            if option.get("id") == pack_option_id
+        ),
+        None,
+    )
+
+
+def _get_pack_option_snapshot(product: dict, pack_option: Optional[dict], quantity: int) -> dict:
+    try:
+        base_pieces = int(product.get("base_pieces_per_unit") or 1)
+    except (TypeError, ValueError):
+        base_pieces = 1
+    base_pieces = max(base_pieces, 1)
+
+    if not pack_option:
+        return {
+            "selected_pack_id": None,
+            "selected_pack_label": None,
+            "pack_multiplier": 1,
+            "base_pieces_per_unit": base_pieces,
+            "pieces_per_pack": base_pieces,
+            "total_pieces": quantity * base_pieces,
+        }
+
+    try:
+        multiplier = int(pack_option.get("multiplier") or pack_option.get("pack_quantity") or 1)
+    except (TypeError, ValueError):
+        multiplier = 1
+    multiplier = max(multiplier, 1)
+    pieces_per_pack = int(pack_option.get("pieces_per_pack") or base_pieces * multiplier)
+
+    return {
+        "selected_pack_id": pack_option.get("id"),
+        "selected_pack_label": pack_option.get("label") or ("Single" if multiplier == 1 else f"Pack of {multiplier}"),
+        "pack_multiplier": multiplier,
+        "base_pieces_per_unit": base_pieces,
+        "pieces_per_pack": pieces_per_pack,
+        "total_pieces": quantity * pieces_per_pack,
+    }
+
+
+def _get_effective_quantity(item: dict) -> int:
+    quantity = int(item.get("quantity") or 0)
+    if quantity <= 0:
+        return 0
+
+    if item.get("selected_pack_id"):
+        return quantity
+
+    effective_quantity = item.get("effective_quantity", item.get("total_units"))
+    if effective_quantity is not None:
+        try:
+            normalized = int(effective_quantity)
+        except (TypeError, ValueError):
+            normalized = 0
+        return normalized if normalized > 0 else quantity
+
+    if item.get("sell_as_pack"):
+        try:
+            pack_size = int(item.get("pack_size") or 1)
+        except (TypeError, ValueError):
+            pack_size = 1
+        return quantity * max(pack_size, 1)
+
+    return quantity
+
+
 def _item_gift_packaging_total(items_with_details: List[dict]) -> float:
     return _round_money(sum(
         item.get("gift_packaging", {}).get("line_total", 0)
@@ -440,18 +537,36 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
         variant_sku = None
         color_name = None
         flavor_name = None
+        pack_option = None
 
         variants = product.get("variants", [])
         has_variants = len(variants) > 0
+        active_pack_options = _get_active_pack_options(product)
+        if active_pack_options:
+            pack_option = _find_pack_option(product, item.selected_pack_id)
+            if not pack_option:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Pack selection is required for product {product['name']}"
+                )
+            if not has_variants:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Pack variants are not configured for product {product['name']}"
+                )
 
         selected_variant = get_selected_variant(
             product,
             item.variant_id,
             item.color_id,
             item.flavor_id,
+            item.selected_pack_id,
         )
 
         price = _get_base_price(product)
+        pack_snapshot = _get_pack_snapshot(product)
+        pack_option_snapshot = _get_pack_option_snapshot(product, pack_option, item.quantity)
+        effective_quantity = item.quantity
 
         if has_variants:
             if not item.variant_id:
@@ -483,7 +598,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                 )
 
             variant_stock = selected_variant.get("stock", 0)
-            if variant_stock < item.quantity:
+            if variant_stock < effective_quantity:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Insufficient stock for product {product['name']} variant"
@@ -491,10 +606,19 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
 
             if selected_variant.get("price_override") is not None:
                 price = selected_variant["price_override"]
+            if selected_variant.get("sale_price") is not None:
+                price = selected_variant["sale_price"]
 
             variant_images = selected_variant.get("images", [])
             if variant_images:
                 variant_image = variant_images[0]
+            if not variant_image and pack_option:
+                pack_images = pack_option.get("images") or []
+                pack_image = pack_option.get("image")
+                if pack_images:
+                    variant_image = pack_images[0]
+                elif pack_image:
+                    variant_image = pack_image
 
             color_name = selected_variant.get("color_name") or selected_variant.get("color")
             flavor_name = selected_variant.get("flavor_name") or selected_variant.get("flavor")
@@ -523,7 +647,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                 )
 
             available_stock = product.get("stock", 0)
-            if available_stock < item.quantity:
+            if available_stock < effective_quantity:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Insufficient stock for product {product['name']}"
@@ -590,13 +714,19 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
             "color_name": color_name or "",
             "flavor_id": item.flavor_id,
             "flavor_name": flavor_name or "",
+            **pack_option_snapshot,
             "product_name": product["name"],
             "product_image": _get_order_image_url(
                 variant_image or (product["images"][0] if product.get("images") else "")
             ),
             "original_price": product["price"],
+            "selected_combination_price": selected_variant.get("price_override") if selected_variant else None,
+            "selected_combination_sale_price": selected_variant.get("sale_price") if selected_variant else None,
             "price": price,
             "quantity": item.quantity,
+            **pack_snapshot,
+            "effective_quantity": effective_quantity,
+            "total_units": effective_quantity,
             "line_total": price * item.quantity,
             "sku": variant_sku or product.get("sku", ""),
             "gift_packaging": gift_packaging,
@@ -676,6 +806,7 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
         product = product_map[item["product_id"]]
         variants = product.get("variants", [])
         has_variants = len(variants) > 0
+        effective_quantity = _get_effective_quantity(item)
 
         if has_variants:
             result = await db.products.update_one(
@@ -685,13 +816,13 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
                         "$elemMatch": {
                             "id": item["variant_id"],
                             "is_active": True,
-                            "stock": {"$gte": item["quantity"]},
+                            "stock": {"$gte": effective_quantity},
                         }
                     },
                 },
                 {
                     "$inc": {
-                        "variants.$.stock": -item["quantity"],
+                        "variants.$.stock": -effective_quantity,
                     }
                 }
             )
@@ -703,8 +834,8 @@ async def _apply_stock_updates(items_with_details: List[dict], product_map: Dict
                 )
         else:
             result = await db.products.update_one(
-                {"id": item["product_id"], "stock": {"$gte": item["quantity"]}},
-                {"$inc": {"stock": -item["quantity"]}}
+                {"id": item["product_id"], "stock": {"$gte": effective_quantity}},
+                {"$inc": {"stock": -effective_quantity}}
             )
 
             if result.modified_count == 0:
@@ -722,13 +853,14 @@ async def _build_product_map_for_order_items(items: List[dict]) -> Dict[str, dic
 
 async def _rollback_stock_reservations(applied_items: List[dict]) -> None:
     for item in reversed(applied_items):
+        effective_quantity = _get_effective_quantity(item)
         if item.get("variant_id"):
             await db.products.update_one(
                 {"id": item["product_id"], "variants.id": item["variant_id"]},
                 {
                     "$inc": {
-                        "variants.$.stock": item["quantity"],
-                        "variants.$.reserved_stock": -item["quantity"],
+                        "variants.$.stock": effective_quantity,
+                        "variants.$.reserved_stock": -effective_quantity,
                     }
                 }
             )
@@ -737,8 +869,8 @@ async def _rollback_stock_reservations(applied_items: List[dict]) -> None:
                 {"id": item["product_id"]},
                 {
                     "$inc": {
-                        "stock": item["quantity"],
-                        "reserved_stock": -item["quantity"],
+                        "stock": effective_quantity,
+                        "reserved_stock": -effective_quantity,
                     }
                 }
             )
@@ -751,6 +883,7 @@ async def reserve_stock_for_order_items(items: List[dict], product_map: Dict[str
         product = product_map[item["product_id"]]
         variants = product.get("variants", [])
         has_variants = len(variants) > 0
+        effective_quantity = _get_effective_quantity(item)
 
         if has_variants:
             result = await db.products.update_one(
@@ -760,24 +893,24 @@ async def reserve_stock_for_order_items(items: List[dict], product_map: Dict[str
                         "$elemMatch": {
                             "id": item["variant_id"],
                             "is_active": True,
-                            "stock": {"$gte": item["quantity"]},
+                            "stock": {"$gte": effective_quantity},
                         }
                     },
                 },
                 {
                     "$inc": {
-                        "variants.$.stock": -item["quantity"],
-                        "variants.$.reserved_stock": item["quantity"],
+                        "variants.$.stock": -effective_quantity,
+                        "variants.$.reserved_stock": effective_quantity,
                     }
                 }
             )
         else:
             result = await db.products.update_one(
-                {"id": item["product_id"], "stock": {"$gte": item["quantity"]}},
+                {"id": item["product_id"], "stock": {"$gte": effective_quantity}},
                 {
                     "$inc": {
-                        "stock": -item["quantity"],
-                        "reserved_stock": item["quantity"],
+                        "stock": -effective_quantity,
+                        "reserved_stock": effective_quantity,
                     }
                 }
             )
@@ -793,7 +926,7 @@ async def reserve_stock_for_order_items(items: List[dict], product_map: Dict[str
 
 
 async def _rollback_reserved_stock_move(item: dict, reserved_delta: int, stock_delta: int) -> bool:
-    quantity = item.get("quantity", 0)
+    quantity = _get_effective_quantity(item)
     if quantity <= 0:
         return True
 
@@ -825,7 +958,7 @@ async def _move_reserved_stock(order: dict, reserved_delta: int, stock_delta: in
     applied_items = []
 
     for item in order.get("items", []):
-        quantity = item.get("quantity", 0)
+        quantity = _get_effective_quantity(item)
         if quantity <= 0:
             continue
 

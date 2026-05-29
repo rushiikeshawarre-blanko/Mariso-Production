@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 from fastapi import HTTPException
 from datetime import datetime, timezone
-from models.product import ColorOption, FlavorOption, GiftPackagingOption, ProductVariant
+from models.product import ColorOption, FlavorOption, GiftPackagingOption, PackOption, ProductVariant
 import logging
 from pymongo import UpdateOne
 from pymongo import ReturnDocument
@@ -28,6 +28,11 @@ PRODUCT_CARD_PROJECTION = {
     "discount_price": 1,
     "is_on_sale": 1,
     "stock": 1,
+    "sell_as_pack": 1,
+    "pack_size": 1,
+    "pack_label": 1,
+    "base_pieces_per_unit": 1,
+    "pack_options": 1,
     "shop_priority": 1,
     "shop_order": 1,
     "images": 1,
@@ -94,7 +99,56 @@ def validate_sale_dates(sale_start: Optional[str], sale_end: Optional[str]) -> N
         if start >= end:
             raise HTTPException(status_code=400, detail="sale_end must be after sale_start")
 
+
+def normalize_pack_payload(sell_as_pack: bool, pack_size: int, pack_label: Optional[str]) -> dict:
+    label = (pack_label or "").strip() or None
+    if not sell_as_pack:
+        return {"sell_as_pack": False, "pack_size": 1, "pack_label": label}
+
+    try:
+        normalized_size = int(pack_size or 0)
+    except (TypeError, ValueError):
+        normalized_size = 0
+
+    if normalized_size < 2:
+        raise HTTPException(status_code=400, detail="Pack size must be at least 2 when selling as a pack")
+
+    return {"sell_as_pack": True, "pack_size": normalized_size, "pack_label": label}
+
+def normalize_pack_options(pack_options: List[PackOption], base_pieces_per_unit: int = 1) -> List[dict]:
+    normalized = []
+    try:
+        base_pieces = int(base_pieces_per_unit or 1)
+    except (TypeError, ValueError):
+        base_pieces = 1
+    base_pieces = max(base_pieces, 1)
+
+    for option in pack_options or []:
+        option_dict = option.model_dump() if hasattr(option, "model_dump") else dict(option)
+        if not option_dict.get("id"):
+            option_dict["id"] = str(uuid.uuid4())
+
+        try:
+            multiplier = int(option_dict.get("multiplier") or option_dict.get("pack_quantity") or 1)
+        except (TypeError, ValueError):
+            multiplier = 1
+        multiplier = max(multiplier, 1)
+
+        label = (option_dict.get("label") or "").strip()
+        if not label:
+            label = "Single" if multiplier == 1 else f"Pack of {multiplier}"
+
+        option_dict["label"] = label
+        option_dict["multiplier"] = multiplier
+        option_dict["pack_quantity"] = multiplier
+        option_dict["pieces_per_pack"] = base_pieces * multiplier
+        option_dict["is_active"] = option_dict.get("is_active", True) is not False
+        normalized.append(option_dict)
+
+    return normalized
+
 def normalize_color_options(color_options: List[ColorOption]) -> List[dict]:
+    color_options = color_options or []
     logger.info(f"Normalizing {len(color_options)} color options")
     normalized = []
     for color in color_options:
@@ -105,6 +159,7 @@ def normalize_color_options(color_options: List[ColorOption]) -> List[dict]:
     return normalized
 
 def normalize_flavor_options(flavor_options: List[FlavorOption]) -> List[dict]:
+    flavor_options = flavor_options or []
     logger.info(f"Normalizing {len(flavor_options)} flavor options")
     normalized = []
     for flavor in flavor_options:
@@ -115,12 +170,15 @@ def normalize_flavor_options(flavor_options: List[FlavorOption]) -> List[dict]:
     return normalized
 
 def normalize_variants(variants: List[ProductVariant]) -> List[dict]:
+    variants = variants or []
     logger.info(f"Normalizing {len(variants)} variants")
     normalized = []
     for variant in variants:
         variant_dict = variant.model_dump() if hasattr(variant, "model_dump") else variant
         if not variant_dict.get("id"):
             variant_dict["id"] = str(uuid.uuid4())
+        if variant_dict.get("sale_price") == "":
+            variant_dict["sale_price"] = None
         normalized.append(variant_dict)
     return normalized
 
@@ -169,6 +227,11 @@ def map_product_to_card_response(product: dict) -> dict:
         "discount_price": product.get("discount_price"),
         "is_on_sale": product.get("is_on_sale", False),
         "stock": product.get("stock", 0),
+        "sell_as_pack": product.get("sell_as_pack", False),
+        "pack_size": product.get("pack_size", 1),
+        "pack_label": product.get("pack_label"),
+        "base_pieces_per_unit": product.get("base_pieces_per_unit", 1),
+        "pack_options": product.get("pack_options", []),
         "shop_priority": product.get("shop_priority", 0),
         "shop_order": product.get("shop_order", 0),
         "images": _first_image(product.get("images")),
@@ -198,7 +261,10 @@ def map_product_to_card_response(product: dict) -> dict:
                 "id": variant.get("id", ""),
                 "color_id": variant.get("color_id"),
                 "flavor_id": variant.get("flavor_id"),
+                "pack_option_id": variant.get("pack_option_id"),
                 "stock": variant.get("stock"),
+                "price_override": variant.get("price_override"),
+                "sale_price": variant.get("sale_price"),
                 "is_active": variant.get("is_active", True),
             }
             for variant in product.get("variants") or []
@@ -225,59 +291,47 @@ async def map_products_to_card_responses(products: List[dict]) -> List[dict]:
     return [map_product_to_card_response(product) for product in enriched_products]
 
 
-def generate_variant_combinations(color_options: list, flavor_options: list, existing_variants: list = None) -> list:
-    """Generate all possible variant combinations from colors and flavors"""
+def generate_variant_combinations(color_options: list, flavor_options: list, existing_variants: list = None, pack_options: list = None) -> list:
+    """Generate all possible variant combinations from colors, fragrances, and pack options."""
     existing_variants = existing_variants or []
-    existing_combos = {(v.get('color_id'), v.get('flavor_id')) for v in existing_variants}
-    
+    active_colors = [color for color in (color_options or []) if color.get("is_active", True) is not False]
+    active_flavors = [flavor for flavor in (flavor_options or []) if flavor.get("is_active", True) is not False]
+    active_packs = [pack for pack in (pack_options or []) if pack.get("is_active", True) is not False]
+    color_values = active_colors or [None]
+    flavor_values = active_flavors or [None]
+    pack_values = active_packs or [None]
+    existing_combos = {
+        (v.get('color_id'), v.get('flavor_id'), v.get('pack_option_id'))
+        for v in existing_variants
+    }
     new_variants = []
-    
-    # Case 1: Both colors and flavors exist
-    if color_options and flavor_options:
-        for color in color_options:
-            for flavor in flavor_options:
-                combo = (color.get('id'), flavor.get('id'))
-                if combo not in existing_combos:
-                    new_variants.append({
-                        'id': str(uuid.uuid4()),
-                        'color_id': color.get('id'),
-                        'color_name': color.get('name'),
-                        'flavor_id': flavor.get('id'),
-                        'flavor_name': flavor.get('name'),
-                        'sku': '',
-                        'price_override': None,
-                        'stock': 0,
-                        'is_active': True
-                    })
-    # Case 2: Only colors exist
-    elif color_options:
-        for color in color_options:
-            combo = (color.get('id'), None)
-            if combo not in existing_combos:
+
+    if not active_colors and not active_flavors and not active_packs:
+        return existing_variants
+
+    for color in color_values:
+        for flavor in flavor_values:
+            for pack in pack_values:
+                combo = (
+                    color.get('id') if color else None,
+                    flavor.get('id') if flavor else None,
+                    pack.get('id') if pack else None,
+                )
+                if combo in existing_combos:
+                    continue
                 new_variants.append({
                     'id': str(uuid.uuid4()),
-                    'color_id': color.get('id'),
-                    'color_name': color.get('name'),
-                    'flavor_id': None,
-                    'flavor_name': None,
+                    'color_id': combo[0],
+                    'color_name': color.get('name') if color else None,
+                    'flavor_id': combo[1],
+                    'flavor_name': flavor.get('name') if flavor else None,
+                    'pack_option_id': combo[2],
+                    'pack_label': pack.get('label') if pack else None,
+                    'pack_multiplier': pack.get('multiplier') if pack else None,
+                    'pieces_per_pack': pack.get('pieces_per_pack') if pack else None,
                     'sku': '',
                     'price_override': None,
-                    'stock': 0,
-                    'is_active': True
-                })
-    # Case 3: Only flavors exist
-    elif flavor_options:
-        for flavor in flavor_options:
-            combo = (None, flavor.get('id'))
-            if combo not in existing_combos:
-                new_variants.append({
-                    'id': str(uuid.uuid4()),
-                    'color_id': None,
-                    'color_name': None,
-                    'flavor_id': flavor.get('id'),
-                    'flavor_name': flavor.get('name'),
-                    'sku': '',
-                    'price_override': None,
+                    'sale_price': None,
                     'stock': 0,
                     'is_active': True
                 })
@@ -423,12 +477,12 @@ async def get_product_variant_stock(product_id: str, color_id: Optional[str] = N
         raise HTTPException(status_code=400, detail="Variant selection required")
 
     stock = variant.get("stock", 0) if variant else product.get("stock", 0)
-
     return {
         "product_id": product_id,
         "color_id": color_id,
         "flavor_id": flavor_id,
         "stock": stock,
+        "available_quantity": stock,
         "is_available": stock > 0,
         "variant": variant
     }
@@ -460,6 +514,8 @@ async def create_product(product: ProductCreate):
     is_on_sale = product.is_on_sale
 
     discount_price = validate_sale_pricing_payload(price, discount_price, is_on_sale)
+    pack_fields = normalize_pack_payload(False, 1, product.pack_label)
+    base_pieces_per_unit = max(int(product.base_pieces_per_unit or 1), 1)
 
     validate_sale_dates(product.sale_start, product.sale_end)
 
@@ -475,6 +531,7 @@ async def create_product(product: ProductCreate):
     flavor_options =  normalize_flavor_options(product.flavor_options)
     
     # Generate IDs for variants
+    pack_options = normalize_pack_options(product.pack_options, base_pieces_per_unit)
     variants = normalize_variants(product.variants)
     gift_packaging_options = normalize_gift_packaging_options(product.gift_packaging_options)
 
@@ -490,6 +547,9 @@ async def create_product(product: ProductCreate):
         "subcategory": product.subcategory or "",
         "sku": product.sku or f"SKU-{product_id[:8].upper()}",
         "stock": product.stock,
+        **pack_fields,
+        "base_pieces_per_unit": base_pieces_per_unit,
+        "pack_options": pack_options,
         "shop_priority": product.shop_priority,
         "shop_order": product.shop_order,
         "images": product.model_dump()["images"],
@@ -550,6 +610,8 @@ async def update_product(product_id: str, product: ProductUpdate):
     effective_price = product.price if product.price is not None else existing.get("price")
     effective_discount_price = product.discount_price if product.discount_price is not None else existing.get("discount_price")
     effective_is_on_sale = product.is_on_sale if product.is_on_sale is not None else existing.get("is_on_sale", False)
+    effective_pack_label = product.pack_label if product.pack_label is not None else existing.get("pack_label")
+    effective_base_pieces = product.base_pieces_per_unit if product.base_pieces_per_unit is not None else existing.get("base_pieces_per_unit", 1)
 
     normalized_discount_price = validate_sale_pricing_payload(
         effective_price,
@@ -561,6 +623,7 @@ async def update_product(product_id: str, product: ProductUpdate):
     effective_sale_end = product.sale_end if product.sale_end is not None else existing.get("sale_end")
 
     validate_sale_dates(effective_sale_start, effective_sale_end)
+    pack_fields = normalize_pack_payload(False, 1, effective_pack_label)
 
     if product.category_id is not None:
         await ensure_category_exists(product.category_id)
@@ -582,7 +645,16 @@ async def update_product(product_id: str, product: ProductUpdate):
     for key, value in product.model_dump(exclude_unset=True).items():
         if key == "slug":
             continue
-        if key == 'color_options' and value:
+        if key in {"sell_as_pack", "pack_size", "pack_label"}:
+            continue
+        if key == "base_pieces_per_unit":
+            update_data["base_pieces_per_unit"] = max(int(value or 1), 1)
+        elif key == "pack_options":
+            update_data["pack_options"] = normalize_pack_options(
+                value or [],
+                update_data.get("base_pieces_per_unit", effective_base_pieces),
+            )
+        elif key == 'color_options' and value:
             # Generate IDs for new color options
             update_data["color_options"] = normalize_color_options(value)
         elif key == 'flavor_options' and value:
@@ -598,6 +670,15 @@ async def update_product(product_id: str, product: ProductUpdate):
     
     if "is_on_sale" in update_data or "discount_price" in update_data or "price" in update_data:
         update_data["discount_price"] = normalized_discount_price
+
+    if {"sell_as_pack", "pack_size", "pack_label"} & submitted_fields:
+        update_data.update(pack_fields)
+
+    if "base_pieces_per_unit" in submitted_fields and "pack_options" not in submitted_fields:
+        update_data["pack_options"] = normalize_pack_options(
+            existing.get("pack_options", []),
+            update_data.get("base_pieces_per_unit", effective_base_pieces),
+        )
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -663,10 +744,11 @@ async def generate_product_variants(product_id: str):
     
     color_options = product.get('color_options', [])
     flavor_options = product.get('flavor_options', [])
+    pack_options = product.get('pack_options', [])
     existing_variants = product.get('variants', [])
     
     # Generate new combinations
-    new_variants = generate_variant_combinations(color_options, flavor_options, existing_variants)
+    new_variants = generate_variant_combinations(color_options, flavor_options, existing_variants, pack_options)
     
     # Update product with new variants
     await db.products.update_one(
