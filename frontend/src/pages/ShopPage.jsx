@@ -797,11 +797,11 @@ const ShopPage = () => {
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="recommended">Recommended</SelectItem>
+                    <SelectItem value="recommended">Featured</SelectItem>
                     <SelectItem value="newest">Newest</SelectItem>
-                    <SelectItem value="price-low">Price: Low to High</SelectItem>
-                    <SelectItem value="price-high">Price: High to Low</SelectItem>
-                    <SelectItem value="name">Name: A-Z</SelectItem>
+                    <SelectItem value="price-low">Price Low to High</SelectItem>
+                    <SelectItem value="price-high">Price High to Low</SelectItem>
+                    <SelectItem value="name">Name A-Z</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -833,63 +833,65 @@ const ShopPage = () => {
               <FilterContent showClearButton={false} />
             </aside>
 
-            <div className="flex-1 min-w-0">
-              <div className="sticky top-[128px] z-30 -mx-5 mb-4 flex items-center justify-between gap-3 border-y border-border/60 bg-[#F8F5F1] px-5 py-3 shadow-sm lg:hidden">
-                <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" className="shrink-0" data-testid="mobile-filters-button">
-                      <SlidersHorizontal className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                      {hasActiveFilters ? `Filters (${activeFiltersCount})` : 'Filters'}
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="flex h-full w-full max-w-[380px] flex-col overflow-hidden bg-[#F8F5F1] p-0">
-                    <SheetHeader className="shrink-0 border-b border-border/70 px-5 py-4 pr-12 text-left">
-                      <SheetTitle className="font-heading text-2xl">
-                        Filters
-                        {hasActiveFilters && (
-                          <span className="ml-2 align-middle text-sm font-normal text-muted-foreground">
-                            ({activeFiltersCount})
-                          </span>
-                        )}
-                      </SheetTitle>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6">
-                      <FilterContent showClearButton={false} />
-                    </div>
-                    <div className="shrink-0 border-t border-border/70 bg-[#F8F5F1] px-5 py-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={clearFilters}
-                          disabled={!hasActiveFilters}
-                          className={!hasActiveFilters ? 'opacity-60' : ''}
-                          data-testid="mobile-clear-filters"
-                        >
-                          Clear All
-                        </Button>
-                        <SheetClose asChild>
-                          <Button data-testid="mobile-apply-filters">
-                            Apply Filters
-                          </Button>
-                        </SheetClose>
+            <div className="flex-1 min-w-0 pb-28 lg:pb-0">
+              <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/60 bg-[#F8F5F1] px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] lg:hidden">
+                <div className="mx-auto grid max-w-[1360px] grid-cols-2 gap-3">
+                  <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" className="h-11 w-full" data-testid="mobile-filters-button">
+                        <SlidersHorizontal className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                        {hasActiveFilters ? `Filters (${activeFiltersCount})` : 'Filters'}
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="flex h-full w-full max-w-[380px] flex-col overflow-hidden bg-[#F8F5F1] p-0">
+                      <SheetHeader className="shrink-0 border-b border-border/70 px-5 py-4 pr-12 text-left">
+                        <SheetTitle className="font-heading text-2xl">
+                          Filters
+                          {hasActiveFilters && (
+                            <span className="ml-2 align-middle text-sm font-normal text-muted-foreground">
+                              ({activeFiltersCount})
+                            </span>
+                          )}
+                        </SheetTitle>
+                      </SheetHeader>
+                      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6">
+                        <FilterContent showClearButton={false} />
                       </div>
-                    </div>
-                  </SheetContent>
-                </Sheet>
+                      <div className="shrink-0 border-t border-border/70 bg-[#F8F5F1] px-5 py-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <Button
+                            variant="outline"
+                            onClick={clearFilters}
+                            disabled={!hasActiveFilters}
+                            className={!hasActiveFilters ? 'opacity-60' : ''}
+                            data-testid="mobile-clear-filters"
+                          >
+                            Clear All
+                          </Button>
+                          <SheetClose asChild>
+                            <Button data-testid="mobile-apply-filters">
+                              Apply Filters
+                            </Button>
+                          </SheetClose>
+                        </div>
+                      </div>
+                    </SheetContent>
+                  </Sheet>
 
-                <div className="min-w-0 flex-1">
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="ml-auto w-full max-w-[170px]" data-testid="sort-select-mobile">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recommended">Recommended</SelectItem>
-                      <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="price-low">Price: Low to High</SelectItem>
-                      <SelectItem value="price-high">Price: High to Low</SelectItem>
-                      <SelectItem value="name">Name: A-Z</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="min-w-0">
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="relative h-11 w-full justify-center px-8 text-center [&>svg]:absolute [&>svg]:right-3 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2" data-testid="sort-select-mobile">
+                        <span className="w-full text-center">Sort</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recommended">Featured</SelectItem>
+                        <SelectItem value="newest">Newest</SelectItem>
+                        <SelectItem value="price-low">Price Low to High</SelectItem>
+                        <SelectItem value="price-high">Price High to Low</SelectItem>
+                        <SelectItem value="name">Name A-Z</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 

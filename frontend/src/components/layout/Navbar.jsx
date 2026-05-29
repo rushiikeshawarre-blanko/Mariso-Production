@@ -268,7 +268,7 @@ export const Navbar = forwardRef((props, ref) => {
     backgroundColor: announcement?.announcement_bg_color || announcementDefaults.announcement_bg_color,
     color: announcement?.announcement_text_color || announcementDefaults.announcement_text_color,
   };
-  const announcementClassName = 'block w-full px-4 py-2 text-center text-[11px] font-medium uppercase tracking-[0.14em] sm:text-xs';
+  const announcementClassName = 'block w-full px-4 py-2 text-center text-[9px] font-medium uppercase tracking-[0.12em] sm:text-[10px] sm:tracking-[0.13em] md:text-xs md:tracking-[0.14em]';
   const isExternalAnnouncementLink = /^https?:\/\//i.test(announcementLink || '');
   const AnnouncementWrapper = announcementLink ? (isExternalAnnouncementLink ? 'a' : Link) : 'div';
   const announcementProps = announcementLink
