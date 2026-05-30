@@ -133,7 +133,7 @@ const OrderDetailsPage = () => {
       setOrder(updatedOrder);
       setCancelDialogOpen(false);
       setCancellationReason('');
-      toast.success('Cancellation request submitted. Refund will be initiated after admin approval.');
+      toast.success('Cancellation request submitted. Refund will be initiated after mariso team approval.');
     } catch (error) {
       toast.error(error?.response?.data?.detail || 'Unable to submit cancellation request.');
     } finally {
@@ -169,7 +169,7 @@ const OrderDetailsPage = () => {
   const hasGiftPackaging = Boolean(order.gift_packaging || hasGiftedItems || Number(order.gift_packaging_amount || 0) > 0);
   const cancellationStatus = order.cancellation_status || 'none';
   const refundStatusText = {
-    pending: 'Refund pending admin initiation',
+    pending: 'Refund pending mariso team initiation',
     initiated: 'Refund initiated',
     processing: 'Refund initiated',
     success: 'Refund completed',
@@ -218,13 +218,13 @@ const OrderDetailsPage = () => {
 
           {cancellationStatus === 'requested' && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Cancellation request submitted. Refund will be initiated after admin approval.
+              Cancellation request submitted. Refund will be initiated after mariso team approval.
             </p>
           )}
 
           {cancellationStatus === 'approved' && (
             <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-              Your cancellation request has been approved. {refundStatusText || 'Refund pending admin initiation'}.
+              Your cancellation request has been approved. {refundStatusText || 'Refund pending mariso team initiation'}.
             </p>
           )}
 
@@ -458,7 +458,7 @@ const OrderDetailsPage = () => {
           <DialogHeader>
             <DialogTitle>Request Cancellation</DialogTitle>
             <DialogDescription>
-              Tell us why you want to cancel this order. Refunds are initiated only after admin approval.
+              Tell us why you want to cancel this order. Refunds are initiated only after mariso team approval.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4 mt-2" onSubmit={handleCancellationRequest}>

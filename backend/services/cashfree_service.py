@@ -115,11 +115,22 @@ def normalize_cashfree_webhook_payload(payload: dict, headers: dict) -> dict:
     order = data.get("order") or {}
     payment = data.get("payment") or {}
     refund = data.get("refund") or data.get("refunds") or {}
-    refund_source = refund if isinstance(refund, dict) else data
+    if isinstance(refund, dict):
+        refund_source = refund
+    elif isinstance(refund, list):
+        refund_source = next((item for item in refund if isinstance(item, dict)), {})
+    else:
+        refund_source = data
 
     return {
-        "event_type": payload.get("type"),
-        "order_id": order.get("order_id") or data.get("order_id") or payload.get("order_id"),
+        "event_type": payload.get("type") or payload.get("event_type") or payload.get("event"),
+        "order_id": (
+            order.get("order_id")
+            or refund_source.get("order_id")
+            or refund_source.get("cf_order_id")
+            or data.get("order_id")
+            or payload.get("order_id")
+        ),
         "cf_payment_id": payment.get("cf_payment_id"),
         "payment_status": payment.get("payment_status"),
         "refund_id": refund_source.get("refund_id") or data.get("refund_id") or payload.get("refund_id"),

@@ -2102,7 +2102,7 @@ def _generate_refund_id(order_id: str) -> str:
 
 def _map_cashfree_refund_status(cashfree_data: dict) -> str:
     provider_status = str(cashfree_data.get("refund_status") or "").strip().lower()
-    if provider_status in {"success", "completed", "successful"}:
+    if provider_status in {"success", "completed", "successful", "refunded"}:
         return "success"
     if provider_status == "processing":
         return "processing"

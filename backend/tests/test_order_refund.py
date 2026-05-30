@@ -285,6 +285,64 @@ def test_cashfree_refund_webhook_route_uses_verified_flow(monkeypatch):
     }, "REFUND_STATUS_WEBHOOK")]
 
 
+def test_cashfree_refund_event_extracts_refunds_list_payload(monkeypatch):
+    setup_orders(monkeypatch, cancelled_cashfree_order(
+        refund_status="processing",
+        refund_id="refund-order-1",
+        cf_refund_id="cf-refund-1",
+    ))
+    monkeypatch.setattr(payments, "verify_cashfree_webhook_signature", lambda raw_body, headers: True)
+    payload = {
+        "type": "refund",
+        "data": {
+            "refunds": [{
+                "order_id": "order-1234567890",
+                "refund_id": "refund-order-1",
+                "cf_refund_id": "cf-refund-1",
+                "refund_status": "REFUNDED",
+            }],
+        },
+    }
+
+    result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
+    order = asyncio.run(order_service.db.orders.find_one({"id": "order-1234567890"}))
+
+    assert result == {"ok": True, "status": "processed"}
+    assert order["refund_status"] == "success"
+    assert order["cashfree_refund_status"] == "REFUNDED"
+
+
+def test_cashfree_auto_refund_event_extracts_direct_data_payload(monkeypatch):
+    calls = []
+    monkeypatch.setattr(payments, "verify_cashfree_webhook_signature", lambda raw_body, headers: True)
+
+    async def update_refund(cashfree_data, event_type=None):
+        calls.append((cashfree_data, event_type))
+        return {"id": "order-1234567890"}
+
+    monkeypatch.setattr(payments, "update_cashfree_refund_from_webhook", update_refund)
+    payload = {
+        "event": "auto refund",
+        "data": {
+            "order_id": "order-1234567890",
+            "refund_id": "refund-order-1",
+            "cf_refund_id": "cf-refund-1",
+            "refund_status": "PENDING",
+        },
+    }
+
+    result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
+
+    assert result == {"ok": True, "status": "processed"}
+    assert calls == [({
+        "order_id": "order-1234567890",
+        "refund_id": "refund-order-1",
+        "cf_refund_id": "cf-refund-1",
+        "refund_status": "PENDING",
+        "status_description": None,
+    }, "auto refund")]
+
+
 def test_cashfree_refund_success_webhook_payload_updates_refund_status(monkeypatch):
     setup_orders(monkeypatch, cancelled_cashfree_order(
         refund_status="initiated",
@@ -450,6 +508,9 @@ def test_admin_sync_preserves_existing_cashfree_refund_id_when_omitted(monkeypat
 @pytest.mark.parametrize(
     ("provider_status", "stored_status"),
     [
+        ("SUCCESS", "success"),
+        ("REFUNDED", "success"),
+        ("PENDING", "initiated"),
         ("ACCEPTED", "initiated"),
         ("PROCESSING", "processing"),
         ("CANCELLED", "failed"),
