@@ -498,6 +498,7 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("refund_completed_at", None)
     order.setdefault("refund_failed_reason", None)
     order.setdefault("refund_last_synced_at", None)
+    order.setdefault("refund_webhook_received_at", None)
     order.setdefault("stock_restored_at", None)
     order.setdefault(
         "gift_packaging_amount",
@@ -1232,6 +1233,7 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "refund_completed_at": None,
         "refund_failed_reason": None,
         "refund_last_synced_at": None,
+        "refund_webhook_received_at": None,
         "stock_restored_at": None,
         "gift_packaging": bool(order.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
@@ -1394,6 +1396,7 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "refund_completed_at": None,
         "refund_failed_reason": None,
         "refund_last_synced_at": None,
+        "refund_webhook_received_at": None,
         "stock_restored_at": None,
         "gift_packaging": bool(order_payload.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
@@ -2127,6 +2130,93 @@ def _refund_provider_update_fields(cashfree_data: dict, synced_at: str) -> dict:
     }
 
 
+def _cashfree_refund_lookup_filter(cashfree_data: dict) -> Optional[dict]:
+    refund_id = cashfree_data.get("refund_id")
+    cf_refund_id = cashfree_data.get("cf_refund_id")
+    order_id = cashfree_data.get("order_id")
+
+    base_filter = {"payment_provider": PAYMENT_PROVIDER_CASHFREE}
+    if refund_id:
+        return {**base_filter, "refund_id": refund_id}
+    if cf_refund_id:
+        return {**base_filter, "cf_refund_id": cf_refund_id}
+    if order_id:
+        return {
+            **base_filter,
+            "$or": [{"id": order_id}, {"cashfree_order_id": order_id}],
+            "refund_id": {"$nin": [None, ""]},
+        }
+    return None
+
+
+async def update_cashfree_refund_from_webhook(cashfree_data: dict, event_type: Optional[str] = None) -> Optional[dict]:
+    lookup_filter = _cashfree_refund_lookup_filter(cashfree_data)
+    refund_status = _map_cashfree_refund_status(cashfree_data)
+    logger.info(
+        "Cashfree refund webhook received: event_type=%s order_id=%s refund_id=%s "
+        "cf_refund_id=%s mapped_refund_status=%s",
+        event_type,
+        cashfree_data.get("order_id"),
+        cashfree_data.get("refund_id"),
+        cashfree_data.get("cf_refund_id"),
+        refund_status,
+    )
+    if not cashfree_data.get("refund_status"):
+        logger.warning(
+            "Cashfree refund webhook ignored without refund_status: event_type=%s "
+            "order_id=%s refund_id=%s cf_refund_id=%s",
+            event_type,
+            cashfree_data.get("order_id"),
+            cashfree_data.get("refund_id"),
+            cashfree_data.get("cf_refund_id"),
+        )
+        return None
+    if not lookup_filter:
+        logger.warning(
+            "Cashfree refund webhook ignored without lookup identifiers: event_type=%s "
+            "order_id=%s refund_id=%s cf_refund_id=%s mapped_refund_status=%s",
+            event_type,
+            cashfree_data.get("order_id"),
+            cashfree_data.get("refund_id"),
+            cashfree_data.get("cf_refund_id"),
+            refund_status,
+        )
+        return None
+
+    order = await db.orders.find_one(lookup_filter, {"_id": 0})
+    if not order:
+        logger.warning(
+            "Cashfree refund webhook order not found: event_type=%s order_id=%s "
+            "refund_id=%s cf_refund_id=%s mapped_refund_status=%s",
+            event_type,
+            cashfree_data.get("order_id"),
+            cashfree_data.get("refund_id"),
+            cashfree_data.get("cf_refund_id"),
+            refund_status,
+        )
+        return None
+
+    order = _normalize_order_payment_defaults(order)
+    webhook_received_at = _now_iso()
+    update_fields = _refund_provider_update_fields(cashfree_data, webhook_received_at)
+    update_fields["cf_refund_id"] = cashfree_data.get("cf_refund_id") or order.get("cf_refund_id")
+    update_fields["refund_webhook_received_at"] = webhook_received_at
+    if refund_status == "success" and order.get("refund_completed_at"):
+        update_fields["refund_completed_at"] = order["refund_completed_at"]
+    if refund_status == "failed":
+        update_fields["refund_failed_reason"] = (
+            update_fields.get("refund_failed_reason")
+            or cashfree_data.get("refund_failed_reason")
+            or order.get("refund_failed_reason")
+            or str(cashfree_data.get("refund_status") or "")
+        )
+
+    write_filter = {"id": order["id"], "refund_id": order.get("refund_id")}
+    await db.orders.update_one(write_filter, {"$set": update_fields})
+    updated_order = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+
+
 async def initiate_order_refund(order_id: str, admin_id: str):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -2215,17 +2305,68 @@ async def sync_order_refund(order_id: str, admin_id: str):
         raise HTTPException(status_code=400, detail="No Cashfree refund has been initiated for this order")
 
     provider_order_id = order.get("cashfree_order_id") or order_id
-    cashfree_data = get_cashfree_refund(provider_order_id, order["refund_id"])
+    logger.info(
+        "Manual Cashfree refund sync started: order_id=%s stored_refund_id=%s "
+        "stored_cf_refund_id=%s cashfree_order_id=%s",
+        order_id,
+        order.get("refund_id"),
+        order.get("cf_refund_id"),
+        provider_order_id,
+    )
+    try:
+        cashfree_data = get_cashfree_refund(provider_order_id, order["refund_id"])
+    except HTTPException:
+        logger.warning(
+            "Manual Cashfree refund sync lookup failed: order_id=%s stored_refund_id=%s "
+            "stored_cf_refund_id=%s cashfree_order_id=%s",
+            order_id,
+            order.get("refund_id"),
+            order.get("cf_refund_id"),
+            provider_order_id,
+        )
+        raise
+
     synced_at = _now_iso()
     update_fields = _refund_provider_update_fields(cashfree_data, synced_at)
     update_fields["cf_refund_id"] = cashfree_data.get("cf_refund_id") or order.get("cf_refund_id")
     update_fields["updated_by"] = admin_id
-    await db.orders.update_one(
+    logger.info(
+        "Manual Cashfree refund sync mapped response: order_id=%s stored_refund_id=%s "
+        "stored_cf_refund_id=%s cashfree_order_id=%s response_keys=%s data_keys=%s "
+        "refund_item_count=%s response_refund_id=%s response_cf_refund_id=%s "
+        "raw_refund_status=%s raw_status=%s mapped_refund_status=%s",
+        order_id,
+        order.get("refund_id"),
+        order.get("cf_refund_id"),
+        provider_order_id,
+        cashfree_data.get("_cashfree_response_keys"),
+        cashfree_data.get("_cashfree_data_keys"),
+        cashfree_data.get("_cashfree_refund_item_count"),
+        cashfree_data.get("refund_id"),
+        cashfree_data.get("cf_refund_id"),
+        cashfree_data.get("_cashfree_raw_refund_status") or cashfree_data.get("refund_status"),
+        cashfree_data.get("_cashfree_raw_status"),
+        update_fields.get("refund_status"),
+    )
+    result = await db.orders.update_one(
         {"id": order_id, "refund_id": order["refund_id"]},
         {"$set": update_fields},
     )
     updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
+    normalized_updated_order = _normalize_order_payment_defaults(updated_order or {})
+    logger.info(
+        "Manual Cashfree refund sync DB updated: order_id=%s stored_refund_id=%s "
+        "cashfree_order_id=%s modified_count=%s updated_refund_status=%s "
+        "updated_cashfree_refund_status=%s updated_cf_refund_id=%s",
+        order_id,
+        order.get("refund_id"),
+        provider_order_id,
+        getattr(result, "modified_count", None),
+        normalized_updated_order.get("refund_status"),
+        normalized_updated_order.get("cashfree_refund_status"),
+        normalized_updated_order.get("cf_refund_id"),
+    )
+    return serialize_mongo_value(normalized_updated_order)
 
 
 async def get_user_orders(user_id: str, limit: int = 100):

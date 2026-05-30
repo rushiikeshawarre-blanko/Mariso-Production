@@ -114,12 +114,29 @@ def normalize_cashfree_webhook_payload(payload: dict, headers: dict) -> dict:
     data = payload.get("data") or {}
     order = data.get("order") or {}
     payment = data.get("payment") or {}
+    refund = data.get("refund") or data.get("refunds") or {}
+    refund_source = refund if isinstance(refund, dict) else data
 
     return {
         "event_type": payload.get("type"),
-        "order_id": order.get("order_id"),
+        "order_id": order.get("order_id") or data.get("order_id") or payload.get("order_id"),
         "cf_payment_id": payment.get("cf_payment_id"),
         "payment_status": payment.get("payment_status"),
+        "refund_id": refund_source.get("refund_id") or data.get("refund_id") or payload.get("refund_id"),
+        "cf_refund_id": refund_source.get("cf_refund_id") or data.get("cf_refund_id") or payload.get("cf_refund_id"),
+        "refund_status": (
+            refund_source.get("refund_status")
+            or refund_source.get("status")
+            or data.get("refund_status")
+            or payload.get("refund_status")
+        ),
+        "refund_failed_reason": (
+            refund_source.get("status_description")
+            or refund_source.get("refund_message")
+            or refund_source.get("failure_reason")
+            or data.get("status_description")
+            or data.get("refund_message")
+        ),
         "event_time": payload.get("event_time"),
         "webhook_version": _get_header(headers, "x-webhook-version"),
         "webhook_attempt": _get_header(headers, "x-webhook-attempt"),
@@ -192,15 +209,92 @@ def _normalize_cashfree_get_order_response(data: dict) -> dict:
     }
 
 
-def _normalize_cashfree_refund_response(data: dict) -> dict:
+def _extract_cashfree_refund_source(data: Any) -> dict:
+    if not isinstance(data, dict):
+        return {}
+    if any(key in data for key in ("refund_id", "cf_refund_id", "refund_status", "status")):
+        return data
+
+    nested_data = data.get("data")
+    if isinstance(nested_data, dict):
+        if any(key in nested_data for key in ("refund_id", "cf_refund_id", "refund_status", "status")):
+            return nested_data
+        for key in ("refund", "refunds"):
+            nested_refund = nested_data.get(key)
+            if isinstance(nested_refund, dict):
+                return nested_refund
+            if isinstance(nested_refund, list) and nested_refund:
+                return next((item for item in nested_refund if isinstance(item, dict)), {})
+    if isinstance(nested_data, list) and nested_data:
+        return next((item for item in nested_data if isinstance(item, dict)), {})
+
+    for key in ("refund", "refunds"):
+        nested_refund = data.get(key)
+        if isinstance(nested_refund, dict):
+            return nested_refund
+        if isinstance(nested_refund, list) and nested_refund:
+            return next((item for item in nested_refund if isinstance(item, dict)), {})
+    return data
+
+
+def _cashfree_refund_response_debug(data: Any) -> dict:
+    source = _extract_cashfree_refund_source(data)
+    nested_data = data.get("data") if isinstance(data, dict) else None
+    refund_items = []
+    if isinstance(nested_data, list):
+        refund_items = [item for item in nested_data if isinstance(item, dict)]
+    elif isinstance(nested_data, dict):
+        for key in ("refunds", "refund"):
+            nested_refund = nested_data.get(key)
+            if isinstance(nested_refund, list):
+                refund_items = [item for item in nested_refund if isinstance(item, dict)]
+                break
     return {
-        "refund_id": data.get("refund_id"),
-        "cf_refund_id": data.get("cf_refund_id"),
-        "refund_status": data.get("refund_status") or data.get("status"),
-        "refund_amount": data.get("refund_amount"),
-        "refund_note": data.get("refund_note"),
-        "refund_arn": data.get("refund_arn"),
-        "status_description": data.get("status_description") or data.get("refund_message"),
+        "response_keys": sorted(str(key) for key in data.keys()) if isinstance(data, dict) else [],
+        "data_keys": sorted(str(key) for key in nested_data.keys()) if isinstance(nested_data, dict) else [],
+        "refund_item_count": len(refund_items),
+        "raw_refund_status": source.get("refund_status"),
+        "raw_status": source.get("status"),
+        "response_refund_id": source.get("refund_id"),
+        "response_cf_refund_id": source.get("cf_refund_id"),
+    }
+
+
+def _log_cashfree_refund_response(operation: str, order_id: str, refund_id: str, data: Any) -> None:
+    debug = _cashfree_refund_response_debug(data)
+    logger.info(
+        "Cashfree %s refund response: order_id=%s refund_id=%s response_keys=%s "
+        "data_keys=%s refund_item_count=%s response_refund_id=%s response_cf_refund_id=%s "
+        "raw_refund_status=%s raw_status=%s",
+        operation,
+        order_id,
+        refund_id,
+        debug["response_keys"],
+        debug["data_keys"],
+        debug["refund_item_count"],
+        debug["response_refund_id"],
+        debug["response_cf_refund_id"],
+        debug["raw_refund_status"],
+        debug["raw_status"],
+    )
+
+
+def _normalize_cashfree_refund_response(data: dict) -> dict:
+    source = _extract_cashfree_refund_source(data)
+    debug = _cashfree_refund_response_debug(data)
+    return {
+        "refund_id": source.get("refund_id"),
+        "cf_refund_id": source.get("cf_refund_id"),
+        "refund_status": source.get("refund_status") or source.get("status"),
+        "refund_amount": source.get("refund_amount"),
+        "refund_note": source.get("refund_note"),
+        "refund_arn": source.get("refund_arn"),
+        "status_description": source.get("status_description") or source.get("refund_message"),
+        "_cashfree_response_keys": debug["response_keys"],
+        "_cashfree_data_keys": debug["data_keys"],
+        "_cashfree_refund_item_count": debug["refund_item_count"],
+        "_cashfree_raw_refund_status": debug["raw_refund_status"],
+        "_cashfree_raw_status": debug["raw_status"],
     }
 
 
@@ -427,6 +521,7 @@ def create_cashfree_refund(order_id: str, refund_id: str, amount: float, note: s
     except ValueError:
         raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
 
+    _log_cashfree_refund_response("create", order_id, refund_id, data)
     return _normalize_cashfree_refund_response(data)
 
 
@@ -455,4 +550,5 @@ def get_cashfree_refund(order_id: str, refund_id: str) -> dict:
     except ValueError:
         raise HTTPException(status_code=502, detail="Cashfree returned an invalid JSON response")
 
+    _log_cashfree_refund_response("get", order_id, refund_id, data)
     return _normalize_cashfree_refund_response(data)

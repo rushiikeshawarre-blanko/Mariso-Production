@@ -98,6 +98,7 @@ class OrderPaymentFields(BaseModel):
     refund_completed_at: Optional[str] = None
     refund_failed_reason: Optional[str] = None
     refund_last_synced_at: Optional[str] = None
+    refund_webhook_received_at: Optional[str] = None
     stock_restored_at: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):

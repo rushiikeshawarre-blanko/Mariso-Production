@@ -22,6 +22,7 @@ from services.order_service import (
     get_order,
     mark_cashfree_order_failed,
     record_cashfree_webhook_event,
+    update_cashfree_refund_from_webhook,
 )
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -69,6 +70,23 @@ def _cashfree_error_context(exc: HTTPException) -> dict:
     }
 
 
+def _is_cashfree_refund_webhook(webhook: dict) -> bool:
+    event_type = str(webhook.get("event_type") or "").lower()
+    return (
+        "refund" in event_type
+        or bool(webhook.get("refund_id"))
+        or bool(webhook.get("cf_refund_id"))
+        or bool(webhook.get("refund_status"))
+    )
+
+
+def _cashfree_webhook_data_keys(payload: dict) -> list[str]:
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if isinstance(data, dict):
+        return sorted(str(key) for key in data.keys())
+    return []
+
+
 @router.post("/cashfree/webhook", response_model=dict)
 async def cashfree_webhook_route(request: Request):
     raw_body = await request.body()
@@ -84,6 +102,38 @@ async def cashfree_webhook_route(request: Request):
     order_id = webhook.get("order_id")
     event_type = webhook.get("event_type")
     payment_status = webhook.get("payment_status")
+    is_refund_event = _is_cashfree_refund_webhook(webhook)
+
+    logger.info(
+        "Cashfree verified webhook received: event_type=%s data_keys=%s order_id=%s "
+        "refund_id=%s cf_refund_id=%s refund_status=%s payment_status=%s",
+        event_type,
+        _cashfree_webhook_data_keys(payload),
+        order_id,
+        webhook.get("refund_id"),
+        webhook.get("cf_refund_id"),
+        webhook.get("refund_status"),
+        payment_status,
+    )
+
+    if is_refund_event:
+        cashfree_refund_data = {
+            "order_id": order_id,
+            "refund_id": webhook.get("refund_id"),
+            "cf_refund_id": webhook.get("cf_refund_id"),
+            "refund_status": webhook.get("refund_status"),
+            "status_description": webhook.get("refund_failed_reason"),
+        }
+        order = await update_cashfree_refund_from_webhook(cashfree_refund_data, event_type=event_type)
+        return {"ok": True, "status": "processed" if order else "ignored"}
+
+    logger.info(
+        "Cashfree webhook received non-refund event: event_type=%s order_id=%s "
+        "payment_status=%s",
+        event_type,
+        order_id,
+        payment_status,
+    )
 
     if not order_id:
         return {"ok": True, "status": "ignored"}
