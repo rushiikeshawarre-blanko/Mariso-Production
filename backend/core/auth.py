@@ -1,11 +1,13 @@
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
+from typing import Optional
 from core.database import db
 from core.config import JWT_ALGORITHM, AUTH0_DOMAIN, AUTH0_AUDIENCE, AUTH0_ISSUER, AUTH0_JWKS_CLIENT, JWT_SECRET, AUTH0_ADMIN_IDS, AUTH0_ADMIN_EMAILS
 from datetime import datetime, timezone
 import uuid
-security = HTTPBearer()
+
+security = HTTPBearer(auto_error=False)
 
 
 def decode_token(token: str) -> dict:
@@ -106,7 +108,10 @@ async def sync_auth0_user_from_payload(payload: dict) -> dict:
 
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     token = credentials.credentials
 
     try:

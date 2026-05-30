@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 from types import SimpleNamespace
 
@@ -18,7 +21,19 @@ def matches(document, query):
             if not any(matches(document, option) for option in expected):
                 return False
             continue
-        actual = document.get(key, MISSING)
+        actual = document
+        for part in key.split("."):
+            if isinstance(actual, list):
+                actual = [
+                    item.get(part, MISSING)
+                    for item in actual
+                    if isinstance(item, dict)
+                ]
+            elif isinstance(actual, dict):
+                actual = actual.get(part, MISSING)
+            else:
+                actual = MISSING
+                break
         if isinstance(expected, dict):
             if "$in" in expected and actual not in expected["$in"] and not (
                 actual is MISSING and None in expected["$in"]
@@ -28,6 +43,13 @@ def matches(document, query):
                 actual in expected["$nin"] or (actual is MISSING and None in expected["$nin"])
             ):
                 return False
+            if "$ne" in expected:
+                disallowed = expected["$ne"]
+                if isinstance(actual, list):
+                    if disallowed in actual:
+                        return False
+                elif actual is not MISSING and actual == disallowed:
+                    return False
         elif actual is MISSING or actual != expected:
             return False
     return True
@@ -449,6 +471,66 @@ def test_cashfree_payment_success_webhook_route_unchanged(monkeypatch):
         },
         "webhook",
     )
+
+
+def test_cashfree_webhook_signature_accepts_valid_hmac_and_rejects_bad_or_missing(monkeypatch):
+    raw_body = b'{"type":"PAYMENT_SUCCESS_WEBHOOK"}'
+    timestamp = "1767225600"
+    secret = "cashfree-webhook-secret"
+    signature = base64.b64encode(
+        hmac.new(secret.encode("utf-8"), timestamp.encode("utf-8") + raw_body, hashlib.sha256).digest()
+    ).decode("utf-8")
+    monkeypatch.setattr(cashfree_service, "CASHFREE_WEBHOOK_SECRET", secret)
+    monkeypatch.setattr(cashfree_service, "CASHFREE_CLIENT_SECRET", "client-secret")
+
+    assert cashfree_service.verify_cashfree_webhook_signature(
+        raw_body,
+        {
+            "x-webhook-timestamp": timestamp,
+            "x-webhook-signature": signature,
+        },
+    )
+    assert not cashfree_service.verify_cashfree_webhook_signature(
+        raw_body,
+        {
+            "x-webhook-timestamp": timestamp,
+            "x-webhook-signature": "bad-signature",
+        },
+    )
+    assert not cashfree_service.verify_cashfree_webhook_signature(
+        raw_body,
+        {"x-webhook-timestamp": timestamp},
+    )
+
+
+def test_duplicate_paid_cashfree_notifications_are_sent_once(monkeypatch):
+    order = cancelled_cashfree_order(
+        status="confirmed",
+        refund_status="none",
+        stock_deducted=True,
+        payment_events=[],
+        tracking_token="track-1",
+    )
+    setup_orders(monkeypatch, order)
+    calls = []
+
+    async def ensure_tracking_token(order):
+        return "track-1"
+
+    monkeypatch.setattr(order_service, "ensure_order_tracking_token", ensure_tracking_token)
+    monkeypatch.setattr(order_service, "send_order_placed_email", lambda order: calls.append("customer_email"))
+    monkeypatch.setattr(order_service, "send_admin_new_order_alert", lambda order: calls.append("admin_email"))
+    monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: calls.append("whatsapp") or {"success": True})
+
+    asyncio.run(order_service._send_paid_cashfree_notifications_once("order-1234567890", "webhook"))
+    asyncio.run(order_service._send_paid_cashfree_notifications_once("order-1234567890", "webhook"))
+
+    assert calls == ["customer_email", "admin_email", "whatsapp"]
+    assert [
+        event["type"]
+        for event in order_service.db.orders.order["payment_events"]
+        if event["type"] == "paid_notifications_attempted"
+    ] == ["paid_notifications_attempted"]
 
 
 def test_cashfree_unknown_non_refund_webhook_returns_200_and_logs(monkeypatch, caplog):
