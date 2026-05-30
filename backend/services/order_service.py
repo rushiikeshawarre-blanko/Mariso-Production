@@ -1311,6 +1311,35 @@ async def create_order(order: OrderCreate, user: dict, *, allow_manual_paid: boo
 
 
 async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, user: dict):
+    # Release any existing pending orders for this user to prevent multiple concurrent stock locks
+    try:
+        existing_pending_orders = await db.orders.find(
+            {
+                "user_id": user["id"],
+                "status": ORDER_STATUS_PENDING_PAYMENT,
+                "stock_reserved": True
+            }
+        ).to_list(None)
+
+        for old_order in existing_pending_orders:
+            try:
+                await release_reserved_stock(old_order, source="new_checkout_override")
+                await db.orders.update_one(
+                    {"id": old_order["id"]},
+                    {
+                        "$set": {
+                            "payment_status": PAYMENT_STATUS_EXPIRED,
+                            "status": ORDER_STATUS_PAYMENT_EXPIRED,
+                            "updated_at": _now_iso()
+                        }
+                    }
+                )
+                logger.info(f"Released previous pending payment order {old_order['id']} for user {user['id']}")
+            except Exception as e:
+                logger.error(f"Failed to release previous pending order {old_order.get('id')}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to query existing pending orders for user {user.get('id')}: {e}")
+
     order_id = str(uuid.uuid4())
 
     if not order_payload.items:

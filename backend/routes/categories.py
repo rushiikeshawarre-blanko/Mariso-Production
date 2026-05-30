@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Request
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -15,6 +15,7 @@ from services.category_service import (
 )
 
 from core.auth import get_admin_user
+from core.limiter import limiter
 
 router = APIRouter(prefix="/api/categories", tags=["Categories"])
 CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
@@ -57,7 +58,8 @@ class CategoryUpdate(BaseModel):
 
 
 @router.get("", response_model=List[CategoryResponse])
-async def get_categories(response: Response):
+@limiter.limit("120/minute")
+async def get_categories(request: Request, response: Response):
     response.headers["Cache-Control"] = CACHE_CONTROL_PUBLIC_CATALOG
     return await get_all_categories(active_only=True)
 

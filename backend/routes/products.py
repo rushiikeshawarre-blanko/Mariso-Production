@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Request
 from typing import List, Optional
 from core.auth import get_admin_user
+from core.limiter import limiter
 from services.product_service import (
     get_products as fetch_products,
     get_product_cards as fetch_product_cards,
@@ -24,7 +25,9 @@ CACHE_CONTROL_PUBLIC_CATALOG = "public, max-age=60, stale-while-revalidate=300"
 # ==================== PRODUCT ROUTES ====================
 
 @router.get("", response_model=List[ProductCardResponse])
+@limiter.limit("120/minute")
 async def get_products(
+    request: Request,
     response: Response,
     category_id: Optional[str] = None,
     search: Optional[str] = None,

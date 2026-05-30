@@ -82,3 +82,98 @@ def test_get_me_unauthenticated():
     """Test /me endpoint without token returns 401 or 403"""
     resp = requests.get(f"{BASE_URL}/api/auth/me")
     assert resp.status_code in [401, 403]
+
+
+@pytest.mark.anyio
+async def test_production_environment_legacy_endpoints_disabled(monkeypatch):
+    """
+    Test that when ENVIRONMENT == 'production', legacy auth endpoints
+    (/register, /login, /request-otp, /verify-otp) all return 404 Not Found.
+    """
+    import core.config
+    monkeypatch.setattr(core.config, "ENVIRONMENT", "production")
+
+    from httpx import ASGITransport, AsyncClient
+    from server import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Register
+        resp = await ac.post("/api/auth/register", json={
+            "name": "Test User",
+            "email": "prod_test@example.com",
+            "password": "password123"
+        })
+        assert resp.status_code == 404
+
+        # 2. Login
+        resp = await ac.post("/api/auth/login", json={
+            "email": "prod_test@example.com",
+            "password": "password123"
+        })
+        assert resp.status_code == 404
+
+        # 3. Request OTP
+        resp = await ac.post("/api/auth/request-otp", json={
+            "email": "prod_test@example.com"
+        })
+        assert resp.status_code == 404
+
+        # 4. Verify OTP
+        resp = await ac.post("/api/auth/verify-otp", json={
+            "email": "prod_test@example.com",
+            "otp": "123456"
+        })
+        assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_production_environment_non_legacy_endpoints_active(monkeypatch):
+    """
+    Test that /api/auth/me and /api/auth/profile are NOT disabled
+    even when ENVIRONMENT == 'production'.
+    """
+    import core.config
+    monkeypatch.setattr(core.config, "ENVIRONMENT", "production")
+
+    from httpx import ASGITransport, AsyncClient
+    from server import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # /me should return 401 Unauthorized (because we don't supply a token), NOT 404.
+        resp = await ac.get("/api/auth/me")
+        assert resp.status_code in [401, 403]
+        assert resp.status_code != 404
+
+        # /profile should return 401 Unauthorized, NOT 404.
+        resp = await ac.put("/api/auth/profile", json={"name": "New Name"})
+        assert resp.status_code in [401, 403]
+        assert resp.status_code != 404
+
+
+@pytest.mark.anyio
+async def test_non_production_environment_endpoints_remain_active(monkeypatch):
+    """
+    Test that when ENVIRONMENT == 'development' or 'testing',
+    legacy endpoints return normal active status codes (e.g. 400 for bad parameters, not 404).
+    """
+    import core.config
+    monkeypatch.setattr(core.config, "ENVIRONMENT", "development")
+
+    from httpx import ASGITransport, AsyncClient
+    from server import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Registering with invalid payload should return 422/400 (validation/bad request), NOT 404.
+        resp = await ac.post("/api/auth/register", json={})
+        assert resp.status_code != 404
+
+        # Login with wrong credentials should return 401, NOT 404.
+        resp = await ac.post("/api/auth/login", json={
+            "email": "wrong@example.com",
+            "password": "wrongpassword"
+        })
+        assert resp.status_code in [400, 401]
+        assert resp.status_code != 404

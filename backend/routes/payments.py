@@ -24,6 +24,7 @@ from services.order_service import (
     record_cashfree_webhook_event,
     update_cashfree_refund_from_webhook,
 )
+from core.limiter import limiter
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 logger = logging.getLogger(__name__)
@@ -170,7 +171,9 @@ async def cashfree_webhook_route(request: Request):
 
 
 @router.post("/cashfree/create-session", response_model=dict)
+@limiter.limit("3/minute")
 async def create_cashfree_session_route(
+    request: Request,
     payload: CashfreeCheckoutCreate,
     user: dict = Depends(get_current_user),
 ):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import List, Optional
 
@@ -23,6 +23,7 @@ from services.coupon_service import (
     update_coupon as update_coupon_doc,
     validate_coupon as validate_coupon_doc,
 )
+from core.limiter import limiter
 
 
 router = APIRouter(prefix="/api", tags=["Coupons"])
@@ -72,7 +73,9 @@ async def delete_admin_coupon(coupon_id: str, admin: dict = Depends(get_admin_us
 
 
 @router.post("/coupons/validate", response_model=CouponValidationResponse, response_model_exclude_none=True)
+@limiter.limit("10/minute")
 async def validate_coupon(
+    request: Request,
     coupon: CouponValidationRequest,
     user: Optional[dict] = Depends(get_optional_current_user),
 ):

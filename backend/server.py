@@ -21,6 +21,9 @@ from core.config import (
     FRONTEND_URL,
 )
 from core.database import db, close_mongo_connection
+from core.limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 logger = logging.getLogger("mariso-backend")
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +31,8 @@ logging.basicConfig(level=logging.INFO)
 
 # Create the main app
 app = FastAPI(title="Mariso Candles API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 allowed_origins = []
 
@@ -49,6 +54,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
 
 
 @app.on_event("startup")
