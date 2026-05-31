@@ -49,7 +49,12 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "").strip().lower() or "production"
 
 CASHFREE_ENABLED = os.environ.get("CASHFREE_ENABLED", "false").strip().lower() == "true"
 CASHFREE_ENV = os.environ.get("CASHFREE_ENV", "sandbox").strip().lower()
-CASHFREE_BASE_URL = os.environ.get("CASHFREE_BASE_URL", "https://sandbox.cashfree.com/pg").strip().rstrip("/")
+_cashfree_default_base_url = (
+    "https://api.cashfree.com/pg"
+    if CASHFREE_ENV in {"production", "prod", "live"}
+    else "https://sandbox.cashfree.com/pg"
+)
+CASHFREE_BASE_URL = os.environ.get("CASHFREE_BASE_URL", _cashfree_default_base_url).strip().rstrip("/")
 CASHFREE_API_VERSION = os.environ.get("CASHFREE_API_VERSION", "2025-01-01").strip()
 CASHFREE_CLIENT_ID = os.environ.get("CASHFREE_CLIENT_ID", "").strip()
 CASHFREE_CLIENT_SECRET = os.environ.get("CASHFREE_CLIENT_SECRET", "").strip()

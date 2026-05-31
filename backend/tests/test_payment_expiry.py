@@ -1,12 +1,71 @@
 import asyncio
+import importlib
+import os
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from core.config import CASHFREE_ORDER_EXPIRY_MINUTES
 from routes import payments
 
 
+_MISSING = object()
+
+
+def _assert_cashfree_base_url_for_env(cashfree_env, expected_base_url, override=_MISSING):
+    original_env = {
+        "CASHFREE_ENV": os.environ.get("CASHFREE_ENV", _MISSING),
+        "CASHFREE_BASE_URL": os.environ.get("CASHFREE_BASE_URL", _MISSING),
+    }
+
+    try:
+        os.environ["CASHFREE_ENV"] = cashfree_env
+        if override is _MISSING:
+            os.environ.pop("CASHFREE_BASE_URL", None)
+        else:
+            os.environ["CASHFREE_BASE_URL"] = override
+
+        import core.config as config
+
+        config = importlib.reload(config)
+        assert config.CASHFREE_ENV == cashfree_env.strip().lower()
+        assert config.CASHFREE_BASE_URL == expected_base_url
+    finally:
+        for key, value in original_env.items():
+            if value is _MISSING:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+        import core.config as config
+
+        importlib.reload(config)
+
+
 def test_configured_cashfree_order_expiry_has_safe_minimum():
     assert CASHFREE_ORDER_EXPIRY_MINUTES >= 30
+
+
+@pytest.mark.parametrize(
+    ("cashfree_env", "expected_base_url"),
+    [
+        ("sandbox", "https://sandbox.cashfree.com/pg"),
+        ("production", "https://api.cashfree.com/pg"),
+        ("prod", "https://api.cashfree.com/pg"),
+        ("live", "https://api.cashfree.com/pg"),
+        (" Production ", "https://api.cashfree.com/pg"),
+    ],
+)
+def test_cashfree_base_url_default_follows_cashfree_env(cashfree_env, expected_base_url):
+    _assert_cashfree_base_url_for_env(cashfree_env, expected_base_url)
+
+
+def test_cashfree_base_url_explicit_override_wins_and_strips_trailing_slash():
+    _assert_cashfree_base_url_for_env(
+        "production",
+        "https://example.cashfree.test/pg",
+        override="https://example.cashfree.test/pg/",
+    )
 
 
 def test_cashfree_order_expiry_is_independent_from_short_stock_reservation(monkeypatch):
