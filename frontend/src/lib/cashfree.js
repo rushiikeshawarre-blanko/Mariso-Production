@@ -3,6 +3,32 @@ const CASHFREE_SCRIPT_ID = 'cashfree-sdk-js';
 
 let cashfreeSdkPromise = null;
 
+const PRODUCTION_HOSTS = new Set(['mariso.store', 'www.mariso.store']);
+const PRODUCTION_MODES = new Set(['production', 'prod', 'live']);
+const SANDBOX_MODES = new Set(['sandbox', 'test', 'local']);
+
+export const getCashfreeMode = () => {
+  const configuredMode = (
+    process.env.REACT_APP_CASHFREE_ENV ||
+    process.env.REACT_APP_CASHFREE_MODE ||
+    ''
+  ).trim().toLowerCase();
+
+  if (PRODUCTION_MODES.has(configuredMode)) {
+    return 'production';
+  }
+
+  if (SANDBOX_MODES.has(configuredMode)) {
+    return 'sandbox';
+  }
+
+  if (typeof window !== 'undefined' && PRODUCTION_HOSTS.has(window.location.hostname)) {
+    return 'production';
+  }
+
+  return 'sandbox';
+};
+
 const loadCashfreeScript = () => {
   if (window.Cashfree) {
     return Promise.resolve();
@@ -40,6 +66,5 @@ export const loadCashfree = async () => {
     throw new Error('Cashfree SDK is unavailable');
   }
 
-  const mode = process.env.REACT_APP_CASHFREE_MODE || 'sandbox';
-  return window.Cashfree({ mode });
+  return window.Cashfree({ mode: getCashfreeMode() });
 };
