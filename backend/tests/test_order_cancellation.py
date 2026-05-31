@@ -4,8 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from models.order import OrderCancellationDecision, OrderCancellationRequest
+import email_service
 from services import order_service
 
 
@@ -72,11 +74,18 @@ def make_order(**overrides):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cancellation_status": "none",
         "stock_deducted": True,
-        "items": [{"product_id": "product-1", "quantity": 2}],
+        "items": [{"product_id": "product-1", "product_name": "Rose Candle", "quantity": 2}],
         "total_price": 400,
     }
     order.update(overrides)
     return order
+
+
+def cancellation_request(reasons=None, other=None):
+    return OrderCancellationRequest(
+        cancellation_reasons=reasons or ["Delivery timeline does not meet my requirement"],
+        cancellation_reason_other=other,
+    )
 
 
 def setup_database(monkeypatch, order):
@@ -86,28 +95,74 @@ def setup_database(monkeypatch, order):
     return orders, products
 
 
+def test_cancellation_request_rejects_missing_reasons():
+    with pytest.raises(ValidationError):
+        OrderCancellationRequest(cancellation_reasons=[])
+
+
+def test_cancellation_request_accepts_standard_reason_without_other_text(monkeypatch):
+    orders, _ = setup_database(monkeypatch, make_order())
+
+    result = asyncio.run(order_service.request_order_cancellation(
+        "order-1",
+        cancellation_request(["Ordered the wrong fragrance/design/variant"]),
+        "user-1",
+    ))
+
+    assert result["cancellation_status"] == "requested"
+    assert result["cancellation_reasons"] == ["Ordered the wrong fragrance/design/variant"]
+    assert result["cancellation_reason_other"] is None
+    assert orders.order["cancellation_reason"] == "Ordered the wrong fragrance/design/variant"
+
+
+def test_cancellation_request_with_others_rejects_missing_or_blank_other_text():
+    with pytest.raises(ValidationError):
+        cancellation_request(["Others"])
+
+    with pytest.raises(ValidationError):
+        cancellation_request(["Others"], "   ")
+
+
+def test_cancellation_request_with_others_stores_other_text(monkeypatch):
+    orders, _ = setup_database(monkeypatch, make_order())
+
+    result = asyncio.run(order_service.request_order_cancellation(
+        "order-1",
+        cancellation_request([
+            "Found a more suitable product",
+            "Others",
+        ], "Need it for a different date"),
+        "user-1",
+    ))
+
+    assert result["cancellation_reasons"] == ["Found a more suitable product", "Others"]
+    assert result["cancellation_reason_other"] == "Need it for a different date"
+    assert orders.order["cancellation_reason"] == "Found a more suitable product; Other: Need it for a different date"
+
+
 def test_customer_requests_cancellation_within_one_hour(monkeypatch):
     orders, products = setup_database(monkeypatch, make_order())
 
     result = asyncio.run(order_service.request_order_cancellation(
         "order-1",
-        OrderCancellationRequest(reason="Ordered by mistake"),
+        cancellation_request(),
         "user-1",
     ))
 
     assert result["cancellation_status"] == "requested"
-    assert result["cancellation_reason"] == "Ordered by mistake"
+    assert result["cancellation_reason"] == "Delivery timeline does not meet my requirement"
+    assert result["cancellation_reasons"] == ["Delivery timeline does not meet my requirement"]
     assert result["cancellation_requested_at"]
     assert products.product["stock"] == 3
 
     with pytest.raises(HTTPException) as duplicate:
         asyncio.run(order_service.request_order_cancellation(
             "order-1",
-            OrderCancellationRequest(reason="Second try"),
+            cancellation_request(["Found a more suitable product"]),
             "user-1",
         ))
     assert duplicate.value.status_code == 400
-    assert orders.order["cancellation_reason"] == "Ordered by mistake"
+    assert orders.order["cancellation_reason"] == "Delivery timeline does not meet my requirement"
 
 
 def test_legacy_confirmed_order_uses_inferred_paid_and_stock_fields(monkeypatch):
@@ -118,7 +173,7 @@ def test_legacy_confirmed_order_uses_inferred_paid_and_stock_fields(monkeypatch)
 
     requested = asyncio.run(order_service.request_order_cancellation(
         "order-1",
-        OrderCancellationRequest(reason="Legacy order"),
+        cancellation_request(),
         "user-1",
     ))
     assert requested["cancellation_status"] == "requested"
@@ -139,7 +194,7 @@ def test_customer_cannot_cancel_another_users_or_expired_order(monkeypatch):
     with pytest.raises(HTTPException) as unauthorized:
         asyncio.run(order_service.request_order_cancellation(
             "order-1",
-            OrderCancellationRequest(reason="Not mine"),
+            cancellation_request(),
             "user-2",
         ))
     assert unauthorized.value.status_code == 403
@@ -151,7 +206,7 @@ def test_customer_cannot_cancel_another_users_or_expired_order(monkeypatch):
     with pytest.raises(HTTPException) as expired:
         asyncio.run(order_service.request_order_cancellation(
             "order-1",
-            OrderCancellationRequest(reason="Too late"),
+            cancellation_request(),
             "user-1",
         ))
     assert expired.value.status_code == 400
@@ -165,7 +220,7 @@ def test_customer_cannot_cancel_ineligible_fulfillment_status(monkeypatch, statu
     with pytest.raises(HTTPException) as error:
         asyncio.run(order_service.request_order_cancellation(
             "order-1",
-            OrderCancellationRequest(reason="Too far along"),
+            cancellation_request(),
             "user-1",
         ))
 
@@ -199,6 +254,37 @@ def test_admin_approval_cancels_and_restores_stock_once(monkeypatch):
         ))
     assert products.product["stock"] == 5
     assert orders.order["refund_status"] == "pending"
+
+
+def test_admin_approval_email_includes_cancellation_reasons(monkeypatch):
+    sent = []
+    monkeypatch.setattr(email_service, "send_email", lambda subject, to_email, html: sent.append({
+        "subject": subject,
+        "to_email": to_email,
+        "html": html,
+    }))
+    setup_database(monkeypatch, make_order(
+        billing_email="customer@example.com",
+        billing_name="Aarav",
+        cancellation_status="requested",
+        cancellation_reason="Delivery timeline does not meet my requirement; Other: Need it before Friday",
+        cancellation_reasons=["Delivery timeline does not meet my requirement", "Others"],
+        cancellation_reason_other="Need it before Friday",
+    ))
+
+    asyncio.run(order_service.approve_order_cancellation(
+        "order-1",
+        OrderCancellationDecision(note="Approved"),
+        "admin-1",
+    ))
+
+    assert sent
+    assert sent[0]["subject"] == "Mariso Order Cancellation Confirmation"
+    assert sent[0]["to_email"] == "customer@example.com"
+    assert "Rose Candle" in sent[0]["html"]
+    assert "Delivery timeline does not meet my requirement" in sent[0]["html"]
+    assert "Other: Need it before Friday" in sent[0]["html"]
+    assert "Team Mariso" in sent[0]["html"]
 
 
 def test_admin_approval_restores_pack_effective_quantity(monkeypatch):

@@ -47,7 +47,12 @@ from services.shiprocket_service import (
     ensure_shiprocket_configured,
     normalize_shiprocket_order_response,
 )
-from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
+from email_service import (
+    send_order_cancellation_confirmation_email,
+    send_order_placed_email,
+    send_order_status_email,
+    send_admin_new_order_alert,
+)
 from whatsapp_service import send_feedback_reward_whatsapp, send_order_status_whatsapp
 import logging
 from datetime import datetime, timedelta, timezone
@@ -61,6 +66,16 @@ CANCELLATION_WINDOW = timedelta(hours=1)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _format_cancellation_reason_summary(reasons: List[str], other_reason: Optional[str]) -> str:
+    summary = []
+    for reason in reasons:
+        if reason == "Others" and other_reason:
+            summary.append(f"Other: {other_reason}")
+        else:
+            summary.append(reason)
+    return "; ".join(summary)
 
 
 def _get_order_image_url(image) -> str:
@@ -491,6 +506,8 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("cancellation_status", "none")
     order.setdefault("cancellation_requested_at", None)
     order.setdefault("cancellation_reason", None)
+    order.setdefault("cancellation_reasons", [])
+    order.setdefault("cancellation_reason_other", None)
     order.setdefault("cancellation_admin_note", None)
     order.setdefault("cancelled_at", None)
     order.setdefault("cancelled_by", None)
@@ -1235,6 +1252,8 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "cancellation_status": "none",
         "cancellation_requested_at": None,
         "cancellation_reason": None,
+        "cancellation_reasons": [],
+        "cancellation_reason_other": None,
         "cancellation_admin_note": None,
         "cancelled_at": None,
         "cancelled_by": None,
@@ -1436,6 +1455,8 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "cancellation_status": "none",
         "cancellation_requested_at": None,
         "cancellation_reason": None,
+        "cancellation_reasons": [],
+        "cancellation_reason_other": None,
         "cancellation_admin_note": None,
         "cancelled_at": None,
         "cancelled_by": None,
@@ -1991,6 +2012,10 @@ async def request_order_cancellation(
         raise HTTPException(status_code=400, detail="Cancellation window expired. Please contact support.")
 
     now = _now_iso()
+    cancellation_reason_summary = _format_cancellation_reason_summary(
+        request.cancellation_reasons,
+        request.cancellation_reason_other,
+    )
     result = await db.orders.update_one(
         {
             "id": order_id,
@@ -2006,7 +2031,9 @@ async def request_order_cancellation(
             "$set": {
                 "cancellation_status": "requested",
                 "cancellation_requested_at": now,
-                "cancellation_reason": request.reason,
+                "cancellation_reason": cancellation_reason_summary,
+                "cancellation_reasons": request.cancellation_reasons,
+                "cancellation_reason_other": request.cancellation_reason_other,
                 "cancellation_admin_note": None,
                 "updated_at": now,
             }
@@ -2081,6 +2108,7 @@ async def approve_order_cancellation(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     order = _normalize_order_payment_defaults(order)
+    should_send_confirmation_email = False
 
     can_retry_stock_restore = (
         order.get("cancellation_status") == "approved"
@@ -2121,8 +2149,14 @@ async def approve_order_cancellation(
         if result.modified_count == 0:
             raise HTTPException(status_code=409, detail="Order is no longer eligible for cancellation approval")
         order = await _fetch_normalized_order(order_id, order)
+        should_send_confirmation_email = True
 
     order = await _restore_cancelled_order_stock(order)
+    if should_send_confirmation_email:
+        try:
+            send_order_cancellation_confirmation_email(order)
+        except Exception as exc:
+            logger.error("Failed to send cancellation confirmation email: %s", exc)
     return serialize_mongo_value(_normalize_order_payment_defaults(order))
 
 

@@ -1,5 +1,17 @@
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+CANCELLATION_REASON_DELIVERY_TIMELINE = "Delivery timeline does not meet my requirement"
+CANCELLATION_REASON_WRONG_VARIANT = "Ordered the wrong fragrance/design/variant"
+CANCELLATION_REASON_SUITABLE_PRODUCT = "Found a more suitable product"
+CANCELLATION_REASON_OTHERS = "Others"
+CANCELLATION_REASON_OPTIONS = (
+    CANCELLATION_REASON_DELIVERY_TIMELINE,
+    CANCELLATION_REASON_WRONG_VARIANT,
+    CANCELLATION_REASON_SUITABLE_PRODUCT,
+    CANCELLATION_REASON_OTHERS,
+)
 
 
 class CartItemGiftPackaging(BaseModel):
@@ -84,6 +96,8 @@ class OrderPaymentFields(BaseModel):
     cancellation_status: str = "none"
     cancellation_requested_at: Optional[str] = None
     cancellation_reason: Optional[str] = None
+    cancellation_reasons: List[str] = Field(default_factory=list)
+    cancellation_reason_other: Optional[str] = None
     cancellation_admin_note: Optional[str] = None
     cancelled_at: Optional[str] = None
     cancelled_by: Optional[str] = None
@@ -115,15 +129,36 @@ class OrderStatusUpdate(BaseModel):
 
 
 class OrderCancellationRequest(BaseModel):
-    reason: str = Field(..., min_length=1, max_length=500)
+    cancellation_reasons: List[str] = Field(..., min_length=1)
+    cancellation_reason_other: Optional[str] = Field(None, max_length=500)
 
-    @field_validator("reason")
+    @field_validator("cancellation_reasons")
     @classmethod
-    def validate_reason(cls, value: str) -> str:
-        normalized = value.strip()
+    def validate_cancellation_reasons(cls, value: List[str]) -> List[str]:
+        normalized = []
+        seen = set()
+        for reason in value:
+            clean_reason = str(reason or "").strip()
+            if clean_reason not in CANCELLATION_REASON_OPTIONS:
+                raise ValueError("Invalid cancellation reason")
+            if clean_reason not in seen:
+                normalized.append(clean_reason)
+                seen.add(clean_reason)
+
         if not normalized:
-            raise ValueError("Cancellation reason is required")
+            raise ValueError("At least one cancellation reason is required")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_other_reason(self):
+        has_other = CANCELLATION_REASON_OTHERS in self.cancellation_reasons
+        other_reason = (self.cancellation_reason_other or "").strip()
+
+        if has_other and not other_reason:
+            raise ValueError("Other cancellation reason is required")
+
+        self.cancellation_reason_other = other_reason if has_other else None
+        return self
 
 
 class OrderCancellationDecision(BaseModel):

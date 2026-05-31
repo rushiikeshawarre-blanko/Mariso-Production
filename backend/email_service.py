@@ -85,6 +85,31 @@ def build_order_items_html(items: Iterable[dict]) -> str:
     return "".join(rows)
 
 
+def build_cancelled_product_names_html(items: Iterable[dict]) -> str:
+    rows = []
+    for item in items:
+        rows.append(f"<li>{_safe(item.get('product_name') or 'Item')}</li>")
+    return "".join(rows)
+
+
+def build_cancellation_reasons_html(order: dict) -> str:
+    rows = []
+    for reason in order.get("cancellation_reasons") or []:
+        if reason == "Others":
+            other_reason = str(order.get("cancellation_reason_other") or "").strip()
+            if other_reason:
+                rows.append(f"<li>Other: {_safe(other_reason)}</li>")
+            else:
+                rows.append("<li>Other</li>")
+        else:
+            rows.append(f"<li>{_safe(reason)}</li>")
+
+    if not rows and order.get("cancellation_reason"):
+        rows.append(f"<li>{_safe(order.get('cancellation_reason'))}</li>")
+
+    return "".join(rows)
+
+
 def _order_tracking_link(order: dict) -> str:
     tracking_token = str(order.get("tracking_token") or "").strip()
     return f"{FRONTEND_URL}/track-order/{tracking_token}"
@@ -147,6 +172,52 @@ def send_order_placed_email(order: dict) -> None:
     """
 
     send_email(subject, to_email, html)
+
+
+def send_order_cancellation_confirmation_email(order: dict) -> None:
+    to_email = order.get("billing_email")
+    if not to_email:
+        print("Email skipped: missing billing_email")
+        return
+
+    customer_name = _safe(order.get("billing_name", "Customer"))
+    cancelled_products = build_cancelled_product_names_html(order.get("items", [])) or "<li>No item details available</li>"
+    cancellation_reasons = build_cancellation_reasons_html(order) or "<li>No reason provided</li>"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1F2937;">
+      <p>Dear {customer_name},</p>
+
+      <p>We would like to confirm that your cancellation request has been successfully processed.</p>
+
+      <p>The following product(s) from your order have been cancelled:</p>
+      <ul>
+        {cancelled_products}
+      </ul>
+
+      <p><strong>Cancellation reason:</strong></p>
+      <ul>
+        {cancellation_reasons}
+      </ul>
+
+      <p>
+        If a refund is applicable, it will be processed to your original payment method and should reflect within the applicable banking timelines.
+      </p>
+
+      <p>
+        Should you have any questions or require further assistance, please feel free to reply to this email.
+      </p>
+
+      <p>Thank you for choosing Mariso.</p>
+
+      <p>
+        Warm regards,<br/>
+        <strong>Team Mariso</strong>
+      </p>
+    </div>
+    """
+
+    send_email("Mariso Order Cancellation Confirmation", to_email, html)
 
 
 # Admin alert for new order

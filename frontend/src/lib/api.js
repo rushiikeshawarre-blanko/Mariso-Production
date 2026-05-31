@@ -570,9 +570,9 @@ export const getOrder = async (id) => {
   }
 };
 
-export const requestOrderCancellation = async (orderId, reason) => {
+export const requestOrderCancellation = async (orderId, cancellationData) => {
   try {
-    const response = await axiosInstance.post(`/orders/${orderId}/cancel-request`, { reason });
+    const response = await axiosInstance.post(`/orders/${orderId}/cancel-request`, cancellationData);
     return response.data;
   } catch (error) {
     console.error('Error requesting order cancellation:', error);

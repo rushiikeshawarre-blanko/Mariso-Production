@@ -93,6 +93,23 @@ const formatAdminDate = (value) => {
   return date.toLocaleString();
 };
 
+const getCancellationReasonLabels = (order) => {
+  const reasons = Array.isArray(order?.cancellation_reasons) ? order.cancellation_reasons : [];
+  const labels = reasons.map((reason) => {
+    if (reason === 'Others') {
+      const otherReason = String(order?.cancellation_reason_other || '').trim();
+      return otherReason ? `Other: ${otherReason}` : 'Other';
+    }
+    return reason;
+  });
+
+  if (labels.length === 0 && order?.cancellation_reason) {
+    labels.push(order.cancellation_reason);
+  }
+
+  return labels;
+};
+
 const getSafeErrorDetail = (error, fallback) => {
   const detail = error?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
@@ -588,7 +605,18 @@ const AdminOrders = () => {
                   <div className="space-y-2">
                     <p><span className="text-amber-800">Status:</span> {formatAdminValue(selectedOrder.cancellation_status)}</p>
                     <p><span className="text-amber-800">Refund Status:</span> {formatAdminValue(selectedOrder.refund_status)}</p>
-                    <p><span className="text-amber-800">Reason:</span> {formatAdminValue(selectedOrder.cancellation_reason)}</p>
+                    {getCancellationReasonLabels(selectedOrder).length > 0 ? (
+                      <div>
+                        <p className="text-amber-800">Cancellation Reasons:</p>
+                        <ul className="mt-1 list-disc pl-5">
+                          {getCancellationReasonLabels(selectedOrder).map((reason) => (
+                            <li key={reason}>{reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p><span className="text-amber-800">Cancellation Reasons:</span> Not available</p>
+                    )}
                     <p><span className="text-amber-800">Requested At:</span> {formatAdminDate(selectedOrder.cancellation_requested_at)}</p>
                     {selectedOrder.refund_amount !== null && selectedOrder.refund_amount !== undefined && (
                       <p><span className="text-amber-800">Refund Amount:</span> {formatINR(selectedOrder.refund_amount)}</p>

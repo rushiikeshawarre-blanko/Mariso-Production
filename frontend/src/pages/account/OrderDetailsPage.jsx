@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { getCashfreePaymentStatus, getOrder, requestOrderCancellation } from "../../lib/api";
 import { formatINR } from "../../lib/currency";
 import { Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Textarea } from "../../components/ui/textarea";
 
 const ORDER_ITEM_IMAGE_FALLBACK =
@@ -26,6 +26,15 @@ const getItemGiftPackaging = (item) => {
 
 const hasItemGiftPackaging = (items = []) => items.some((item) => Boolean(getItemGiftPackaging(item)));
 
+const CANCELLATION_REASONS = [
+  "Delivery timeline does not meet my requirement",
+  "Ordered the wrong fragrance/design/variant",
+  "Found a more suitable product",
+  "Others",
+];
+
+const OTHER_CANCELLATION_REASON = "Others";
+
 const getGiftPackagingAmount = (order) => {
   if (order?.gift_packaging_amount !== undefined && order?.gift_packaging_amount !== null) {
     return order.gift_packaging_amount;
@@ -44,8 +53,10 @@ const OrderDetailsPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [checkingPaymentStatus, setCheckingPaymentStatus] = useState(false);
   const [paymentStatusError, setPaymentStatusError] = useState('');
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancelFormOpen, setCancelFormOpen] = useState(false);
+  const [selectedCancellationReasons, setSelectedCancellationReasons] = useState([]);
+  const [cancellationReasonOther, setCancellationReasonOther] = useState('');
+  const [cancellationValidationError, setCancellationValidationError] = useState('');
   const [submittingCancellation, setSubmittingCancellation] = useState(false);
 
   const statusSteps = ["pending", "confirmed", "packed", "shipped", "delivered"];
@@ -123,16 +134,58 @@ const OrderDetailsPage = () => {
     }
   };
 
+  const toggleCancellationReason = (reason, checked) => {
+    setCancellationValidationError('');
+    setSelectedCancellationReasons((currentReasons) => {
+      if (checked) {
+        return currentReasons.includes(reason) ? currentReasons : [...currentReasons, reason];
+      }
+      return currentReasons.filter((currentReason) => currentReason !== reason);
+    });
+
+    if (reason === OTHER_CANCELLATION_REASON && !checked) {
+      setCancellationReasonOther('');
+    }
+  };
+
+  const resetCancellationForm = () => {
+    setCancelFormOpen(false);
+    setSelectedCancellationReasons([]);
+    setCancellationReasonOther('');
+    setCancellationValidationError('');
+  };
+
+  const getCancellationValidationError = () => {
+    if (selectedCancellationReasons.length === 0) {
+      return 'Please select at least one cancellation reason.';
+    }
+
+    if (
+      selectedCancellationReasons.includes(OTHER_CANCELLATION_REASON) &&
+      !cancellationReasonOther.trim()
+    ) {
+      return 'Please enter the other cancellation reason.';
+    }
+
+    return '';
+  };
+
   const handleCancellationRequest = async (event) => {
     event.preventDefault();
-    if (!order?.id || !cancellationReason.trim()) return;
+    const validationError = getCancellationValidationError();
+    if (!order?.id || validationError) {
+      setCancellationValidationError(validationError);
+      return;
+    }
 
     setSubmittingCancellation(true);
     try {
-      const updatedOrder = await requestOrderCancellation(order.id, cancellationReason.trim());
+      const updatedOrder = await requestOrderCancellation(order.id, {
+        cancellation_reasons: selectedCancellationReasons,
+        cancellation_reason_other: cancellationReasonOther.trim(),
+      });
       setOrder(updatedOrder);
-      setCancelDialogOpen(false);
-      setCancellationReason('');
+      resetCancellationForm();
       toast.success('Cancellation request submitted. Refund will be initiated after mariso team approval.');
     } catch (error) {
       toast.error(error?.response?.data?.detail || 'Unable to submit cancellation request.');
@@ -184,6 +237,7 @@ const OrderDetailsPage = () => {
   );
   const canRequestCancellation = isCancellationCandidate && cancellationWindowOpen;
   const cancellationWindowExpired = isCancellationCandidate && !cancellationWindowOpen;
+  const cancellationSubmitDisabled = submittingCancellation || Boolean(getCancellationValidationError());
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -242,9 +296,73 @@ const OrderDetailsPage = () => {
           )}
 
           {canRequestCancellation && (
-            <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(true)}>
-              Request Cancellation
-            </Button>
+            <div className="space-y-4">
+              {!cancelFormOpen && (
+                <Button type="button" variant="outline" onClick={() => setCancelFormOpen(true)}>
+                  Request Cancellation
+                </Button>
+              )}
+
+              {cancelFormOpen && (
+                <form className="space-y-4" onSubmit={handleCancellationRequest}>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Cancellation reason</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Refunds are initiated only after mariso team approval.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {CANCELLATION_REASONS.map((reason) => {
+                      const reasonId = `cancellation-reason-${reason.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                      const checked = selectedCancellationReasons.includes(reason);
+
+                      return (
+                        <div key={reason} className="space-y-2">
+                          <label htmlFor={reasonId} className="flex items-start gap-3 text-sm text-foreground">
+                            <Checkbox
+                              id={reasonId}
+                              checked={checked}
+                              onCheckedChange={(value) => toggleCancellationReason(reason, value === true)}
+                              className="mt-0.5"
+                            />
+                            <span>{reason}</span>
+                          </label>
+
+                          {reason === OTHER_CANCELLATION_REASON && checked && (
+                            <Textarea
+                              value={cancellationReasonOther}
+                              onChange={(event) => {
+                                setCancellationReasonOther(event.target.value);
+                                setCancellationValidationError('');
+                              }}
+                              placeholder="Please share the reason"
+                              maxLength={500}
+                              required
+                              className="ml-7"
+                              data-testid="cancellation-reason-other"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {cancellationValidationError && (
+                    <p className="text-sm text-destructive">{cancellationValidationError}</p>
+                  )}
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="button" variant="outline" onClick={resetCancellationForm}>
+                      Keep Order
+                    </Button>
+                    <Button type="submit" disabled={cancellationSubmitDisabled}>
+                      {submittingCancellation ? 'Submitting...' : 'Submit Request'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -452,35 +570,6 @@ const OrderDetailsPage = () => {
           </div>
         </div>
       </div>
-
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>Request Cancellation</DialogTitle>
-            <DialogDescription>
-              Tell us why you want to cancel this order. Refunds are initiated only after mariso team approval.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4 mt-2" onSubmit={handleCancellationRequest}>
-            <Textarea
-              value={cancellationReason}
-              onChange={(event) => setCancellationReason(event.target.value)}
-              placeholder="Ordered by mistake"
-              maxLength={500}
-              required
-              data-testid="cancellation-reason"
-            />
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(false)}>
-                Keep Order
-              </Button>
-              <Button type="submit" disabled={submittingCancellation || !cancellationReason.trim()}>
-                {submittingCancellation ? 'Submitting...' : 'Submit Request'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
