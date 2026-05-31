@@ -165,6 +165,8 @@ const getSafeMediaUrl = (value, fallback) => {
   return fallback;
 };
 
+const getSafeOptionalMediaUrl = (value) => getSafeMediaUrl(value, null);
+
 const sortedActiveItems = (items = []) => items
   .filter((item) => item?.is_active !== false)
   .slice()
@@ -227,6 +229,10 @@ const getCategoryCardFrameClass = (template, index) => (
 const HomePage = ({ previewContent = null, isPreview = false }) => {
   const defaults = createHomePageAdminDefaults();
   const [homepageContent, setHomepageContent] = useState(() => mergeHomepageContent(isPreview ? previewContent : null));
+  const [homepageContentStatus, setHomepageContentStatus] = useState(isPreview ? 'loaded' : 'loading');
+  const [heroBackgroundImageUrl, setHeroBackgroundImageUrl] = useState(() => (
+    isPreview ? getSafeMediaUrl(previewContent?.hero?.background_image, defaults.hero.background_image) : null
+  ));
   const [categories, setCategories] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [bestsellers, setBestsellers] = useState([]);
@@ -252,13 +258,21 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
     if (isPreview) {
       setHomepageContent(mergeHomepageContent(previewContent));
+      setHeroBackgroundImageUrl(getSafeMediaUrl(previewContent?.hero?.background_image, defaults.hero.background_image));
+      setHomepageContentStatus('loaded');
     } else {
+      setHomepageContentStatus('loading');
+      setHeroBackgroundImageUrl(null);
       getHomepageContent()
         .then((content) => {
           setHomepageContent(mergeHomepageContent(content));
+          setHeroBackgroundImageUrl(getSafeOptionalMediaUrl(content?.hero?.background_image));
+          setHomepageContentStatus('loaded');
         })
         .catch(() => {
           setHomepageContent(mergeHomepageContent(null));
+          setHeroBackgroundImageUrl(null);
+          setHomepageContentStatus('error');
         });
     }
 
@@ -324,7 +338,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
     } finally {
       setLoading(false);
     }
-  }, [isPreview, previewContent]);
+  }, [defaults.hero.background_image, isPreview, previewContent]);
 
   useEffect(() => {
     initializeData();
@@ -375,6 +389,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
   const heroOverlayStyle = {
     background: getHeroOverlayGradient(homepageContent.hero.hero_overlay_opacity),
   };
+  const hasHeroBackgroundImage = homepageContentStatus === 'loaded' && Boolean(heroBackgroundImageUrl);
   const heroEyebrowStyle = {
     color: getSafeHeroHexColor(homepageContent.hero.hero_eyebrow_color, defaults.hero.hero_eyebrow_color),
   };
@@ -394,19 +409,21 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
       ) : null}
       {/* Hero Section */}
       <section 
-        className="relative min-h-[76vh] md:min-h-[92vh] flex items-center justify-center overflow-hidden pt-20"
+        className="relative flex min-h-[620px] items-center justify-center overflow-hidden pt-24 pb-12 md:min-h-[680px] md:pt-28 md:pb-14 lg:min-h-[760px] lg:pt-32 lg:pb-16 xl:min-h-[92vh] xl:pt-24"
         data-testid="hero-section"
       >
         {/* Background Image */}
-        <div className="absolute inset-0">
-          <img
-            src={getSafeMediaUrl(homepageContent.hero.background_image, defaults.hero.background_image)}
-            alt="Luxury candles"
-            className="w-full h-full object-cover object-center"
-            loading="eager"
-            decoding="async"
-            fetchpriority="high"
-          />
+        <div className="absolute inset-0 bg-[#F8F5F1]">
+          {hasHeroBackgroundImage ? (
+            <img
+              src={heroBackgroundImageUrl}
+              alt="Luxury candles"
+              className="w-full h-full object-cover object-center"
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+            />
+          ) : null}
           <div className="absolute inset-0" style={heroOverlayStyle} />
         </div>
 
@@ -461,9 +478,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Featured Products */}
       {homepageContent.featured_collection.is_active !== false && (
-      <section className="select-none py-14 md:py-28 bg-[#F8F5F1]" data-testid="featured-section">
+      <section className="select-none py-14 md:py-16 lg:py-20 xl:py-28 bg-[#F8F5F1]" data-testid="featured-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="mb-8 md:mb-14">
+          <div className="mb-8 md:mb-10 xl:mb-14">
             <div>
               <p className="text-[11px] tracking-[0.24em] uppercase text-muted-foreground mb-3">
                 {homepageContent.featured_collection.eyebrow}
@@ -507,7 +524,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                   </>
                 )}
               </Carousel>
-              <div className="mt-10 flex justify-center md:mt-14">
+              <div className="mt-10 flex justify-center md:mt-12 xl:mt-14">
                 <ContentLink href={getSafeLink(homepageContent.featured_collection.view_all_link, defaults.featured_collection.view_all_link)}>
                   <Button className="h-12 rounded-full bg-black px-10 text-[12px] tracking-[0.22em] text-white hover:bg-black/90" data-testid="view-all-featured">
                     {homepageContent.featured_collection.view_all_label}
@@ -521,9 +538,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
       )}
 
       {/* Shop by Category */}
-      <section className="py-14 md:py-28 bg-white" data-testid="categories-section">
+      <section className="py-14 md:py-16 lg:py-20 xl:py-28 bg-white" data-testid="categories-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="text-center mb-8 md:mb-14">
+          <div className="text-center mb-8 md:mb-10 xl:mb-14">
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
               {homepageContent.shop_by_category.eyebrow}
             </p>
@@ -597,9 +614,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Brand Story */}
       {homepageContent.crafted_with_intention.is_active !== false && (
-      <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="story-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-[#F8F5F1]" data-testid="story-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-24 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-16 xl:gap-24 items-center">
             <div className="relative">
               <img
                 src={getSafeMediaUrl(homepageContent.crafted_with_intention.image, defaults.crafted_with_intention.image)}
@@ -646,7 +663,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Bestsellers */}
       {homepageContent.bestsellers.is_active !== false && (
-      <section className="select-none py-14 md:py-28 bg-white" data-testid="bestsellers-section">
+      <section className="select-none py-14 md:py-16 lg:py-20 xl:py-28 bg-white" data-testid="bestsellers-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
           <div className="mb-8 md:mb-12">
             <div>
@@ -691,7 +708,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
                   </>
                 )}
               </Carousel>
-              <div className="mt-10 flex justify-center md:mt-14">
+              <div className="mt-10 flex justify-center md:mt-12 xl:mt-14">
                 <ContentLink href={getSafeLink(homepageContent.bestsellers.view_all_link, defaults.bestsellers.view_all_link)}>
                   <Button className="h-12 rounded-full bg-black px-10 text-[12px] tracking-[0.22em] text-white hover:bg-black/90" data-testid="view-all-bestsellers">
                     {homepageContent.bestsellers.view_all_label}
@@ -706,9 +723,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Supporting Our Artisans */}
       {homepageContent.supporting_artisans.is_active !== false && (
-      <section className="py-24 md:py-28 bg-white" data-testid="artisans-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-white" data-testid="artisans-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-24 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-16 xl:gap-24 items-center">
             <div>
               <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
                 {homepageContent.supporting_artisans.eyebrow}
@@ -737,9 +754,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
       )}
 
       {/* Video Content - Craftsmanship */}
-      <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="video-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-[#F8F5F1]" data-testid="video-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <div className="text-center mb-10 xl:mb-12">
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
               {homepageContent.craft_process.eyebrow}
             </p>
@@ -799,9 +816,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Homepage FAQs */}
       {homepageContent.faq_section.is_active !== false && homepageFaqs.length > 0 && (
-        <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="homepage-faqs-section">
+        <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-[#F8F5F1]" data-testid="homepage-faqs-section">
           <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-            <div className="text-center mb-12">
+            <div className="text-center mb-10 xl:mb-12">
               <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
                 {homepageContent.faq_section.eyebrow}
               </p>
@@ -865,9 +882,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
       )}
       {/* Testimonials */}
       {homepageContent.reviews_section.is_active !== false && (
-      <section className="py-24 md:py-28 bg-clay/20" data-testid="testimonials-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-clay/20" data-testid="testimonials-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <div className="text-center mb-10 xl:mb-12">
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
               {homepageContent.reviews_section.eyebrow}
             </p>
@@ -919,9 +936,9 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
       )}
 
       {/* Instagram Section */}
-      <section className="py-24 md:py-28 bg-[#F8F5F1]" data-testid="instagram-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-28 bg-[#F8F5F1]" data-testid="instagram-section">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <div className="text-center mb-10 xl:mb-12">
             <p className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
               {homepageContent.follow_journey.eyebrow}
             </p>
@@ -961,7 +978,7 @@ const HomePage = ({ previewContent = null, isPreview = false }) => {
 
       {/* Newsletter */}
       {homepageContent.newsletter.is_active !== false && (
-      <section className="py-24 md:py-32 bg-primary text-primary-foreground relative overflow-hidden" data-testid="newsletter-section">
+      <section className="py-24 md:py-16 lg:py-20 xl:py-32 bg-primary text-primary-foreground relative overflow-hidden" data-testid="newsletter-section">
         <div className="absolute inset-0 opacity-20 pointer-events-none">
           <div className="absolute -top-20 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full border border-white/20" />
           <div className="absolute bottom-[-120px] right-[-40px] h-64 w-64 rounded-full border border-white/10" />

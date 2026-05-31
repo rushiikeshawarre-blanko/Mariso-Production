@@ -46,7 +46,8 @@ export const Navbar = forwardRef((props, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [navCategories, setNavCategories] = useState([]);
-  const [announcement, setAnnouncement] = useState(announcementDefaults);
+  const [announcement, setAnnouncement] = useState(null);
+  const [announcementLoaded, setAnnouncementLoaded] = useState(false);
   const desktopSearchPanelRef = useRef(null);
   const desktopSearchButtonRef = useRef(null);
   const searchRequestIdRef = useRef(0);
@@ -136,22 +137,29 @@ export const Navbar = forwardRef((props, ref) => {
 
   useEffect(() => {
     if (isAdminRoute) {
+      setAnnouncement(null);
+      setAnnouncementLoaded(false);
       return undefined;
     }
 
     let cancelled = false;
+    setAnnouncement(null);
+    setAnnouncementLoaded(false);
+
     getHomepageContent()
       .then((content) => {
         if (!cancelled) {
-          setAnnouncement({
+          setAnnouncement(content?.announcement ? {
             ...announcementDefaults,
-            ...(content?.announcement || {}),
-          });
+            ...content.announcement,
+          } : null);
+          setAnnouncementLoaded(true);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setAnnouncement(announcementDefaults);
+          setAnnouncement(null);
+          setAnnouncementLoaded(true);
         }
       });
 
@@ -263,7 +271,7 @@ export const Navbar = forwardRef((props, ref) => {
   }`;
   const announcementText = String(announcement?.announcement_text || '').trim();
   const announcementLink = getSafeAnnouncementLink(announcement?.announcement_link);
-  const showAnnouncement = !isAdminRoute && announcement?.announcement_enabled !== false && announcementText;
+  const showAnnouncement = !isAdminRoute && announcementLoaded && announcement?.announcement_enabled === true && announcementText;
   const announcementStyle = {
     backgroundColor: announcement?.announcement_bg_color || announcementDefaults.announcement_bg_color,
     color: announcement?.announcement_text_color || announcementDefaults.announcement_text_color,
