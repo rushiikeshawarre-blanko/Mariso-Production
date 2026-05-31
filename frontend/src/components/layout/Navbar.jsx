@@ -528,7 +528,7 @@ export const Navbar = forwardRef((props, ref) => {
                   <Menu className="h-5 w-5" strokeWidth={1.5} />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-full overflow-y-auto bg-[#F8F5F1] sm:w-[400px]">
+              <SheetContent side="right" className="w-[80vw] max-w-[360px] overflow-y-auto bg-[#F8F5F1]">
                 <div className="flex flex-col h-full pt-8">
                   <div className="flex flex-col gap-6">
                     {navLinks.map((link) => (

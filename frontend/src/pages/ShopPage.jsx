@@ -786,9 +786,6 @@ const ShopPage = () => {
                 <h1 className="font-heading text-4xl md:text-5xl tracking-tight mb-2">
                   {pageTitle}
                 </h1>
-                <p className="text-sm text-muted-foreground">
-                  {loading ? 'Loading...' : productsStatus === 'error' ? 'Unable to load products' : `${displayCards.length} products`}
-                </p>
               </div>
 
               <div className="hidden lg:block">

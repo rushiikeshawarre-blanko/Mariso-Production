@@ -219,11 +219,11 @@ export const ProductCard = ({
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col pt-3.5 mt-3">
-        <p className="mb-1 text-[10px] uppercase tracking-[0.24em] text-muted-foreground transition-colors duration-300">
+      <div className="flex flex-1 flex-col pt-2 mt-1 md:pt-3.5 md:mt-3">
+        <p className="mb-1 hidden text-[10px] uppercase tracking-[0.24em] text-muted-foreground transition-colors duration-300 md:block">
           {product.category_name}
         </p>
-        <h3 className="mt-1 font-heading text-[1.08rem] leading-[1.3] tracking-[-0.01em] text-foreground group-hover:text-foreground/80 transition-colors duration-300" data-testid={`${testIdPrefix}-name`}>
+        <h3 className="mt-0 font-heading text-[1.08rem] leading-[1.3] tracking-[-0.01em] text-foreground group-hover:text-foreground/80 transition-colors duration-300 md:mt-1" data-testid={`${testIdPrefix}-name`}>
           {cardTitle}
         </h3>
         {selectedColorName && (
