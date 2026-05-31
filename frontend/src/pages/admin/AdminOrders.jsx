@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   approveOrderCancellation,
+  createShiprocketShipment,
   getAllOrders,
   initiateOrderRefund,
   rejectOrderCancellation,
@@ -64,6 +65,11 @@ const STATUS_FILTERS = [
 const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || 'Unknown Status';
 const getPaymentStatusLabel = (status) => PAYMENT_STATUS_LABELS[status] || 'Payment Unknown';
 
+const SHIPROCKET_ELIGIBLE_PAYMENT_STATUSES = new Set(['paid', 'success', 'confirmed']);
+const SHIPROCKET_ELIGIBLE_ORDER_STATUSES = new Set(['confirmed', 'packed', 'shipped', 'delivered']);
+const SHIPROCKET_BLOCKED_CANCELLATION_STATUSES = new Set(['requested', 'approved']);
+const SHIPROCKET_BLOCKED_REFUND_STATUSES = new Set(['initiated', 'processing', 'success']);
+
 const formatPaymentProvider = (value) => {
   if (!value) return 'Not specified';
   const normalized = String(value).trim().toLowerCase();
@@ -85,6 +91,33 @@ const formatAdminDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Not available';
   return date.toLocaleString();
+};
+
+const getSafeErrorDetail = (error, fallback) => {
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (typeof detail?.message === 'string') return detail.message;
+  return fallback;
+};
+
+const getNormalizedValue = (value) => String(value || '').trim().toLowerCase();
+
+const canCreateShiprocketShipment = (order) => {
+  if (!order) return false;
+  if (order.shiprocket_order_id || order.shiprocket_shipment_id) return false;
+
+  const paymentStatus = getNormalizedValue(order.payment_status);
+  const orderStatus = getNormalizedValue(order.status);
+  const cancellationStatus = getNormalizedValue(order.cancellation_status);
+  const refundStatus = getNormalizedValue(order.refund_status);
+
+  return (
+    SHIPROCKET_ELIGIBLE_PAYMENT_STATUSES.has(paymentStatus) &&
+    SHIPROCKET_ELIGIBLE_ORDER_STATUSES.has(orderStatus) &&
+    orderStatus !== 'cancelled' &&
+    !SHIPROCKET_BLOCKED_CANCELLATION_STATUSES.has(cancellationStatus) &&
+    !SHIPROCKET_BLOCKED_REFUND_STATUSES.has(refundStatus)
+  );
 };
 
 const getOrderSubtotal = (order) => (
@@ -138,6 +171,7 @@ const AdminOrders = () => {
   const [cancellationNote, setCancellationNote] = useState('');
   const [updatingCancellation, setUpdatingCancellation] = useState(false);
   const [updatingRefund, setUpdatingRefund] = useState(false);
+  const [creatingShipment, setCreatingShipment] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -166,8 +200,10 @@ const AdminOrders = () => {
 
       const data = await getAllOrders(params);
       setOrders(data);
+      return data;
     } catch (error) {
       console.error('Error fetching orders:', error);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -187,6 +223,40 @@ const AdminOrders = () => {
       }
     } catch (error) {
       toast.error('Failed to update status');
+    }
+  };
+
+  const refreshSelectedOrderFromOrders = (updatedOrders) => {
+    if (!selectedOrder?.id || !Array.isArray(updatedOrders)) return;
+    const refreshedOrder = updatedOrders.find((order) => order.id === selectedOrder.id);
+    if (refreshedOrder) {
+      setSelectedOrder(refreshedOrder);
+    }
+  };
+
+  const handleCreateShipment = async () => {
+    if (!selectedOrder?.id || creatingShipment) return;
+
+    setCreatingShipment(true);
+    try {
+      const updatedOrder = await createShiprocketShipment(selectedOrder.id);
+      setSelectedOrder((current) => ({ ...current, ...updatedOrder }));
+      toast.success('Shiprocket shipment created');
+      fetchOrders();
+    } catch (error) {
+      const status = error?.response?.status;
+
+      if (status === 503) {
+        toast.error('Shiprocket integration is currently disabled. Enable it from backend environment when ready.');
+      } else if (status === 409) {
+        toast.info('Shiprocket shipment already exists for this order. Refreshing order details.');
+        const updatedOrders = await fetchOrders();
+        refreshSelectedOrderFromOrders(updatedOrders);
+      } else {
+        toast.error(getSafeErrorDetail(error, 'Failed to create Shiprocket shipment'));
+      }
+    } finally {
+      setCreatingShipment(false);
     }
   };
 
@@ -619,6 +689,72 @@ const AdminOrders = () => {
                   {selectedOrder.billing_city}, {selectedOrder.billing_postal_code}<br />
                   {selectedOrder.billing_state || 'Not provided'}, {selectedOrder.billing_country || 'Not provided'}
                 </p>
+              </div>
+
+              {/* Shipping / Shiprocket */}
+              <div className="rounded-lg bg-muted/30 p-4">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="font-medium">Shipping / Shiprocket</h4>
+                  {canCreateShiprocketShipment(selectedOrder) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleCreateShipment}
+                      disabled={creatingShipment}
+                    >
+                      {creatingShipment ? 'Creating...' : 'Create Shiprocket Shipment'}
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">Provider</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.shipping_provider)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Shipment Status</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.shipment_status)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Shiprocket Order ID</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.shiprocket_order_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Shipment ID</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.shiprocket_shipment_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">AWB</p>
+                    <p className="break-all font-medium">{formatAdminValue(selectedOrder.shiprocket_awb_code)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Courier</p>
+                    <p className="font-medium">{formatAdminValue(selectedOrder.shiprocket_courier_name)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Tracking Link</p>
+                    {selectedOrder.shiprocket_tracking_url ? (
+                      <a
+                        href={selectedOrder.shiprocket_tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all font-medium text-[#8B9D83] underline-offset-2 hover:underline"
+                      >
+                        {selectedOrder.shiprocket_tracking_url}
+                      </a>
+                    ) : (
+                      <p className="font-medium">{formatAdminValue(selectedOrder.shiprocket_tracking_url)}</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Created At</p>
+                    <p className="font-medium">{formatAdminDate(selectedOrder.shipment_created_at)}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-muted-foreground">Last Error</p>
+                    <p className="break-words font-medium">{formatAdminValue(selectedOrder.shipment_error)}</p>
+                  </div>
+                </div>
               </div>
 
               {/* Items */}

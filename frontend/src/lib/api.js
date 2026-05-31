@@ -728,6 +728,16 @@ export const syncOrderRefund = async (orderId) => {
   }
 };
 
+export const createShiprocketShipment = async (orderId) => {
+  try {
+    const response = await axiosInstance.post(`/orders/admin/${orderId}/shiprocket/create-shipment`);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating Shiprocket shipment:', error);
+    throw error;
+  }
+};
+
 export const getCustomers = async () => {
   try {
     const response = await axiosInstance.get(`/admin/customers`);
