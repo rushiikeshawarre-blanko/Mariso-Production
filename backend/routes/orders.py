@@ -14,6 +14,7 @@ from services.order_service import (
     reject_order_cancellation,
     initiate_order_refund,
     sync_order_refund,
+    create_shiprocket_shipment_for_order,
 )
 
 router = APIRouter(prefix="/api", tags=["orders"])
@@ -101,3 +102,8 @@ async def initiate_order_refund_route(order_id: str, admin: dict = Depends(get_a
 @router.post("/orders/admin/{order_id}/refund/sync", response_model=dict)
 async def sync_order_refund_route(order_id: str, admin: dict = Depends(get_admin_user)):
     return await sync_order_refund(order_id, admin["id"])
+
+
+@router.post("/orders/admin/{order_id}/shiprocket/create-shipment", response_model=dict)
+async def create_shiprocket_shipment_route(order_id: str, admin: dict = Depends(get_admin_user)):
+    return await create_shiprocket_shipment_for_order(order_id, admin["id"])

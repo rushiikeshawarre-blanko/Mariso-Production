@@ -100,6 +100,15 @@ class OrderPaymentFields(BaseModel):
     refund_last_synced_at: Optional[str] = None
     refund_webhook_received_at: Optional[str] = None
     stock_restored_at: Optional[str] = None
+    shipping_provider: Optional[str] = None
+    shiprocket_order_id: Optional[str] = None
+    shiprocket_shipment_id: Optional[str] = None
+    shiprocket_awb_code: Optional[str] = None
+    shiprocket_courier_name: Optional[str] = None
+    shiprocket_tracking_url: Optional[str] = None
+    shipment_status: Optional[str] = None
+    shipment_created_at: Optional[str] = None
+    shipment_error: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):
     status: str

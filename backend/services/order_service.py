@@ -34,12 +34,19 @@ from core.constants import (
     PAYMENT_STATUS_FAILED,
     PAYMENT_STATUS_PAID,
     PAYMENT_STATUS_PENDING,
+    PAYMENT_STATUS_REFUNDED,
     VALID_PAYMENT_METHODS,
 )
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
 from services.admin_service import build_order_period_filter
 from services.cashfree_service import create_cashfree_refund, get_cashfree_order, get_cashfree_refund
 from services.coupon_service import increment_coupon_usage, validate_coupon
+from services.shiprocket_service import (
+    build_shiprocket_order_payload,
+    create_shiprocket_order,
+    ensure_shiprocket_configured,
+    normalize_shiprocket_order_response,
+)
 from email_service import send_order_placed_email, send_order_status_email, send_admin_new_order_alert
 from whatsapp_service import send_feedback_reward_whatsapp, send_order_status_whatsapp
 import logging
@@ -500,6 +507,15 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("refund_last_synced_at", None)
     order.setdefault("refund_webhook_received_at", None)
     order.setdefault("stock_restored_at", None)
+    order.setdefault("shipping_provider", None)
+    order.setdefault("shiprocket_order_id", None)
+    order.setdefault("shiprocket_shipment_id", None)
+    order.setdefault("shiprocket_awb_code", None)
+    order.setdefault("shiprocket_courier_name", None)
+    order.setdefault("shiprocket_tracking_url", None)
+    order.setdefault("shipment_status", None)
+    order.setdefault("shipment_created_at", None)
+    order.setdefault("shipment_error", None)
     order.setdefault(
         "gift_packaging_amount",
         GIFT_PACKAGING_PRICE if order.get("gift_packaging") else 0,
@@ -1235,6 +1251,15 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "refund_last_synced_at": None,
         "refund_webhook_received_at": None,
         "stock_restored_at": None,
+        "shipping_provider": None,
+        "shiprocket_order_id": None,
+        "shiprocket_shipment_id": None,
+        "shiprocket_awb_code": None,
+        "shiprocket_courier_name": None,
+        "shiprocket_tracking_url": None,
+        "shipment_status": None,
+        "shipment_created_at": None,
+        "shipment_error": None,
         "gift_packaging": bool(order.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
         "total_price": final_total,
@@ -1427,6 +1452,15 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "refund_last_synced_at": None,
         "refund_webhook_received_at": None,
         "stock_restored_at": None,
+        "shipping_provider": None,
+        "shiprocket_order_id": None,
+        "shiprocket_shipment_id": None,
+        "shiprocket_awb_code": None,
+        "shiprocket_courier_name": None,
+        "shiprocket_tracking_url": None,
+        "shipment_status": None,
+        "shipment_created_at": None,
+        "shipment_error": None,
         "gift_packaging": bool(order_payload.gift_packaging or _has_item_gift_packaging(items_with_details)),
         "gift_packaging_amount": gift_packaging_total,
         "coupon_code": coupon_amounts["coupon_code"],
@@ -2396,6 +2430,107 @@ async def sync_order_refund(order_id: str, admin_id: str):
         normalized_updated_order.get("cf_refund_id"),
     )
     return serialize_mongo_value(normalized_updated_order)
+
+
+def _ensure_order_is_shiprocket_eligible(order: dict) -> None:
+    if order.get("shiprocket_order_id") or order.get("shiprocket_shipment_id"):
+        raise HTTPException(status_code=409, detail="Shiprocket shipment already exists for this order")
+
+    status = order.get("status")
+    payment_status = order.get("payment_status")
+    blocked_statuses = {
+        ORDER_STATUS_PENDING_PAYMENT,
+        ORDER_STATUS_PAYMENT_FAILED,
+        ORDER_STATUS_PAYMENT_EXPIRED,
+        ORDER_STATUS_CANCELLED,
+    }
+    blocked_payment_statuses = {
+        PAYMENT_STATUS_PENDING,
+        PAYMENT_STATUS_FAILED,
+        PAYMENT_STATUS_EXPIRED,
+        PAYMENT_STATUS_REFUNDED,
+    }
+
+    if status in blocked_statuses or payment_status in blocked_payment_statuses:
+        raise HTTPException(status_code=400, detail="Order is not eligible for shipment")
+
+    if payment_status != PAYMENT_STATUS_PAID or status not in PAID_ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail="Order must be paid and confirmed before shipment")
+
+    if order.get("cancellation_status") in {"requested", "approved"}:
+        raise HTTPException(status_code=400, detail="Resolve cancellation before creating shipment")
+
+    if order.get("refund_status") in {"initiated", "processing", "success"}:
+        raise HTTPException(status_code=400, detail="Refunded orders are not eligible for shipment")
+
+
+async def create_shiprocket_shipment_for_order(order_id: str, admin_id: Optional[str] = None):
+    ensure_shiprocket_configured()
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _normalize_order_payment_defaults(order)
+    _ensure_order_is_shiprocket_eligible(order)
+
+    payload = build_shiprocket_order_payload(order)
+    if not payload.get("order_items"):
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
+    try:
+        shiprocket_response = create_shiprocket_order(payload)
+    except HTTPException as exc:
+        if exc.status_code != 503:
+            await db.orders.update_one(
+                {"id": order_id},
+                {"$set": {"shipment_error": str(exc.detail)[:500], "updated_at": _now_iso()}},
+            )
+        raise
+
+    normalized_response = normalize_shiprocket_order_response(shiprocket_response)
+    now = _now_iso()
+    update_fields = {
+        "shipping_provider": "shiprocket",
+        "shiprocket_order_id": normalized_response.get("shiprocket_order_id"),
+        "shiprocket_shipment_id": normalized_response.get("shiprocket_shipment_id"),
+        "shiprocket_awb_code": normalized_response.get("shiprocket_awb_code"),
+        "shiprocket_courier_name": normalized_response.get("shiprocket_courier_name"),
+        "shiprocket_tracking_url": normalized_response.get("shiprocket_tracking_url"),
+        "shipment_status": normalized_response.get("shipment_status") or "created",
+        "shipment_created_at": now,
+        "shipment_error": None,
+        "updated_at": now,
+        "updated_by": admin_id,
+    }
+
+    result = await db.orders.update_one(
+        {
+            "id": order_id,
+            "$or": [
+                {"shiprocket_order_id": {"$exists": False}},
+                {"shiprocket_order_id": None},
+                {"shiprocket_order_id": ""},
+            ],
+            "shiprocket_shipment_id": {"$in": [None, ""]},
+        },
+        {"$set": update_fields},
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Shiprocket shipment already exists for this order")
+
+    updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    logger.info(
+        "Shiprocket shipment stored: order_id=%s shipment_status=%s shiprocket_order_id=%s "
+        "shipment_id=%s awb=%s courier=%s",
+        order_id,
+        update_fields.get("shipment_status"),
+        update_fields.get("shiprocket_order_id"),
+        update_fields.get("shiprocket_shipment_id"),
+        update_fields.get("shiprocket_awb_code"),
+        update_fields.get("shiprocket_courier_name"),
+    )
+    return serialize_mongo_value(_normalize_order_payment_defaults(updated_order))
 
 
 async def get_user_orders(user_id: str, limit: int = 100):
