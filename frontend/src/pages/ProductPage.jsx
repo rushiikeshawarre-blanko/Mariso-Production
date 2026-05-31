@@ -4,12 +4,13 @@ import { Layout } from '../components/layout/Layout';
 import { ProductCard } from '../components/products/ProductCard';
 import { ProductImageGallery } from '../components/products/ProductImageGallery';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import MarisoLoader from '../components/ui/MarisoLoader';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
 import { Heart, Minus, Plus, ChevronLeft, Truck, RotateCcw, Package, Gift, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getProduct, getProductBySlug, getProducts, addToWishlist } from '../lib/api';
+import { getProduct, getProductBySlug, getProducts, addToWishlist, checkShiprocketServiceability } from '../lib/api';
 import { htmlToPlainText, sanitizeRichContent } from '../lib/richContent';
 import { getDetailImage, getThumbImage } from '../lib/utils';
 import { toast } from 'sonner';
@@ -43,6 +44,8 @@ const getPriceNumber = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
+const DELIVERY_PINCODE_STORAGE_KEY = 'mariso:lastDeliveryPincode';
+
 const ProductPage = () => {
   const { id, slug } = useParams();
   const navigate = useNavigate();
@@ -58,6 +61,10 @@ const ProductPage = () => {
   const [selectedFlavor, setSelectedFlavor] = useState(null);
   const [selectedPack, setSelectedPack] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
+  const [deliveryPincode, setDeliveryPincode] = useState('');
+  const [deliveryStatus, setDeliveryStatus] = useState('idle');
+  const [deliveryEstimate, setDeliveryEstimate] = useState(null);
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   const { addItem } = useCart();
   const { isAuthenticated, loginWithRedirect } = useAuth0();
   const requiresColorSelection = Boolean(product?.has_color_options && product?.color_options?.length > 0);
@@ -209,6 +216,13 @@ const ProductPage = () => {
 
 
   useEffect(() => {
+    const savedPincode = window.localStorage.getItem(DELIVERY_PINCODE_STORAGE_KEY);
+    if (savedPincode && /^\d{6}$/.test(savedPincode)) {
+      setDeliveryPincode(savedPincode);
+    }
+  }, []);
+
+  useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
       setProductStatus('loading');
@@ -239,6 +253,9 @@ const ProductPage = () => {
     
     fetchProduct();
     setQuantity(1);
+    setDeliveryStatus('idle');
+    setDeliveryEstimate(null);
+    setDeliveryMessage('');
     window.scrollTo(0, 0);
   }, [id, slug, retryNonce]);
 
@@ -437,6 +454,57 @@ const ProductPage = () => {
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to add to wishlist';
       toast.error(message);
+    }
+  };
+
+  const handleDeliveryPincodeChange = (event) => {
+    const value = event.target.value.replace(/\D/g, '').slice(0, 6);
+    setDeliveryPincode(value);
+    if (deliveryStatus !== 'idle') {
+      setDeliveryStatus('idle');
+      setDeliveryEstimate(null);
+      setDeliveryMessage('');
+    }
+  };
+
+  const handleDeliveryCheck = async (event) => {
+    event.preventDefault();
+
+    if (!/^\d{6}$/.test(deliveryPincode)) {
+      setDeliveryStatus('error');
+      setDeliveryEstimate(null);
+      setDeliveryMessage('Enter a valid 6-digit pincode.');
+      return;
+    }
+
+    setDeliveryStatus('loading');
+    setDeliveryEstimate(null);
+    setDeliveryMessage('');
+
+    try {
+      const result = await checkShiprocketServiceability({
+        pincode: deliveryPincode,
+        product_id: product?.id,
+        quantity,
+      });
+      window.localStorage.setItem(DELIVERY_PINCODE_STORAGE_KEY, deliveryPincode);
+      setDeliveryEstimate(result);
+
+      if (result.enabled === false) {
+        setDeliveryStatus('disabled');
+      } else if (result.available) {
+        setDeliveryStatus('success');
+      } else {
+        setDeliveryStatus('unavailable');
+      }
+      setDeliveryMessage(result.message || '');
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      const message = typeof detail === 'string'
+        ? detail
+        : detail?.message || 'Unable to check delivery for this pincode right now.';
+      setDeliveryStatus(error.response?.status === 400 ? 'error' : 'unavailable');
+      setDeliveryMessage(message);
     }
   };
 
@@ -811,6 +879,62 @@ const ProductPage = () => {
                   {!isVariantSelectionComplete ? 'Select Options' : isAvailable ? 'Buy Now' : 'Out of Stock'}
                 </Button>
               </div>
+
+              <form
+                onSubmit={handleDeliveryCheck}
+                className="space-y-2 pt-1"
+                data-testid="delivery-pincode-checker"
+              >
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground/60">
+                  <Truck className="h-3.5 w-3.5 text-terracotta/80" strokeWidth={1.5} />
+                  <span>Check delivery availability</span>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={deliveryPincode}
+                    onChange={handleDeliveryPincodeChange}
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    maxLength={6}
+                    placeholder="Enter pincode"
+                    aria-label="Delivery pincode"
+                    className="h-11 rounded-full border-border/80 bg-white/70 shadow-none sm:max-w-[260px]"
+                    data-testid="delivery-pincode-input"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="h-11 rounded-full border-foreground/70 px-5 text-sm font-medium hover:bg-foreground hover:text-primary-foreground"
+                    disabled={deliveryStatus === 'loading' || deliveryPincode.length !== 6}
+                    data-testid="delivery-pincode-check-button"
+                  >
+                    {deliveryStatus === 'loading' ? 'Checking...' : 'Check'}
+                  </Button>
+                </div>
+                {deliveryStatus !== 'idle' && (
+                  <div
+                    className={`text-xs leading-5 ${
+                      deliveryStatus === 'success'
+                        ? 'text-[#607A55]'
+                        : deliveryStatus === 'disabled'
+                          ? 'text-muted-foreground'
+                          : 'text-[#9C6B5B]'
+                    }`}
+                    data-testid="delivery-pincode-result"
+                  >
+                    {deliveryStatus === 'success' && deliveryEstimate?.estimated_delivery_days ? (
+                      <p>
+                        Estimated delivery: {deliveryEstimate.estimated_delivery_days}
+                        {deliveryEstimate?.courier_name ? (
+                          <span className="text-muted-foreground"> via {deliveryEstimate.courier_name}</span>
+                        ) : null}
+                      </p>
+                    ) : (
+                      <p>{deliveryMessage || 'Unable to check delivery for this pincode right now.'}</p>
+                    )}
+                  </div>
+                )}
+              </form>
 
               {enabledBenefits.length > 0 && (
                 <div

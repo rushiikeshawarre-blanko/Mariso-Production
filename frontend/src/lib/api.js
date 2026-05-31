@@ -738,6 +738,20 @@ export const createShiprocketShipment = async (orderId) => {
   }
 };
 
+export const checkShiprocketServiceability = async ({ pincode, product_id, quantity = 1 }) => {
+  try {
+    const response = await publicAxiosInstance.post(`/shiprocket/serviceability`, {
+      pincode,
+      product_id,
+      quantity,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error checking Shiprocket serviceability:', error);
+    throw error;
+  }
+};
+
 export const getCustomers = async () => {
   try {
     const response = await axiosInstance.get(`/admin/customers`);

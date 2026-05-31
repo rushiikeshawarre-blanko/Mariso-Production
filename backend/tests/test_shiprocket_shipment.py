@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from core.auth import get_admin_user
 from routes.orders import router as orders_router
+from routes.shiprocket import router as shiprocket_router
 from services import order_service, shiprocket_service
 
 
@@ -109,6 +110,17 @@ def enable_shiprocket(monkeypatch):
     monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_ENABLED", True)
     monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_EMAIL", "shiprocket@example.com")
     monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_PASSWORD", "secret")
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_PICKUP_PINCODE", "400706")
+
+
+class FakeShiprocketResponse:
+    def __init__(self, data, status_code=200):
+        self._data = data
+        self.status_code = status_code
+        self.text = str(data)
+
+    def json(self):
+        return self._data
 
 
 def test_disabled_config_returns_disabled_response_and_does_not_call_shiprocket(monkeypatch):
@@ -125,6 +137,105 @@ def test_disabled_config_returns_disabled_response_and_does_not_call_shiprocket(
 
     assert exc.value.status_code == 503
     assert exc.value.detail == "Shiprocket integration is disabled"
+
+
+def test_serviceability_invalid_pincode_returns_400():
+    app = FastAPI()
+    app.include_router(shiprocket_router)
+
+    response = TestClient(app).post("/api/shiprocket/serviceability", json={"pincode": "40070A"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Enter a valid 6-digit India pincode"
+
+
+def test_serviceability_disabled_returns_safe_response_and_does_not_call_shiprocket(monkeypatch):
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_ENABLED", False)
+
+    def fail_post(*args, **kwargs):
+        raise AssertionError("Shiprocket HTTP should not be called when disabled")
+
+    def fail_get(*args, **kwargs):
+        raise AssertionError("Shiprocket HTTP should not be called when disabled")
+
+    monkeypatch.setattr(shiprocket_service.requests, "post", fail_post)
+    monkeypatch.setattr(shiprocket_service.requests, "get", fail_get)
+
+    result = shiprocket_service.check_shiprocket_serviceability(pincode="400706")
+
+    assert result == {
+        "available": None,
+        "enabled": False,
+        "message": "Delivery estimate will be available soon.",
+    }
+
+
+def test_serviceability_enabled_success_maps_response(monkeypatch):
+    enable_shiprocket(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(shiprocket_service, "authenticate_shiprocket", lambda: "token-123")
+
+    def fake_get(url, params, headers, timeout):
+        captured.update({"url": url, "params": params, "headers": headers, "timeout": timeout})
+        return FakeShiprocketResponse(
+            {
+                "data": {
+                    "available_courier_companies": [
+                        {
+                            "courier_name": "Delhivery",
+                            "estimated_delivery_days": "3-6",
+                        }
+                    ]
+                }
+            }
+        )
+
+    monkeypatch.setattr(shiprocket_service.requests, "get", fake_get)
+
+    result = shiprocket_service.check_shiprocket_serviceability(
+        pincode="560001",
+        product_id="prod-1",
+        quantity=2,
+    )
+
+    assert captured["url"].endswith("/courier/serviceability/")
+    assert captured["params"]["pickup_postcode"] == "400706"
+    assert captured["params"]["delivery_postcode"] == "560001"
+    assert captured["params"]["cod"] == 0
+    assert captured["params"]["weight"] == 1.0
+    assert captured["headers"]["Authorization"] == "Bearer token-123"
+    assert result == {
+        "available": True,
+        "enabled": True,
+        "estimated_delivery_days": "3-6 days",
+        "courier_name": "Delhivery",
+        "message": "Delivery available in 3-6 days",
+    }
+
+
+def test_serviceability_enabled_unavailable_maps_response(monkeypatch):
+    enable_shiprocket(monkeypatch)
+    monkeypatch.setattr(shiprocket_service, "authenticate_shiprocket", lambda: "token-123")
+
+    def fake_get(*args, **kwargs):
+        return FakeShiprocketResponse(
+            {
+                "message": "No courier serviceable for this pickup and delivery pincode",
+                "data": {"available_courier_companies": []},
+            }
+        )
+
+    monkeypatch.setattr(shiprocket_service.requests, "get", fake_get)
+
+    result = shiprocket_service.check_shiprocket_serviceability(pincode="999999")
+
+    assert result == {
+        "available": False,
+        "enabled": True,
+        "estimated_delivery_days": None,
+        "courier_name": None,
+        "message": "No courier serviceable for this pickup and delivery pincode",
+    }
 
 
 def test_non_admin_rejected():

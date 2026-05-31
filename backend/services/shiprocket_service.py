@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -10,6 +11,7 @@ from core import config
 logger = logging.getLogger(__name__)
 
 SHIPROCKET_TIMEOUT_SECONDS = 20
+PINCODE_RE = re.compile(r"^\d{6}$")
 
 
 def _to_float(value: Any, default: float) -> float:
@@ -33,6 +35,17 @@ def _require_shiprocket_config() -> None:
 
 def ensure_shiprocket_configured() -> None:
     _require_shiprocket_config()
+
+
+def is_valid_india_pincode(value: str) -> bool:
+    return bool(PINCODE_RE.fullmatch(str(value or "").strip()))
+
+
+def _require_shiprocket_serviceability_config() -> None:
+    _require_shiprocket_config()
+
+    if not is_valid_india_pincode(config.SHIPROCKET_PICKUP_PINCODE):
+        raise HTTPException(status_code=500, detail="Shiprocket pickup pincode is not configured")
 
 
 def _shiprocket_headers(token: str) -> dict:
@@ -203,6 +216,78 @@ def _extract_source(data: Any) -> dict:
     return data
 
 
+def _extract_serviceability_couriers(data: Any) -> list[dict]:
+    if not isinstance(data, dict):
+        return []
+
+    candidates = [
+        data.get("available_courier_companies"),
+        data.get("courier_companies"),
+        data.get("couriers"),
+    ]
+    for key in ("data", "response"):
+        nested = data.get(key)
+        if isinstance(nested, dict):
+            candidates.extend(
+                [
+                    nested.get("available_courier_companies"),
+                    nested.get("courier_companies"),
+                    nested.get("couriers"),
+                ]
+            )
+
+    for candidate in candidates:
+        if isinstance(candidate, list):
+            return [item for item in candidate if isinstance(item, dict)]
+
+    return []
+
+
+def _format_estimated_delivery_days(courier: dict) -> Optional[str]:
+    raw_days = (
+        courier.get("estimated_delivery_days")
+        or courier.get("estimate_delivery_days")
+        or courier.get("delivery_days")
+    )
+    if raw_days is None or raw_days == "":
+        return None
+
+    text = str(raw_days).strip()
+    if not text:
+        return None
+    return text if "day" in text.lower() else f"{text} days"
+
+
+def normalize_shiprocket_serviceability_response(data: dict) -> dict:
+    couriers = _extract_serviceability_couriers(data)
+    if not couriers:
+        message = _extract_shiprocket_error(data)
+        if message == "Shiprocket request failed":
+            message = "Delivery is not available for this pincode yet."
+        return {
+            "available": False,
+            "enabled": True,
+            "estimated_delivery_days": None,
+            "courier_name": None,
+            "message": message,
+        }
+
+    courier = couriers[0]
+    estimated_days = _format_estimated_delivery_days(courier)
+    courier_name = courier.get("courier_name") or courier.get("courier_company_name")
+    message = "Delivery is available"
+    if estimated_days:
+        message = f"Delivery available in {estimated_days}"
+
+    return {
+        "available": True,
+        "enabled": True,
+        "estimated_delivery_days": estimated_days,
+        "courier_name": courier_name,
+        "message": message,
+    }
+
+
 def normalize_shiprocket_order_response(data: dict) -> dict:
     source = _extract_source(data)
     awb_code = source.get("awb_code") or source.get("awb")
@@ -247,3 +332,41 @@ def create_shiprocket_order(payload: dict) -> dict:
         normalized.get("shiprocket_courier_name"),
     )
     return data
+
+
+def check_shiprocket_serviceability(
+    *,
+    pincode: str,
+    product_id: Optional[str] = None,
+    quantity: int = 1,
+) -> dict:
+    if not config.SHIPROCKET_ENABLED:
+        return {
+            "available": None,
+            "enabled": False,
+            "message": "Delivery estimate will be available soon.",
+        }
+
+    if not is_valid_india_pincode(pincode):
+        raise HTTPException(status_code=400, detail="Enter a valid 6-digit India pincode")
+
+    _require_shiprocket_serviceability_config()
+    token = authenticate_shiprocket()
+    safe_quantity = max(int(quantity or 1), 1)
+    weight = _to_float(config.SHIPROCKET_DEFAULT_WEIGHT_KG, 0.5) * safe_quantity
+
+    response = requests.get(
+        f"{config.SHIPROCKET_BASE_URL}/courier/serviceability/",
+        params={
+            "pickup_postcode": config.SHIPROCKET_PICKUP_PINCODE,
+            "delivery_postcode": pincode,
+            "cod": 0,
+            "weight": round(weight, 3),
+        },
+        headers=_shiprocket_headers(token),
+        timeout=SHIPROCKET_TIMEOUT_SECONDS,
+    )
+    if response.status_code >= 400:
+        _raise_shiprocket_error(response, operation="serviceability", order_id=product_id)
+
+    return normalize_shiprocket_serviceability_response(_parse_response_json(response))

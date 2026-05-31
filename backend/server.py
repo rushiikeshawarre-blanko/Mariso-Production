@@ -15,6 +15,7 @@ from routes.content import router as content_router
 from routes.payments import router as payments_router
 from routes.coupons import router as coupons_router
 from routes.feedback import router as feedback_router
+from routes.shiprocket import router as shiprocket_router
 
 from core.config import (
     ENVIRONMENT,
@@ -114,6 +115,7 @@ app.include_router(categories_router)
 app.include_router(products_router)
 app.include_router(coupons_router)
 app.include_router(feedback_router)
+app.include_router(shiprocket_router)
 app.include_router(api_router)
 
 
