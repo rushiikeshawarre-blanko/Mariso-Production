@@ -6,7 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createCashfreeSession, getAvailableCoupons, validateCoupon } from '../lib/api';
+import { createCashfreeSession, getAvailableCoupons, previewCashfreeCheckout, validateCoupon } from '../lib/api';
 import { loadCashfree } from '../lib/cashfree';
 import { formatINR } from '../lib/currency';
 import { getCitiesForState, INDIA_STATES, withStoredOption } from '../lib/indiaLocations';
@@ -31,6 +31,8 @@ const getSelectedGiftOption = (item) => {
 };
 
 const isPackItem = (item) => item.sell_as_pack === true;
+const CART_FREE_SHIPPING_THRESHOLD = 3000;
+const SHIPPING_UNAVAILABLE_MESSAGE = 'Shipping charges could not be calculated for this pincode. Please try another pincode or contact support.';
 const getPackSize = (item) => Math.max(Number(item.pack_size) || 1, 1);
 const getPackLabel = (item) => item.selectedPackLabel || item.pack_label || (getPackSize(item) === 1 ? 'Single' : `Pack of ${getPackSize(item)}`);
 const getPiecesPerPack = (item) => Math.max(Number(item.pieces_per_pack) || getPackSize(item) || 1, 1);
@@ -65,6 +67,9 @@ const CheckoutPage = () => {
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [availableCouponsLoading, setAvailableCouponsLoading] = useState(false);
   const [availableCouponsError, setAvailableCouponsError] = useState('');
+  const [shippingPreview, setShippingPreview] = useState(null);
+  const [shippingPreviewStatus, setShippingPreviewStatus] = useState('idle');
+  const [shippingPreviewError, setShippingPreviewError] = useState('');
   const paymentMessage = new URLSearchParams(location.search).get('payment');
   
   const getCheckoutOriginalSubtotal = () => {
@@ -151,8 +156,47 @@ const CheckoutPage = () => {
     return appliedCoupon ? appliedCoupon.final_total : getCheckoutDiscountSubtotal();
   };
 
+  const isCheckoutShippingFreeWithoutQuote = useCallback(() => {
+    const allItemsFreeShipping = items.length > 0 && items.every((item) => (
+      item.free_shipping === true || item.show_free_shipping === true
+    ));
+    const previewItemsTotal = appliedCoupon
+      ? Number(appliedCoupon.final_total || 0)
+      : items.reduce((total, item) => total + (getCheckoutItemPrice(item) * item.quantity), 0);
+    return allItemsFreeShipping || previewItemsTotal >= CART_FREE_SHIPPING_THRESHOLD;
+  }, [appliedCoupon, items]);
+
+  const hasValidShippingPincode = useCallback(
+    () => /^\d{6}$/.test(String(formData.postalCode || '').trim()),
+    [formData.postalCode],
+  );
+
+  const needsShippingQuote = useCallback(
+    () => !isCheckoutShippingFreeWithoutQuote(),
+    [isCheckoutShippingFreeWithoutQuote],
+  );
+
+  const getShippingLabel = () => {
+    if (isCheckoutShippingFreeWithoutQuote()) return 'Free';
+    if (shippingPreviewStatus === 'loading') return 'Calculating...';
+    if (shippingPreviewStatus === 'error') return 'Unable to calculate';
+    if (shippingPreviewStatus === 'ready' && shippingPreview) {
+      const shippingCharge = Number(shippingPreview.shipping_charge || 0);
+      return shippingCharge > 0 ? formatINR(shippingCharge) : 'Free';
+    }
+    return 'Calculated at checkout';
+  };
+
   const getCouponPreviewTotal = () => {
     return getCouponPreviewItemsTotal() + getGiftPackagingTotal();
+  };
+
+  const getCheckoutPreviewTotal = () => {
+    if (isCheckoutShippingFreeWithoutQuote()) return getCouponPreviewTotal();
+    if (shippingPreviewStatus === 'ready' && shippingPreview?.total_payable != null) {
+      return Number(shippingPreview.total_payable);
+    }
+    return getCouponPreviewTotal();
   };
 
   const getCheckoutItemImage = (item) => {
@@ -188,6 +232,40 @@ const CheckoutPage = () => {
       price: getCheckoutItemPrice(item),
     }));
   }, [items]);
+
+  const buildCheckoutItems = useCallback(() => {
+    return items.map(item => ({
+      product_id: item.id,
+      quantity: item.quantity,
+      variant_id: item.variantId ?? null,
+      color_id: item.selectedColorId ?? null,
+      flavor_id: item.selectedFlavorId ?? null,
+      selected_pack_id: item.selectedPackId ?? null,
+      gift_packaging: item.gift_packaging?.selected === true
+          ? {
+            selected: true,
+            option_id: item.gift_packaging.option_id || null,
+            quantity: item.gift_packaging.quantity,
+            message: item.gift_packaging.message || '',
+          }
+        : null,
+    }));
+  }, [items]);
+
+  const buildCheckoutPayload = useCallback(() => ({
+    items: buildCheckoutItems(),
+    billing_name: formData.name,
+    billing_phone: formData.phone,
+    billing_email: formData.email,
+    billing_address: formData.address,
+    billing_address_2: formData.addressLine2 || undefined,
+    billing_city: formData.city,
+    billing_state: formData.state,
+    billing_country: formData.country,
+    billing_postal_code: formData.postalCode,
+    gift_packaging: items.some((item) => item.gift_packaging?.selected === true),
+    coupon_code: appliedCoupon?.code || undefined,
+  }), [appliedCoupon?.code, buildCheckoutItems, formData, items]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -315,6 +393,78 @@ const CheckoutPage = () => {
     handleApplyCoupon(normalizedCouponCodeFromCart);
   }, [handleApplyCoupon, items.length, normalizedCouponCodeFromCart]);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    if (!needsShippingQuote() || items.length === 0 || !isAuthenticated) {
+      setShippingPreview(null);
+      setShippingPreviewStatus('idle');
+      setShippingPreviewError('');
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    if (!hasValidShippingPincode()) {
+      setShippingPreview(null);
+      setShippingPreviewStatus('idle');
+      setShippingPreviewError('');
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setShippingPreviewStatus('loading');
+    setShippingPreviewError('');
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const payload = buildCheckoutPayload();
+        const result = await previewCashfreeCheckout({
+          items: payload.items,
+          billing_postal_code: payload.billing_postal_code,
+          billing_phone: payload.billing_phone || undefined,
+          billing_email: payload.billing_email || undefined,
+          gift_packaging: payload.gift_packaging,
+          coupon_code: payload.coupon_code,
+        });
+
+        if (isCurrent) {
+          setShippingPreview(result);
+          setShippingPreviewStatus('ready');
+          setShippingPreviewError('');
+        }
+      } catch (error) {
+        const detail = error?.response?.data?.detail;
+        const message = typeof detail === 'string'
+          ? detail
+          : detail?.message || SHIPPING_UNAVAILABLE_MESSAGE;
+
+        if (isCurrent) {
+          setShippingPreview(null);
+          setShippingPreviewStatus('error');
+          setShippingPreviewError(message);
+        }
+      }
+    }, 500);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    appliedCoupon?.code,
+    buildCheckoutPayload,
+    cartSignature,
+    formData.email,
+    formData.phone,
+    formData.postalCode,
+    hasValidShippingPincode,
+    isAuthenticated,
+    items.length,
+    needsShippingQuote,
+  ]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -338,37 +488,14 @@ const CheckoutPage = () => {
       return;
     }
 
+    if (needsShippingQuote() && shippingPreviewStatus !== 'ready') {
+      toast.error(shippingPreviewError || 'Please wait while shipping is calculated.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const checkoutPayload = {
-        items: items.map(item => ({
-          product_id: item.id,
-          quantity: item.quantity,
-          variant_id: item.variantId ?? null,
-          color_id: item.selectedColorId ?? null,
-          flavor_id: item.selectedFlavorId ?? null,
-          selected_pack_id: item.selectedPackId ?? null,
-          gift_packaging: item.gift_packaging?.selected === true
-              ? {
-                selected: true,
-                option_id: item.gift_packaging.option_id || null,
-                quantity: item.gift_packaging.quantity,
-                message: item.gift_packaging.message || '',
-              }
-            : null,
-        })),
-        billing_name: formData.name,
-        billing_phone: formData.phone,
-        billing_email: formData.email,
-        billing_address: formData.address,
-        billing_address_2: formData.addressLine2 || undefined,
-        billing_city: formData.city,
-        billing_state: formData.state,
-        billing_country: formData.country,
-        billing_postal_code: formData.postalCode,
-        gift_packaging: items.some((item) => item.gift_packaging?.selected === true),
-        coupon_code: appliedCoupon?.code || undefined,
-      };
+      const checkoutPayload = buildCheckoutPayload();
 
       const session = await createCashfreeSession(checkoutPayload);
       if (!session?.payment_session_id || !session?.order_id) {
@@ -640,7 +767,7 @@ const CheckoutPage = () => {
                       <Truck className="h-5 w-5 text-terracotta flex-shrink-0 mt-0.5" strokeWidth={1.5} />
                       <div>
                         <p className="font-medium text-sm">Free Shipping</p>
-                        <p className="text-xs text-muted-foreground">On orders over ₹1500</p>
+                        <p className="text-xs text-muted-foreground">Eligible items only</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -869,8 +996,15 @@ const CheckoutPage = () => {
                     )}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Shipping</span>
-                      <span className="text-[#8B9D83]">Free</span>
+                      <span className={getShippingLabel() === 'Free' ? 'text-[#8B9D83]' : shippingPreviewStatus === 'error' ? 'text-red-600' : 'text-muted-foreground'}>
+                        {getShippingLabel()}
+                      </span>
                     </div>
+                    {shippingPreviewError ? (
+                      <p className="text-sm text-red-600" data-testid="checkout-shipping-error">
+                        {shippingPreviewError}
+                      </p>
+                    ) : null}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Tax</span>
                       <span>Included</span>
@@ -879,14 +1013,14 @@ const CheckoutPage = () => {
 
                   <div className="border-t border-border mt-4 pt-4">
                     <div className="flex justify-between font-medium">
-                      <span>Total</span>
+                      <span>{getShippingLabel() === 'Calculated at checkout' ? 'Total before shipping' : 'Total'}</span>
                       <span className="text-xl" data-testid="checkout-total">
-                        {appliedCoupon ? formatINR(getCouponPreviewTotal()) : formatINR(getCouponPreviewTotal())}
+                        {formatINR(getCheckoutPreviewTotal())}
                       </span>
                     </div>
-                    {appliedCoupon && (
+                    {(appliedCoupon || shippingPreviewStatus === 'ready') && (
                       <p className="mt-2 text-xs text-muted-foreground">
-                        Your secure payment total will include this coupon discount.
+                        Final payable amount is confirmed securely before payment.
                       </p>
                     )}
                   </div>
@@ -894,7 +1028,7 @@ const CheckoutPage = () => {
                   <Button 
                     type="submit"
                     className="btn-primary w-full mt-6"
-                    disabled={loading}
+                    disabled={loading || (isAuthenticated && needsShippingQuote() && hasValidShippingPincode() && shippingPreviewStatus !== 'ready')}
                     data-testid="place-order-button"
                   >
                     {loading ? 'Opening secure payment...' : 'Proceed to Secure Payment'}

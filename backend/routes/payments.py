@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from core.auth import get_current_user
 from core.config import CASHFREE_ORDER_EXPIRY_MINUTES
-from models.order import CashfreeCheckoutCreate
+from models.order import CashfreeCheckoutCreate, CashfreeCheckoutPreview
 from services.cashfree_service import (
     create_cashfree_order_session,
     get_cashfree_order,
@@ -21,6 +21,7 @@ from services.order_service import (
     finalize_paid_cashfree_order,
     get_order,
     mark_cashfree_order_failed,
+    preview_checkout_shipping,
     record_cashfree_webhook_event,
     update_cashfree_refund_from_webhook,
 )
@@ -54,6 +55,11 @@ def _payment_result(order: dict) -> dict:
         "cashfree_payment_status": order.get("cashfree_payment_status"),
         "payment_status": order.get("payment_status"),
         "status": order.get("status"),
+        "shipping_charge": order.get("shipping_charge", 0),
+        "shipping_free_reason": order.get("shipping_free_reason"),
+        "shipping_breakdown": order.get("shipping_breakdown", []),
+        "total_price": order.get("total_price"),
+        "total_after_discount": order.get("total_after_discount"),
         "stock_reserved": order.get("stock_reserved"),
         "stock_reserved_until": order.get("stock_reserved_until"),
         "stock_deducted": order.get("stock_deducted"),
@@ -221,6 +227,14 @@ async def create_cashfree_session_route(
 
     order = await attach_cashfree_session(order_id, cashfree_data)
     return _payment_result(order)
+
+
+@router.post("/cashfree/preview", response_model=dict)
+async def preview_cashfree_checkout_route(
+    payload: CashfreeCheckoutPreview,
+    user: dict = Depends(get_current_user),
+):
+    return await preview_checkout_shipping(payload, user)
 
 
 @router.get("/cashfree/orders/{order_id}/status", response_model=dict)

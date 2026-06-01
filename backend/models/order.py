@@ -64,6 +64,15 @@ class CashfreeCheckoutCreate(BaseModel):
     gift_packaging: bool = False
     coupon_code: Optional[str] = None
 
+
+class CashfreeCheckoutPreview(BaseModel):
+    items: List[CartItem]
+    billing_postal_code: str
+    billing_phone: Optional[str] = None
+    billing_email: Optional[EmailStr] = None
+    gift_packaging: bool = False
+    coupon_code: Optional[str] = None
+
 class OrderPaymentFields(BaseModel):
     payment_provider: Optional[str] = None
     payment_status: Optional[str] = None

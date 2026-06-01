@@ -46,6 +46,7 @@ const getSelectedGiftOption = (item, activeOptions = getActiveGiftOptions(item))
 };
 
 const isPackItem = (item) => item.sell_as_pack === true;
+const CART_FREE_SHIPPING_THRESHOLD = 3000;
 const getPackSize = (item) => Math.max(Number(item.pack_size) || 1, 1);
 const getPackLabel = (item) => item.selectedPackLabel || item.pack_label || (getPackSize(item) === 1 ? 'Single' : `Pack of ${getPackSize(item)}`);
 const getPiecesPerPack = (item) => Math.max(Number(item.pieces_per_pack) || getPackSize(item) || 1, 1);
@@ -276,6 +277,15 @@ const CartPage = () => {
     return Math.max(getDiscountedSubtotal() - getCouponDiscountAmount(), 0);
   };
 
+  const getShippingLabel = () => {
+    const allItemsFreeShipping = items.length > 0 && items.every((item) => (
+      item.free_shipping === true || item.show_free_shipping === true
+    ));
+    return allItemsFreeShipping || getPayableItemsTotal() >= CART_FREE_SHIPPING_THRESHOLD
+      ? 'Free'
+      : 'Calculated at checkout';
+  };
+
   const getGiftPackagingUnitPrice = (item) => {
     const price = Number(getSelectedGiftOption(item)?.price);
     return Number.isFinite(price) && price >= 0 ? price : 149;
@@ -504,6 +514,9 @@ const CartPage = () => {
       </Layout>
     );
   }
+
+  const shippingLabel = getShippingLabel();
+  const isShippingNotCalculated = shippingLabel === 'Calculated at checkout';
 
   return (
     <Layout>
@@ -801,7 +814,9 @@ const CartPage = () => {
                   )}
                   <div className="flex justify-between gap-4 text-sm">
                     <span className="text-muted-foreground">Shipping</span>
-                    <span className="text-[#8B9D83]">Free</span>
+                    <span className={shippingLabel === 'Free' ? 'text-[#8B9D83]' : 'text-muted-foreground'}>
+                      {shippingLabel}
+                    </span>
                   </div>
                   <div className="flex justify-between gap-4 text-sm">
                     <span className="text-muted-foreground">Tax</span>
@@ -811,10 +826,14 @@ const CartPage = () => {
 
                 <div className="border-t border-border pt-4 mb-8">
                   <div className="flex items-end justify-between gap-4 font-medium">
-                    <span>Total Payable</span>
+                    <span>{isShippingNotCalculated ? 'Total before shipping' : 'Total Payable'}</span>
                     <span className="text-2xl text-[#52624C]" data-testid="cart-total">{formatINR(getFinalTotal())}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">After discounts, coupons, shipping, and taxes.</p>
+                  {isShippingNotCalculated && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Final payable amount may change after shipping is calculated.
+                    </p>
+                  )}
                 </div>
 
                 <div className="mb-8 border-t border-border pt-5">

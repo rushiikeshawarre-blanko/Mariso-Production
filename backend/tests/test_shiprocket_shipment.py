@@ -209,6 +209,7 @@ def test_serviceability_enabled_success_maps_response(monkeypatch):
         "enabled": True,
         "estimated_delivery_days": "3-6 days",
         "courier_name": "Delhivery",
+        "shipping_charge": None,
         "message": "Delivery available in 3-6 days",
     }
 
@@ -234,6 +235,7 @@ def test_serviceability_enabled_unavailable_maps_response(monkeypatch):
         "enabled": True,
         "estimated_delivery_days": None,
         "courier_name": None,
+        "shipping_charge": None,
         "message": "No courier serviceable for this pickup and delivery pincode",
     }
 

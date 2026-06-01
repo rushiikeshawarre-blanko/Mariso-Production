@@ -144,6 +144,8 @@ const getOrderSubtotal = (order) => (
 );
 
 const hasCouponDiscount = (order) => Boolean(order?.coupon_code && Number(order?.coupon_discount_amount || 0) > 0);
+const hasShippingCharge = (order) => order?.shipping_charge !== undefined && order?.shipping_charge !== null;
+const formatShippingCharge = (order) => Number(order?.shipping_charge || 0) === 0 ? 'Free' : formatINR(order?.shipping_charge);
 
 const getItemGiftPackaging = (item) => {
   const giftPackaging = item?.gift_packaging || item?.gift_packaging_snapshot;
@@ -864,6 +866,12 @@ const AdminOrders = () => {
                     <span>{formatINR(getGiftPackagingAmount(selectedOrder))}</span>
                   </div>
                 )}
+                {hasShippingCharge(selectedOrder) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{formatShippingCharge(selectedOrder)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between pt-2 text-base font-medium">
                   <span>Total Paid</span>
                   <span className="text-xl font-heading">{formatINR(selectedOrder.total_price)}</span>
@@ -916,6 +924,12 @@ const AdminOrders = () => {
                         <p className="text-muted-foreground">Net Paid Amount</p>
                         <p className="font-medium">{formatINR(selectedOrder.total_after_discount ?? selectedOrder.total_price)}</p>
                       </div>
+                      {hasShippingCharge(selectedOrder) && (
+                        <div>
+                          <p className="text-muted-foreground">Shipping Charge</p>
+                          <p className="font-medium">{formatShippingCharge(selectedOrder)}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-muted-foreground">Coupon Usage Recorded</p>
                         <p className="font-medium">{formatAdminValue(selectedOrder.coupon_usage_recorded)}</p>

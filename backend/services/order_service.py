@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from typing import Optional, List, Dict
 from models.order import (
+    CashfreeCheckoutPreview,
     CashfreeCheckoutCreate,
     OrderCancellationDecision,
     OrderCancellationRequest,
@@ -43,6 +44,7 @@ from services.cashfree_service import create_cashfree_refund, get_cashfree_order
 from services.coupon_service import increment_coupon_usage, validate_coupon
 from services.shiprocket_service import (
     build_shiprocket_order_payload,
+    check_shiprocket_serviceability,
     create_shiprocket_order,
     ensure_shiprocket_configured,
     normalize_shiprocket_order_response,
@@ -62,6 +64,11 @@ import uuid
 logger = logging.getLogger(__name__)
 STALE_PENDING_SYNC_LIMIT = 25
 CANCELLATION_WINDOW = timedelta(hours=1)
+CART_FREE_SHIPPING_THRESHOLD = 3000
+SHIPPING_UNAVAILABLE_MESSAGE = (
+    "Shipping charges could not be calculated for this pincode. "
+    "Please try another pincode or contact support."
+)
 
 
 def _now_iso() -> str:
@@ -525,6 +532,10 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("refund_webhook_received_at", None)
     order.setdefault("stock_restored_at", None)
     order.setdefault("shipping_provider", None)
+    order.setdefault("shipping_charge", 0)
+    order.setdefault("shipping_free_reason", None)
+    order.setdefault("shipping_rate_source", None)
+    order.setdefault("shipping_breakdown", [])
     order.setdefault("shiprocket_order_id", None)
     order.setdefault("shiprocket_shipment_id", None)
     order.setdefault("shiprocket_awb_code", None)
@@ -832,6 +843,156 @@ async def _calculate_coupon_adjustment(
         "subtotal_before_discount": _round_money(validation.get("cart_subtotal", calculated_total)),
         "total_after_discount": final_payable,
         "coupon_snapshot": validation.get("coupon_snapshot"),
+    }
+
+
+def _product_has_free_shipping(product: Optional[dict]) -> bool:
+    if not product:
+        return False
+    return bool(product.get("free_shipping", product.get("show_free_shipping", True)))
+
+
+def _extract_shipping_charge(serviceability: dict) -> Optional[float]:
+    for key in ("shipping_charge", "rate", "freight_charge", "courier_charge"):
+        value = serviceability.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            charge = float(value)
+        except (TypeError, ValueError):
+            continue
+        if charge >= 0:
+            return _round_money(charge)
+    return None
+
+
+async def calculate_order_shipping(
+    *,
+    items_with_details: List[dict],
+    destination_pincode: str,
+    discounted_product_subtotal: float,
+    product_map: Optional[Dict[str, dict]] = None,
+) -> dict:
+    products_by_id = dict(product_map or {})
+
+    if _round_money(discounted_product_subtotal) >= CART_FREE_SHIPPING_THRESHOLD:
+        return {
+            "shipping_charge": 0,
+            "shipping_label": "Free",
+            "shipping_free_reason": "cart_threshold",
+            "shipping_rate_source": None,
+            "shipping_breakdown": [
+                {
+                    "product_id": item.get("product_id"),
+                    "variant_id": item.get("variant_id"),
+                    "quantity": _get_effective_quantity(item),
+                    "free_shipping": _product_has_free_shipping(products_by_id.get(item.get("product_id"))),
+                    "shipping_charge": 0,
+                }
+                for item in items_with_details
+            ],
+        }
+
+    missing_product_ids = [
+        item.get("product_id")
+        for item in items_with_details
+        if item.get("product_id") and item.get("product_id") not in products_by_id
+    ]
+    if missing_product_ids:
+        products = await db.products.find(
+            {"id": {"$in": list(set(missing_product_ids))}},
+            {"_id": 0},
+        ).to_list(len(set(missing_product_ids)))
+        products_by_id.update({product["id"]: product for product in products})
+
+    total_shipping = 0
+    breakdown = []
+    charged_any = False
+
+    for item in items_with_details:
+        product_id = item.get("product_id")
+        product = products_by_id.get(product_id)
+        quantity = max(_get_effective_quantity(item), 1)
+        is_free_shipping = _product_has_free_shipping(product)
+
+        item_shipping = 0
+        if not is_free_shipping:
+            serviceability = check_shiprocket_serviceability(
+                pincode=destination_pincode,
+                product_id=product_id,
+                quantity=quantity,
+            )
+            if serviceability.get("enabled") is False or not serviceability.get("available"):
+                raise HTTPException(status_code=400, detail=SHIPPING_UNAVAILABLE_MESSAGE)
+
+            shipping_charge = _extract_shipping_charge(serviceability)
+            if shipping_charge is None:
+                raise HTTPException(status_code=400, detail=SHIPPING_UNAVAILABLE_MESSAGE)
+
+            item_shipping = shipping_charge
+            charged_any = True
+            total_shipping = _round_money(total_shipping + item_shipping)
+
+        breakdown.append({
+            "product_id": product_id,
+            "variant_id": item.get("variant_id"),
+            "quantity": quantity,
+            "free_shipping": is_free_shipping,
+            "shipping_charge": item_shipping,
+        })
+
+    return {
+        "shipping_charge": _round_money(total_shipping),
+        "shipping_label": "Free" if total_shipping == 0 else None,
+        "shipping_free_reason": "product" if total_shipping == 0 else None,
+        "shipping_rate_source": "shiprocket" if charged_any else None,
+        "shipping_breakdown": breakdown,
+    }
+
+
+async def preview_checkout_shipping(order_payload: CashfreeCheckoutPreview, user: dict):
+    if not order_payload.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
+    items_with_details, product_map = await _build_order_items(order_payload)
+    calculated_total = sum(item["line_total"] for item in items_with_details)
+    if not items_with_details:
+        raise HTTPException(status_code=400, detail="No valid items in order")
+
+    coupon_amounts = await _calculate_coupon_adjustment(
+        order_payload,
+        user or {},
+        items_with_details,
+        calculated_total,
+    )
+    discounted_product_subtotal = _round_money(
+        calculated_total - coupon_amounts["coupon_discount_amount"]
+    )
+    shipping_amounts = await calculate_order_shipping(
+        items_with_details=items_with_details,
+        destination_pincode=order_payload.billing_postal_code,
+        discounted_product_subtotal=discounted_product_subtotal,
+        product_map=product_map,
+    )
+    gift_packaging_total = _gift_packaging_total(order_payload, items_with_details)
+    total_payable = _round_money(
+        coupon_amounts["total_after_discount"] + shipping_amounts["shipping_charge"]
+    )
+
+    return {
+        "subtotal": _round_money(calculated_total),
+        "discount": coupon_amounts["coupon_discount_amount"],
+        "discounted_subtotal": discounted_product_subtotal,
+        "gift_packaging_amount": gift_packaging_total,
+        "total_after_discount": coupon_amounts["total_after_discount"],
+        "shipping_charge": shipping_amounts["shipping_charge"],
+        "shipping_label": shipping_amounts["shipping_label"] or (
+            "Paid" if shipping_amounts["shipping_charge"] > 0 else "Free"
+        ),
+        "shipping_free_reason": shipping_amounts["shipping_free_reason"],
+        "shipping_rate_source": shipping_amounts["shipping_rate_source"],
+        "total_payable": total_payable,
+        "shipping_breakdown": shipping_amounts["shipping_breakdown"],
     }
 
 
@@ -1400,13 +1561,24 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         items_with_details,
         calculated_total,
     )
+    discounted_product_subtotal = _round_money(
+        calculated_total - coupon_amounts["coupon_discount_amount"]
+    )
+    shipping_amounts = await calculate_order_shipping(
+        items_with_details=items_with_details,
+        destination_pincode=order_payload.billing_postal_code,
+        discounted_product_subtotal=discounted_product_subtotal,
+        product_map=product_map,
+    )
 
     await reserve_stock_for_order_items(items_with_details, product_map)
 
     now_dt = datetime.now(timezone.utc)
     created_at = now_dt.isoformat()
     reserved_until = (now_dt + timedelta(minutes=STOCK_RESERVATION_MINUTES)).isoformat()
-    final_total = coupon_amounts["total_after_discount"]
+    final_total = _round_money(
+        coupon_amounts["total_after_discount"] + shipping_amounts["shipping_charge"]
+    )
     gift_packaging_total = _gift_packaging_total(order_payload, items_with_details)
     formatted_phone = format_phone(order_payload.billing_phone or "")
     tracking_token = await _generate_tracking_token()
@@ -1474,6 +1646,10 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "refund_webhook_received_at": None,
         "stock_restored_at": None,
         "shipping_provider": None,
+        "shipping_charge": shipping_amounts["shipping_charge"],
+        "shipping_free_reason": shipping_amounts["shipping_free_reason"],
+        "shipping_rate_source": shipping_amounts["shipping_rate_source"],
+        "shipping_breakdown": shipping_amounts["shipping_breakdown"],
         "shiprocket_order_id": None,
         "shiprocket_shipment_id": None,
         "shiprocket_awb_code": None,

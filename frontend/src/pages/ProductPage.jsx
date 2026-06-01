@@ -517,7 +517,7 @@ const ProductPage = () => {
         enabled: product.show_free_shipping !== false,
         icon: Truck,
         title: 'Free Shipping',
-        subtitle: 'Over ₹1500',
+        subtitle: '',
       },
       {
         enabled: product.show_returns !== false,
@@ -952,7 +952,12 @@ const ProductPage = () => {
                     <div key={title} className="text-center">
                       <Icon className="h-6 w-6 mx-auto mb-2 text-terracotta" strokeWidth={1.5} />
                       <p className="text-[11px] text-foreground/55 leading-5">
-                        {title}<br />{subtitle}
+                        {title}
+                        {subtitle && (
+                          <>
+                            <br />{subtitle}
+                          </>
+                        )}
                       </p>
                     </div>
                   ))}

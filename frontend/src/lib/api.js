@@ -473,6 +473,16 @@ export const createCashfreeSession = async (checkoutData) => {
   }
 };
 
+export const previewCashfreeCheckout = async (checkoutData) => {
+  try {
+    const response = await axiosInstance.post(`/payments/cashfree/preview`, checkoutData);
+    return response.data;
+  } catch (error) {
+    console.error('Error previewing Cashfree checkout:', error);
+    throw error;
+  }
+};
+
 export const verifyCashfreePayment = async (orderId) => {
   try {
     const response = await axiosInstance.post(`/payments/cashfree/verify`, { order_id: orderId });

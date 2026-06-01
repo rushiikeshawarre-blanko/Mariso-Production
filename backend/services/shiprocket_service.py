@@ -258,6 +258,27 @@ def _format_estimated_delivery_days(courier: dict) -> Optional[str]:
     return text if "day" in text.lower() else f"{text} days"
 
 
+def _extract_courier_rate(courier: dict) -> Optional[float]:
+    for key in (
+        "rate",
+        "freight_charge",
+        "shipping_charge",
+        "shipping_charges",
+        "courier_charge",
+        "total_charge",
+    ):
+        value = courier.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            rate = float(value)
+        except (TypeError, ValueError):
+            continue
+        if rate >= 0:
+            return round(rate, 2)
+    return None
+
+
 def normalize_shiprocket_serviceability_response(data: dict) -> dict:
     couriers = _extract_serviceability_couriers(data)
     if not couriers:
@@ -269,12 +290,14 @@ def normalize_shiprocket_serviceability_response(data: dict) -> dict:
             "enabled": True,
             "estimated_delivery_days": None,
             "courier_name": None,
+            "shipping_charge": None,
             "message": message,
         }
 
     courier = couriers[0]
     estimated_days = _format_estimated_delivery_days(courier)
     courier_name = courier.get("courier_name") or courier.get("courier_company_name")
+    shipping_charge = _extract_courier_rate(courier)
     message = "Delivery is available"
     if estimated_days:
         message = f"Delivery available in {estimated_days}"
@@ -284,6 +307,7 @@ def normalize_shiprocket_serviceability_response(data: dict) -> dict:
         "enabled": True,
         "estimated_delivery_days": estimated_days,
         "courier_name": courier_name,
+        "shipping_charge": shipping_charge,
         "message": message,
     }
 

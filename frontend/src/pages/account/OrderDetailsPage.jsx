@@ -220,6 +220,7 @@ const OrderDetailsPage = () => {
   const orderShortId = order.id?.slice(0, 8).toUpperCase();
   const hasGiftedItems = hasItemGiftPackaging(order.items);
   const hasGiftPackaging = Boolean(order.gift_packaging || hasGiftedItems || Number(order.gift_packaging_amount || 0) > 0);
+  const hasShippingCharge = order.shipping_charge !== undefined && order.shipping_charge !== null;
   const cancellationStatus = order.cancellation_status || 'none';
   const refundStatusText = {
     pending: 'Refund pending mariso team initiation',
@@ -548,6 +549,13 @@ const OrderDetailsPage = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Gift Packaging</span>
                 <span>{formatINR(getGiftPackagingAmount(order))}</span>
+              </div>
+            )}
+
+            {hasShippingCharge && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping</span>
+                <span>{Number(order.shipping_charge || 0) === 0 ? 'Free' : formatINR(order.shipping_charge)}</span>
               </div>
             )}
 
