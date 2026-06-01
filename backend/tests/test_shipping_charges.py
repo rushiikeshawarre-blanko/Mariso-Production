@@ -17,11 +17,13 @@ def _item(product_id, quantity=1, variant_id=None):
     }
 
 
-def _product(product_id, free_shipping):
-    return {
+def _product(product_id, free_shipping, **overrides):
+    product = {
         "id": product_id,
         "show_free_shipping": free_shipping,
     }
+    product.update(overrides)
+    return product
 
 
 def _preview_payload(product_id="prod-1", quantity=1):
@@ -136,6 +138,52 @@ def test_quantity_two_non_free_item_uses_quantity_for_shipping(monkeypatch):
 
     assert calls[0]["quantity"] == 2
     assert result["shipping_charge"] == 160
+
+
+def test_product_package_fields_are_passed_to_shiprocket_quote(monkeypatch):
+    result, calls = _calculate(
+        [_item("paid-prod", quantity=2)],
+        1000,
+        {
+            "paid-prod": _product(
+                "paid-prod",
+                False,
+                weight=0.75,
+                length=12,
+                breadth=10,
+                height=8,
+            )
+        },
+        monkeypatch,
+    )
+
+    assert result["shipping_charge"] == 80
+    assert calls == [
+        {
+            "pincode": "400706",
+            "product_id": "paid-prod",
+            "quantity": 2,
+            "weight_kg": 0.75,
+            "length_cm": 12.0,
+            "breadth_cm": 10.0,
+            "height_cm": 8.0,
+        }
+    ]
+
+
+def test_missing_product_package_fields_pass_none_for_env_fallback(monkeypatch):
+    result, calls = _calculate(
+        [_item("paid-prod")],
+        1000,
+        {"paid-prod": _product("paid-prod", False, weight="", length=0, breadth=None, height="invalid")},
+        monkeypatch,
+    )
+
+    assert result["shipping_charge"] == 80
+    assert calls[0]["weight_kg"] is None
+    assert calls[0]["length_cm"] is None
+    assert calls[0]["breadth_cm"] is None
+    assert calls[0]["height_cm"] is None
 
 
 def test_shiprocket_unavailable_blocks_non_free_shipping(monkeypatch):

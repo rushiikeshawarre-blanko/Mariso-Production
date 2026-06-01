@@ -203,6 +203,9 @@ def test_serviceability_enabled_success_maps_response(monkeypatch):
     assert captured["params"]["delivery_postcode"] == "560001"
     assert captured["params"]["cod"] == 0
     assert captured["params"]["weight"] == 1.0
+    assert captured["params"]["length"] == 20
+    assert captured["params"]["breadth"] == 20
+    assert captured["params"]["height"] == 15
     assert captured["headers"]["Authorization"] == "Bearer token-123"
     assert result == {
         "available": True,
@@ -212,6 +215,87 @@ def test_serviceability_enabled_success_maps_response(monkeypatch):
         "shipping_charge": None,
         "message": "Delivery available in 3-6 days",
     }
+
+
+def test_serviceability_uses_product_package_fields_with_quantity(monkeypatch):
+    enable_shiprocket(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(shiprocket_service, "authenticate_shiprocket", lambda: "token-123")
+
+    def fake_get(url, params, headers, timeout):
+        captured.update({"params": params})
+        return FakeShiprocketResponse(
+            {
+                "data": {
+                    "available_courier_companies": [
+                        {
+                            "courier_name": "Delhivery",
+                            "freight_charge": 120,
+                        }
+                    ]
+                }
+            }
+        )
+
+    monkeypatch.setattr(shiprocket_service.requests, "get", fake_get)
+
+    result = shiprocket_service.check_shiprocket_serviceability(
+        pincode="560001",
+        product_id="prod-1",
+        quantity=3,
+        weight_kg=0.7,
+        length_cm=13.5,
+        breadth_cm=9.25,
+        height_cm=7,
+    )
+
+    assert captured["params"]["weight"] == 2.1
+    assert captured["params"]["length"] == 13.5
+    assert captured["params"]["breadth"] == 9.25
+    assert captured["params"]["height"] == 7
+    assert result["shipping_charge"] == 120
+
+
+def test_serviceability_invalid_package_fields_fallback_to_env_defaults(monkeypatch):
+    enable_shiprocket(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_DEFAULT_WEIGHT_KG", "0.8")
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_DEFAULT_LENGTH_CM", "18")
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_DEFAULT_BREADTH_CM", "14")
+    monkeypatch.setattr(shiprocket_service.config, "SHIPROCKET_DEFAULT_HEIGHT_CM", "9")
+    monkeypatch.setattr(shiprocket_service, "authenticate_shiprocket", lambda: "token-123")
+
+    def fake_get(url, params, headers, timeout):
+        captured.update({"params": params})
+        return FakeShiprocketResponse(
+            {
+                "data": {
+                    "available_courier_companies": [
+                        {
+                            "courier_name": "Delhivery",
+                            "freight_charge": 80,
+                        }
+                    ]
+                }
+            }
+        )
+
+    monkeypatch.setattr(shiprocket_service.requests, "get", fake_get)
+
+    shiprocket_service.check_shiprocket_serviceability(
+        pincode="560001",
+        product_id="prod-1",
+        quantity=2,
+        weight_kg=0,
+        length_cm=None,
+        breadth_cm="bad",
+        height_cm=-1,
+    )
+
+    assert captured["params"]["weight"] == 1.6
+    assert captured["params"]["length"] == 18
+    assert captured["params"]["breadth"] == 14
+    assert captured["params"]["height"] == 9
 
 
 def test_serviceability_enabled_unavailable_maps_response(monkeypatch):

@@ -230,6 +230,10 @@ export default function AdminProducts() {
     show_returns: true,
     show_reusable_container: true,
     show_gift_packaging: true,
+    weight: '',
+    length: '',
+    breadth: '',
+    height: '',
     gift_packaging_title: 'Add Gift Packaging',
     gift_packaging_description: 'Premium gift wrap with ribbon and a custom note card',
     gift_packaging_price: '149',
@@ -1266,6 +1270,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: true,
       show_reusable_container: true,
       show_gift_packaging: true,
+      weight: '',
+      length: '',
+      breadth: '',
+      height: '',
       gift_packaging_title: 'Add Gift Packaging',
       gift_packaging_description: 'Premium gift wrap with ribbon and a custom note card',
       gift_packaging_price: '149',
@@ -1402,6 +1410,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: product.show_returns !== false,
       show_reusable_container: product.show_reusable_container !== false,
       show_gift_packaging: product.show_gift_packaging !== false,
+      weight: product.weight?.toString() || '',
+      length: product.length?.toString() || '',
+      breadth: product.breadth?.toString() || '',
+      height: product.height?.toString() || '',
       gift_packaging_title: product.gift_packaging_title || 'Add Gift Packaging',
       gift_packaging_description: product.gift_packaging_description || 'Premium gift wrap with ribbon and a custom note card',
       gift_packaging_price: (product.gift_packaging_price ?? 149).toString(),
@@ -1798,6 +1810,10 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
       show_returns: formData.show_returns,
       show_reusable_container: formData.show_reusable_container,
       show_gift_packaging: formData.show_gift_packaging,
+      weight: formData.weight ? parseFloat(formData.weight) : null,
+      length: formData.length ? parseFloat(formData.length) : null,
+      breadth: formData.breadth ? parseFloat(formData.breadth) : null,
+      height: formData.height ? parseFloat(formData.height) : null,
       gift_packaging_title: legacyGiftOption.title,
       gift_packaging_description: legacyGiftOption.description,
       gift_packaging_price: parseFloat(legacyGiftOption.price) || 0,
@@ -2420,6 +2436,63 @@ const openNewColorImageRecropper = (imageUrl, imageIndex) => {
                         onCheckedChange={(checked) => setFormData({ ...formData, show_gift_packaging: checked })}
                       />
                       <Label>Gift Packaging</Label>
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-4">
+                    <h3 className="font-medium">Shipping Package</h3>
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+                      <div>
+                        <Label htmlFor="weight">Weight (kg)</Label>
+                        <Input
+                          id="weight"
+                          name="weight"
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          value={formData.weight}
+                          onChange={handleChange}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="length">Length (cm)</Label>
+                        <Input
+                          id="length"
+                          name="length"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formData.length}
+                          onChange={handleChange}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="breadth">Breadth (cm)</Label>
+                        <Input
+                          id="breadth"
+                          name="breadth"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formData.breadth}
+                          onChange={handleChange}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="height">Height (cm)</Label>
+                        <Input
+                          id="height"
+                          name="height"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formData.height}
+                          onChange={handleChange}
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
                   </div>
                   {formData.show_gift_packaging && (

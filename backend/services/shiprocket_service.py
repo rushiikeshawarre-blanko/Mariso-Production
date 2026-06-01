@@ -363,6 +363,10 @@ def check_shiprocket_serviceability(
     pincode: str,
     product_id: Optional[str] = None,
     quantity: int = 1,
+    weight_kg: Optional[float] = None,
+    length_cm: Optional[float] = None,
+    breadth_cm: Optional[float] = None,
+    height_cm: Optional[float] = None,
 ) -> dict:
     if not config.SHIPROCKET_ENABLED:
         return {
@@ -377,7 +381,10 @@ def check_shiprocket_serviceability(
     _require_shiprocket_serviceability_config()
     token = authenticate_shiprocket()
     safe_quantity = max(int(quantity or 1), 1)
-    weight = _to_float(config.SHIPROCKET_DEFAULT_WEIGHT_KG, 0.5) * safe_quantity
+    weight = _to_float(weight_kg, _to_float(config.SHIPROCKET_DEFAULT_WEIGHT_KG, 0.5)) * safe_quantity
+    length = _to_float(length_cm, _to_float(config.SHIPROCKET_DEFAULT_LENGTH_CM, 20))
+    breadth = _to_float(breadth_cm, _to_float(config.SHIPROCKET_DEFAULT_BREADTH_CM, 20))
+    height = _to_float(height_cm, _to_float(config.SHIPROCKET_DEFAULT_HEIGHT_CM, 15))
 
     response = requests.get(
         f"{config.SHIPROCKET_BASE_URL}/courier/serviceability/",
@@ -386,6 +393,9 @@ def check_shiprocket_serviceability(
             "delivery_postcode": pincode,
             "cod": 0,
             "weight": round(weight, 3),
+            "length": round(length, 2),
+            "breadth": round(breadth, 2),
+            "height": round(height, 2),
         },
         headers=_shiprocket_headers(token),
         timeout=SHIPROCKET_TIMEOUT_SECONDS,

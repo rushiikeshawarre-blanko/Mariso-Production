@@ -114,6 +114,10 @@ class ProductCreate(BaseModel):
     show_returns: bool = True
     show_reusable_container: bool = True
     show_gift_packaging: bool = True
+    weight: Optional[float] = Field(None, gt=0)
+    length: Optional[float] = Field(None, gt=0)
+    breadth: Optional[float] = Field(None, gt=0)
+    height: Optional[float] = Field(None, gt=0)
     gift_packaging_title: str = "Add Gift Packaging"
     gift_packaging_description: str = "Premium gift wrap with ribbon and a custom note card"
     gift_packaging_price: float = Field(149, ge=0)
@@ -177,6 +181,10 @@ class ProductUpdate(BaseModel):
     show_returns: Optional[bool] = None
     show_reusable_container: Optional[bool] = None
     show_gift_packaging: Optional[bool] = None
+    weight: Optional[float] = Field(None, gt=0)
+    length: Optional[float] = Field(None, gt=0)
+    breadth: Optional[float] = Field(None, gt=0)
+    height: Optional[float] = Field(None, gt=0)
     gift_packaging_title: Optional[str] = None
     gift_packaging_description: Optional[str] = None
     gift_packaging_price: Optional[float] = Field(None, ge=0)
@@ -235,6 +243,10 @@ class ProductResponse(BaseModel):
     show_returns: bool = True
     show_reusable_container: bool = True
     show_gift_packaging: bool = True
+    weight: Optional[float] = None
+    length: Optional[float] = None
+    breadth: Optional[float] = None
+    height: Optional[float] = None
     gift_packaging_title: str = "Add Gift Packaging"
     gift_packaging_description: str = "Premium gift wrap with ribbon and a custom note card"
     gift_packaging_price: float = 149

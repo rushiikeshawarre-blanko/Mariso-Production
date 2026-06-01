@@ -866,6 +866,24 @@ def _extract_shipping_charge(serviceability: dict) -> Optional[float]:
     return None
 
 
+def _positive_float_or_none(value) -> Optional[float]:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _get_product_package_details(product: Optional[dict]) -> dict:
+    product = product or {}
+    return {
+        "weight_kg": _positive_float_or_none(product.get("weight")),
+        "length_cm": _positive_float_or_none(product.get("length")),
+        "breadth_cm": _positive_float_or_none(product.get("breadth")),
+        "height_cm": _positive_float_or_none(product.get("height")),
+    }
+
+
 async def calculate_order_shipping(
     *,
     items_with_details: List[dict],
@@ -921,6 +939,7 @@ async def calculate_order_shipping(
                 pincode=destination_pincode,
                 product_id=product_id,
                 quantity=quantity,
+                **_get_product_package_details(product),
             )
             if serviceability.get("enabled") is False or not serviceability.get("available"):
                 raise HTTPException(status_code=400, detail=SHIPPING_UNAVAILABLE_MESSAGE)
