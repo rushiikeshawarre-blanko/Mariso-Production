@@ -723,7 +723,7 @@ const CartPage = () => {
                             <div className="mt-4 space-y-4 pl-0 sm:pl-7">
                                   <div className="flex flex-wrap items-center gap-3">
                                     <Label htmlFor={`gift-quantity-${cartItemKey}`} className="text-sm">
-                                      Gift quantity
+                                      quantity
                                     </Label>
                                     <div className="flex items-center rounded-full border border-border">
                                       <button
