@@ -16,6 +16,7 @@ from routes.payments import router as payments_router
 from routes.coupons import router as coupons_router
 from routes.feedback import router as feedback_router
 from routes.shiprocket import router as shiprocket_router
+from services.scheduler_service import start_feedback_scheduler, stop_feedback_scheduler
 
 from core.config import (
     ENVIRONMENT,
@@ -59,6 +60,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_security_headers(request, call_next):
+    # Cashfree webhook - MUST remain public endpoint. There is no global auth
+    # middleware today; this marker lets any future auth middleware bypass it.
+    if "/cashfree/webhook" in request.url.path:
+        request.state.skip_auth = True
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -79,6 +84,7 @@ async def startup_db_check():
         raise e
     
     await create_indexes(db)
+    start_feedback_scheduler()
 
 
 @app.get("/")
@@ -122,4 +128,5 @@ app.include_router(api_router)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    await stop_feedback_scheduler()
     close_mongo_connection()

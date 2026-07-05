@@ -297,7 +297,7 @@ def test_cashfree_refund_webhook_route_uses_verified_flow(monkeypatch):
 
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert calls == [({
         "order_id": "order-1234567890",
         "refund_id": "refund-order-1",
@@ -329,7 +329,7 @@ def test_cashfree_refund_event_extracts_refunds_list_payload(monkeypatch):
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
     order = asyncio.run(order_service.db.orders.find_one({"id": "order-1234567890"}))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert order["refund_status"] == "success"
     assert order["cashfree_refund_status"] == "REFUNDED"
 
@@ -355,7 +355,7 @@ def test_cashfree_auto_refund_event_extracts_direct_data_payload(monkeypatch):
 
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert calls == [({
         "order_id": "order-1234567890",
         "refund_id": "refund-order-1",
@@ -387,7 +387,7 @@ def test_cashfree_refund_success_webhook_payload_updates_refund_status(monkeypat
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
     order = asyncio.run(order_service.db.orders.find_one({"id": "order-1234567890"}))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert order["refund_status"] == "success"
     assert order["cashfree_refund_status"] == "SUCCESS"
 
@@ -415,7 +415,7 @@ def test_cashfree_refund_failed_webhook_payload_updates_refund_status(monkeypatc
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
     order = asyncio.run(order_service.db.orders.find_one({"id": "order-1234567890"}))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert order["refund_status"] == "failed"
     assert order["cashfree_refund_status"] == "FAILED"
     assert order["refund_failed_reason"] == "Bank rejected refund"
@@ -456,7 +456,7 @@ def test_cashfree_payment_success_webhook_route_unchanged(monkeypatch):
 
     result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
 
-    assert result == {"ok": True, "status": "processed"}
+    assert result == {"ok": True, "received": True}
     assert calls[0][0] == "record"
     assert calls[0][1]["order_id"] == "order-1234567890"
     assert calls[0][1]["event_type"] == "PAYMENT_SUCCESS_WEBHOOK"
@@ -501,6 +501,13 @@ def test_cashfree_webhook_signature_accepts_valid_hmac_and_rejects_bad_or_missin
         raw_body,
         {"x-webhook-timestamp": timestamp},
     )
+
+
+def test_cashfree_webhook_signature_is_optional_without_webhook_secret(monkeypatch):
+    monkeypatch.setattr(cashfree_service, "CASHFREE_WEBHOOK_SECRET", "")
+    monkeypatch.setattr(cashfree_service, "CASHFREE_CLIENT_SECRET", "client-secret")
+
+    assert cashfree_service.verify_cashfree_webhook_signature(b"{}", {})
 
 
 def test_duplicate_paid_cashfree_notifications_are_sent_once(monkeypatch):
@@ -553,7 +560,7 @@ def test_cashfree_unknown_non_refund_webhook_returns_200_and_logs(monkeypatch, c
     with caplog.at_level("INFO", logger=payments.logger.name):
         result = asyncio.run(payments.cashfree_webhook_route(FakeRequest(payload)))
 
-    assert result == {"ok": True, "status": "ignored"}
+    assert result == {"ok": True, "received": True}
     assert calls[0]["event_type"] == "SOME_OTHER_WEBHOOK"
     assert "Cashfree webhook received non-refund event" in caplog.text
 

@@ -32,6 +32,14 @@ async def create_indexes(db):
     await db.orders.create_index("created_at")
     await db.orders.create_index("status")
     await db.orders.create_index([
+        ("status", 1),
+        ("delivered_at", 1),
+        ("feedback_processing_started_at", 1),
+        ("feedback_sent_at", 1),
+        ("feedback_email_sent_at", 1),
+        ("feedback_whatsapp_sent_at", 1),
+    ])
+    await db.orders.create_index([
         ("payment_provider", 1),
         ("payment_status", 1),
         ("status", 1),
@@ -73,3 +81,4 @@ async def create_indexes(db):
     await db.feedback_submissions.create_index([("show_on_homepage", 1), ("homepage_status", 1)])
 
     await db.homepage_settings.create_index("key", unique=True)
+    await db.system_settings.create_index("key", unique=True)

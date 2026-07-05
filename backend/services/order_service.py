@@ -55,7 +55,7 @@ from email_service import (
     send_order_status_email,
     send_admin_new_order_alert,
 )
-from whatsapp_service import send_feedback_reward_whatsapp, send_order_status_whatsapp
+from whatsapp_service import send_order_status_whatsapp
 import logging
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -497,6 +497,9 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     order.setdefault("customer_email_sent_at", None)
     order.setdefault("admin_email_sent_at", None)
     order.setdefault("whatsapp_sent_at", None)
+    order.setdefault("feedback_processing_started_at", None)
+    order.setdefault("feedback_sent_at", None)
+    order.setdefault("feedback_email_sent_at", None)
     order.setdefault("feedback_whatsapp_sent_at", None)
     order.setdefault("coupon_code", None)
     order.setdefault("coupon_id", None)
@@ -1427,6 +1430,9 @@ async def _create_order_doc(order_id: str, order: OrderCreate, user: dict, items
         "customer_email_sent_at": None,
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
+        "feedback_processing_started_at": None,
+        "feedback_sent_at": None,
+        "feedback_email_sent_at": None,
         "feedback_whatsapp_sent_at": None,
         "payment_events": [],
         "cancellation_status": "none",
@@ -1635,6 +1641,9 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         "customer_email_sent_at": None,
         "admin_email_sent_at": None,
         "whatsapp_sent_at": None,
+        "feedback_processing_started_at": None,
+        "feedback_sent_at": None,
+        "feedback_email_sent_at": None,
         "feedback_whatsapp_sent_at": None,
         "payment_events": [
             _payment_event(
@@ -2894,22 +2903,21 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
         logger.info("DEBUG status changed, applying notification strategy")
 
         status = status_update.status
-        feedback_email_ready = True
         if status in ["packed", "shipped", "delivered"]:
             order["tracking_token"] = await ensure_order_tracking_token(order)
         if status == "delivered":
             try:
                 order["feedback_token"] = await ensure_order_feedback_token(order)
             except Exception:
-                feedback_email_ready = False
                 logger.exception(
-                    "Delivered feedback email skipped because a feedback token could not be prepared for order_id=%s",
+                    "Delivered feedback token could not be prepared for order_id=%s",
                     order_id,
                 )
 
-        # EMAIL → send only for shipped and delivered from admin status updates.
+        # EMAIL → send only shipped status updates here. Delivered feedback email is
+        # handled by the scheduler after the configured feedback delay.
         # Confirmed is already sent at checkout.
-        if status in ["shipped", "delivered"] and feedback_email_ready:
+        if status == "shipped":
             try:
                 send_order_status_email(order)
             except Exception as e:
@@ -2923,20 +2931,7 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
                 logger.error(f"Failed to send status WhatsApp: {e}")
 
         if status == "delivered":
-            if order.get("feedback_whatsapp_sent_at"):
-                logger.info("Feedback reward WhatsApp skipped: already sent for order_id=%s", order_id)
-            else:
-                try:
-                    feedback_whatsapp_result = send_feedback_reward_whatsapp(order)
-                    if feedback_whatsapp_result and feedback_whatsapp_result.get("success"):
-                        feedback_whatsapp_sent_at = _now_iso()
-                        await db.orders.update_one(
-                            {"id": order_id, "feedback_whatsapp_sent_at": {"$in": [None, ""]}},
-                            {"$set": {"feedback_whatsapp_sent_at": feedback_whatsapp_sent_at}},
-                        )
-                        order["feedback_whatsapp_sent_at"] = feedback_whatsapp_sent_at
-                except Exception as e:
-                    logger.error(f"Failed to send feedback reward WhatsApp: {e}")
+            logger.info("Feedback reward notifications deferred to scheduler for order_id=%s", order_id)
 
     else:
         logger.info("DEBUG status did not change, skipping notifications")

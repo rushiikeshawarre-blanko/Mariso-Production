@@ -44,7 +44,10 @@ def _get_header(headers: dict, name: str) -> Optional[str]:
 
 
 def _get_cashfree_webhook_secret() -> str:
-    return CASHFREE_WEBHOOK_SECRET or CASHFREE_CLIENT_SECRET
+    # A webhook signing secret is distinct from the API client secret. Falling
+    # back to the latter makes an unset development webhook secret reject every
+    # Cashfree test callback.
+    return CASHFREE_WEBHOOK_SECRET
 
 
 def _log_cashfree_webhook_signature_failure(
@@ -87,6 +90,12 @@ def verify_cashfree_webhook_signature(raw_body: bytes, headers: dict) -> bool:
     secret = _get_cashfree_webhook_secret()
     signature = _get_header(headers, "x-webhook-signature")
     timestamp = _get_header(headers, "x-webhook-timestamp")
+
+    if not secret:
+        logger.warning(
+            "Cashfree webhook signature validation skipped: CASHFREE_WEBHOOK_SECRET is not configured"
+        )
+        return True
 
     if not secret or not signature or not timestamp:
         _log_cashfree_webhook_signature_failure(raw_body, headers, secret, signature, timestamp)

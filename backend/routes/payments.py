@@ -94,16 +94,36 @@ def _cashfree_webhook_data_keys(payload: dict) -> list[str]:
     return []
 
 
-@router.post("/cashfree/webhook", response_model=dict)
+def _cashfree_webhook_log_headers(headers: dict) -> dict:
+    sensitive_headers = {"authorization", "cookie", "set-cookie", "x-api-key"}
+    return {
+        key: "[REDACTED]" if key.lower() in sensitive_headers else value
+        for key, value in headers.items()
+    }
+
+
+# Cashfree webhook - MUST remain public endpoint
+@router.post("/cashfree/webhook", include_in_schema=False, response_model=dict)
 async def cashfree_webhook_route(request: Request):
     raw_body = await request.body()
-    if not verify_cashfree_webhook_signature(raw_body, request.headers):
-        raise HTTPException(status_code=401, detail="Invalid Cashfree webhook signature")
+    headers = dict(request.headers)
+    signature = request.headers.get("x-webhook-signature")
+    logger.info(
+        "Cashfree webhook raw request received: headers=%s body=%s x_webhook_signature=%s",
+        _cashfree_webhook_log_headers(headers),
+        raw_body.decode("utf-8", errors="replace"),
+        signature,
+    )
 
     try:
         payload = json.loads(raw_body)
     except json.JSONDecodeError:
+        logger.warning("Cashfree webhook rejected: invalid JSON payload")
         raise HTTPException(status_code=400, detail="Invalid Cashfree webhook payload")
+
+    if not verify_cashfree_webhook_signature(raw_body, request.headers):
+        logger.warning("Cashfree webhook rejected: signature validation failed")
+        raise HTTPException(status_code=401, detail="Invalid Cashfree webhook signature")
 
     webhook = normalize_cashfree_webhook_payload(payload, request.headers)
     order_id = webhook.get("order_id")
@@ -131,49 +151,35 @@ async def cashfree_webhook_route(request: Request):
             "refund_status": webhook.get("refund_status"),
             "status_description": webhook.get("refund_failed_reason"),
         }
-        order = await update_cashfree_refund_from_webhook(cashfree_refund_data, event_type=event_type)
-        return {"ok": True, "status": "processed" if order else "ignored"}
+        await update_cashfree_refund_from_webhook(cashfree_refund_data, event_type=event_type)
+    else:
+        logger.info(
+            "Cashfree webhook received non-refund event: event_type=%s order_id=%s "
+            "payment_status=%s",
+            event_type,
+            order_id,
+            payment_status,
+        )
 
-    logger.info(
-        "Cashfree webhook received non-refund event: event_type=%s order_id=%s "
-        "payment_status=%s",
-        event_type,
-        order_id,
-        payment_status,
-    )
+        if order_id:
+            order = await record_cashfree_webhook_event(
+                order_id=order_id,
+                event_type=event_type,
+                payment_status=payment_status,
+                cf_payment_id=webhook.get("cf_payment_id"),
+                idempotency_key=webhook.get("idempotency_key"),
+                info=webhook,
+            )
 
-    if not order_id:
-        return {"ok": True, "status": "ignored"}
+            if (
+                order
+                and event_type == CASHFREE_PAYMENT_SUCCESS_WEBHOOK
+                and payment_status == CASHFREE_PAYMENT_STATUS_SUCCESS
+            ):
+                cashfree_data = get_cashfree_order(order_id)
+                await finalize_paid_cashfree_order(order_id, cashfree_data, source="webhook")
 
-    order = await record_cashfree_webhook_event(
-        order_id=order_id,
-        event_type=event_type,
-        payment_status=payment_status,
-        cf_payment_id=webhook.get("cf_payment_id"),
-        idempotency_key=webhook.get("idempotency_key"),
-        info=webhook,
-    )
-
-    if not order:
-        return {"ok": True, "status": "ignored"}
-
-    is_duplicate = order.get("cashfree_webhook_duplicate") is True
-
-    if (
-        event_type == CASHFREE_PAYMENT_SUCCESS_WEBHOOK
-        and payment_status == CASHFREE_PAYMENT_STATUS_SUCCESS
-    ):
-        cashfree_data = get_cashfree_order(order_id)
-        await finalize_paid_cashfree_order(order_id, cashfree_data, source="webhook")
-        return {"ok": True, "status": "duplicate" if is_duplicate else "processed"}
-
-    if event_type in {
-        CASHFREE_PAYMENT_FAILED_WEBHOOK,
-        CASHFREE_PAYMENT_USER_DROPPED_WEBHOOK,
-    }:
-        return {"ok": True, "status": "duplicate" if is_duplicate else "ignored"}
-
-    return {"ok": True, "status": "duplicate" if is_duplicate else "ignored"}
+    return {"ok": True, "received": True}
 
 
 @router.post("/cashfree/create-session", response_model=dict)

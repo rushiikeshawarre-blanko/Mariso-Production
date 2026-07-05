@@ -6,6 +6,11 @@ from services.admin_service import (
     export_orders_excel_service,
     get_customers_service,
 )
+from services.settings_service import (
+    AdminSettingsUpdate,
+    get_admin_settings,
+    update_admin_settings,
+)
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -35,3 +40,16 @@ async def export_orders_excel(
 @router.get("/admin/customers", response_model=List[dict])
 async def get_customers(admin: dict = Depends(get_admin_user)):
     return await get_customers_service()
+
+
+@router.get("/admin/settings", response_model=dict)
+async def get_settings(admin: dict = Depends(get_admin_user)):
+    return await get_admin_settings()
+
+
+@router.put("/admin/settings", response_model=dict)
+async def update_settings(
+    settings: AdminSettingsUpdate,
+    admin: dict = Depends(get_admin_user),
+):
+    return await update_admin_settings(settings)

@@ -434,3 +434,23 @@ def send_order_status_email(order: dict) -> None:
         """
 
     send_email(subject, to_email, html)
+
+
+def send_feedback_reward_email(order: dict) -> dict:
+    order_id = order.get("id")
+    if not order.get("billing_email"):
+        logger.info("Feedback reward email skipped: missing billing_email order_id=%s", order_id)
+        return {"success": False, "error": "missing_recipient"}
+
+    if not str(order.get("feedback_token") or "").strip():
+        logger.warning("Feedback reward email skipped: missing feedback_token order_id=%s", order_id)
+        return {"success": False, "error": "missing_feedback_token"}
+
+    try:
+        delivered_order = {**order, "status": "delivered"}
+        send_order_status_email(delivered_order)
+        logger.info("Feedback reward email sent: order_id=%s", order_id)
+        return {"success": True, "error": None}
+    except Exception as exc:
+        logger.exception("Feedback reward email failed: order_id=%s", order_id)
+        return {"success": False, "error": exc.__class__.__name__}

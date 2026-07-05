@@ -10,7 +10,7 @@ import { createCashfreeSession, getAvailableCoupons, previewCashfreeCheckout, va
 import { loadCashfree } from '../lib/cashfree';
 import { formatINR } from '../lib/currency';
 import { getCitiesForState, INDIA_STATES, withStoredOption } from '../lib/indiaLocations';
-import { getFirstImageUrl, getThumbImage } from '../lib/utils';
+import { cn, getFirstImageUrl, getThumbImage } from '../lib/utils';
 import { toast } from 'sonner';
 import { CreditCard, Lock, ChevronLeft, Gift, Sparkles, Heart, Recycle, Truck, Star, ShieldCheck } from 'lucide-react';
 
@@ -142,6 +142,11 @@ const CheckoutPage = () => {
 
   const stateOptions = withStoredOption(INDIA_STATES, formData.state);
   const cityOptions = withStoredOption(getCitiesForState(formData.state), formData.city);
+  const checkoutInputClassName = 'mt-2 placeholder:text-muted-foreground/70';
+  const getCheckoutSelectClassName = (fieldName, className) => cn(
+    className,
+    !formData[fieldName] && 'text-muted-foreground/70 focus:text-foreground'
+  );
 
   useEffect(() => {
     if (appliedCoupon && couponCartSignature && couponCartSignature !== cartSignature) {
@@ -580,7 +585,7 @@ const CheckoutPage = () => {
                         value={formData.name}
                         onChange={handleChange}
                         placeholder="Enter your full name"
-                        className="mt-2"
+                        className={checkoutInputClassName}
                         required
                         data-testid="checkout-name"
                       />
@@ -594,7 +599,7 @@ const CheckoutPage = () => {
                         value={formData.phone}
                         onChange={handleChange}
                         placeholder="+91 98765 43210"
-                        className="mt-2"
+                        className={checkoutInputClassName}
                         required
                         data-testid="checkout-phone"
                       />
@@ -608,7 +613,7 @@ const CheckoutPage = () => {
                         value={formData.email}
                         onChange={handleChange}
                         placeholder="you@example.com"
-                        className="mt-2"
+                        className={checkoutInputClassName}
                         required
                         data-testid="checkout-email"
                       />
@@ -628,7 +633,7 @@ const CheckoutPage = () => {
                         value={formData.address}
                         onChange={handleChange}
                         placeholder="123 Main Street, Apartment 4B"
-                        className="mt-2"
+                        className={checkoutInputClassName}
                         required
                         data-testid="checkout-address"
                       />
@@ -641,7 +646,7 @@ const CheckoutPage = () => {
                         value={formData.addressLine2}
                         onChange={handleChange}
                         placeholder="Apartment, suite, landmark"
-                        className="mt-2"
+                        className={checkoutInputClassName}
                         data-testid="checkout-address-line-2"
                       />
                     </div>
@@ -653,7 +658,7 @@ const CheckoutPage = () => {
                           name="state"
                           value={formData.state}
                           onChange={handleStateChange}
-                          className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          className={getCheckoutSelectClassName('state', 'mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm')}
                           required
                           data-testid="checkout-state"
                         >
@@ -670,7 +675,7 @@ const CheckoutPage = () => {
                           name="city"
                           value={formData.city}
                           onChange={handleChange}
-                          className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          className={getCheckoutSelectClassName('city', 'mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50')}
                           required
                           disabled={!formData.state}
                           data-testid="checkout-city"
@@ -689,7 +694,7 @@ const CheckoutPage = () => {
                           value={formData.postalCode}
                           onChange={handleChange}
                           placeholder="400001"
-                          className="mt-2"
+                          className={checkoutInputClassName}
                           required
                           data-testid="checkout-postal"
                         />
@@ -702,7 +707,7 @@ const CheckoutPage = () => {
                           value={formData.country}
                           onChange={handleChange}
                           placeholder="India"
-                          className="mt-2"
+                          className={checkoutInputClassName}
                           required
                           data-testid="checkout-country"
                         />

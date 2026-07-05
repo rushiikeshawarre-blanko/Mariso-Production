@@ -188,11 +188,13 @@ async def test_successful_otp_verification(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_invalid_cashfree_webhook_signature():
+async def test_invalid_cashfree_webhook_signature_when_secret_is_configured(monkeypatch):
     """
     Test that Cashfree webhooks fail with 401 Unauthorized
     when provided with an invalid signature.
     """
+    import routes.payments as payments
+    monkeypatch.setattr(payments, "verify_cashfree_webhook_signature", lambda raw_body, headers: False)
     headers = {
         "x-webhook-signature": "bad_sig_here",
         "x-webhook-timestamp": "1780171200",

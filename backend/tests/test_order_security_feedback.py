@@ -393,7 +393,7 @@ def test_delivered_email_uses_feedback_token_and_suppresses_broken_link(monkeypa
     assert sent_html == []
 
 
-def test_delivered_status_triggers_feedback_whatsapp_once(monkeypatch):
+def test_delivered_status_defers_feedback_notifications(monkeypatch):
     orders = setup_status_update_database(monkeypatch, {
         "id": "order-1",
         "user_id": "user-1",
@@ -405,14 +405,9 @@ def test_delivered_status_triggers_feedback_whatsapp_once(monkeypatch):
         "feedback_token": "feedback-token",
         "cancellation_status": "none",
     })
-    sent_orders = []
-    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: None)
+    status_emails = []
+    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: status_emails.append(order["id"]))
     monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
-    monkeypatch.setattr(
-        order_service,
-        "send_feedback_reward_whatsapp",
-        lambda order: sent_orders.append(order["id"]) or {"success": True},
-    )
 
     result = asyncio.run(order_service.update_order_status(
         "order-1",
@@ -420,12 +415,14 @@ def test_delivered_status_triggers_feedback_whatsapp_once(monkeypatch):
         "admin-1",
     ))
 
-    assert sent_orders == ["order-1"]
-    assert result["feedback_whatsapp_sent_at"]
-    assert orders.order["feedback_whatsapp_sent_at"] == result["feedback_whatsapp_sent_at"]
+    assert status_emails == []
+    assert result["delivered_at"]
+    assert result["feedback_token"] == "feedback-token"
+    assert result["feedback_whatsapp_sent_at"] is None
+    assert orders.order.get("feedback_whatsapp_sent_at") is None
 
 
-def test_re_saving_delivered_status_does_not_duplicate_feedback_whatsapp(monkeypatch):
+def test_re_saving_delivered_status_does_not_send_feedback_notifications(monkeypatch):
     setup_status_update_database(monkeypatch, {
         "id": "order-1",
         "user_id": "user-1",
@@ -438,14 +435,9 @@ def test_re_saving_delivered_status_does_not_duplicate_feedback_whatsapp(monkeyp
         "feedback_whatsapp_sent_at": "already-sent",
         "cancellation_status": "none",
     })
-    sent_orders = []
-    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: None)
+    status_emails = []
+    monkeypatch.setattr(order_service, "send_order_status_email", lambda order: status_emails.append(order["id"]))
     monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
-    monkeypatch.setattr(
-        order_service,
-        "send_feedback_reward_whatsapp",
-        lambda order: sent_orders.append(order["id"]) or {"success": True},
-    )
 
     asyncio.run(order_service.update_order_status(
         "order-1",
@@ -453,7 +445,7 @@ def test_re_saving_delivered_status_does_not_duplicate_feedback_whatsapp(monkeyp
         "admin-1",
     ))
 
-    assert sent_orders == []
+    assert status_emails == []
 
 
 def test_missing_feedback_whatsapp_sid_skips_gracefully(monkeypatch):
@@ -474,10 +466,79 @@ def test_missing_feedback_whatsapp_sid_skips_gracefully(monkeypatch):
     assert result == {"success": False, "sid": None, "error": "missing_feedback_reward_template_sid"}
 
 
-def test_feedback_whatsapp_uses_feedback_link_and_three_template_variables(monkeypatch):
+@pytest.mark.parametrize(
+    ("status", "sid_env"),
+    [
+        ("confirmed", "TWILIO_WHATSAPP_ORDER_CONFIRMED_CONTENT_SID"),
+        ("packed", "TWILIO_WHATSAPP_ORDER_PACKED_CONTENT_SID"),
+        ("shipped", "TWILIO_WHATSAPP_ORDER_SHIPPED_CONTENT_SID"),
+    ],
+)
+def test_order_status_cta_payload_uses_body_vars_and_button_tracking_token(monkeypatch, status, sid_env):
     captured = {}
-    monkeypatch.setenv("TWILIO_WHATSAPP_FEEDBACK_REWARD_CONTENT_SID", "HX_test")
+    monkeypatch.setenv("TWILIO_WHATSAPP_CTA_TEMPLATES_ENABLED", "true")
+    monkeypatch.setenv(sid_env, "HX_test")
+
+    def fake_send_whatsapp_template(to_number, content_sid, content_variables):
+        captured["to_number"] = to_number
+        captured["content_sid"] = content_sid
+        captured["content_variables"] = content_variables
+        return {"success": True, "sid": "SM_test", "error": None}
+
+    monkeypatch.setattr(whatsapp_service, "send_whatsapp_template", fake_send_whatsapp_template)
+
+    result = whatsapp_service.send_order_status_whatsapp({
+        "id": "order-123456789",
+        "status": status,
+        "billing_phone": "9876543210",
+        "billing_name": "Customer",
+        "tracking_token": "tracking-token",
+    })
+
+    assert result["success"] is True
+    assert captured == {
+        "to_number": "9876543210",
+        "content_sid": "HX_test",
+        "content_variables": {
+            "1": "Customer",
+            "2": "ORDER-12",
+            "3": "tracking-token",
+        },
+    }
+
+
+def test_order_status_legacy_payload_uses_full_tracking_link(monkeypatch):
+    captured = {}
+    monkeypatch.delenv("TWILIO_WHATSAPP_CTA_TEMPLATES_ENABLED", raising=False)
+    monkeypatch.setenv("TWILIO_WHATSAPP_ORDER_CONFIRMED_CONTENT_SID", "HX_test")
     monkeypatch.setattr(whatsapp_service, "FRONTEND_URL", "https://mariso.example")
+
+    def fake_send_whatsapp_template(to_number, content_sid, content_variables):
+        captured["content_variables"] = content_variables
+        return {"success": True, "sid": "SM_test", "error": None}
+
+    monkeypatch.setattr(whatsapp_service, "send_whatsapp_template", fake_send_whatsapp_template)
+
+    result = whatsapp_service.send_order_status_whatsapp({
+        "id": "order-123456789",
+        "status": "confirmed",
+        "billing_phone": "9876543210",
+        "billing_name": "Customer",
+        "tracking_token": "tracking-token",
+    })
+
+    assert result["success"] is True
+    assert captured["content_variables"] == {
+        "1": "Customer",
+        "2": "ORDER-12",
+        "3": "https://mariso.example/track-order/tracking-token",
+    }
+
+
+def test_feedback_whatsapp_cta_payload_uses_body_vars_and_button_feedback_token(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("TWILIO_WHATSAPP_CTA_TEMPLATES_ENABLED", "true")
+    monkeypatch.setenv("TWILIO_WHATSAPP_FEEDBACK_REWARD_CONTENT_SID", "HX_test")
 
     def fake_send_whatsapp_template(to_number, content_sid, content_variables):
         captured["to_number"] = to_number
@@ -501,13 +562,40 @@ def test_feedback_whatsapp_uses_feedback_link_and_three_template_variables(monke
         "content_variables": {
             "1": "Customer",
             "2": "ORDER-12",
-            "3": "https://mariso.example/feedback/feedback-token",
+            "3": "feedback-token",
         },
     }
 
 
+def test_feedback_whatsapp_legacy_payload_uses_full_feedback_link(monkeypatch):
+    captured = {}
+    monkeypatch.delenv("TWILIO_WHATSAPP_CTA_TEMPLATES_ENABLED", raising=False)
+    monkeypatch.setenv("TWILIO_WHATSAPP_FEEDBACK_REWARD_CONTENT_SID", "HX_test")
+    monkeypatch.setattr(whatsapp_service, "FRONTEND_URL", "https://mariso.example")
+
+    def fake_send_whatsapp_template(to_number, content_sid, content_variables):
+        captured["content_variables"] = content_variables
+        return {"success": True, "sid": "SM_test", "error": None}
+
+    monkeypatch.setattr(whatsapp_service, "send_whatsapp_template", fake_send_whatsapp_template)
+
+    result = whatsapp_service.send_feedback_reward_whatsapp({
+        "id": "order-123456789",
+        "billing_phone": "9876543210",
+        "billing_name": "Customer",
+        "feedback_token": "feedback-token",
+    })
+
+    assert result["success"] is True
+    assert captured["content_variables"] == {
+        "1": "Customer",
+        "2": "ORDER-12",
+        "3": "https://mariso.example/feedback/feedback-token",
+    }
+
+
 def test_non_delivered_status_does_not_send_feedback_reward_whatsapp(monkeypatch):
-    setup_status_update_database(monkeypatch, {
+    orders = setup_status_update_database(monkeypatch, {
         "id": "order-1",
         "user_id": "user-1",
         "status": "confirmed",
@@ -517,13 +605,7 @@ def test_non_delivered_status_does_not_send_feedback_reward_whatsapp(monkeypatch
         "tracking_token": "tracking-token",
         "cancellation_status": "none",
     })
-    sent_orders = []
     monkeypatch.setattr(order_service, "send_order_status_whatsapp", lambda order: {"success": True})
-    monkeypatch.setattr(
-        order_service,
-        "send_feedback_reward_whatsapp",
-        lambda order: sent_orders.append(order["id"]) or {"success": True},
-    )
 
     asyncio.run(order_service.update_order_status(
         "order-1",
@@ -531,4 +613,4 @@ def test_non_delivered_status_does_not_send_feedback_reward_whatsapp(monkeypatch
         "admin-1",
     ))
 
-    assert sent_orders == []
+    assert orders.order["status"] == "packed"

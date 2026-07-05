@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getContentPages } from '../../lib/api';
 import { Instagram, Facebook, Mail, MapPin, Phone } from 'lucide-react';
@@ -20,18 +20,6 @@ export const Footer = () => {
 
     fetchFooterPages();
   }, []);
-
-  const helpPages = useMemo(() => {
-    return footerPages.filter(
-      (page) => !['privacy-policy', 'terms-of-service'].includes(page.slug)
-    );
-  }, [footerPages]);
-
-  const policyPages = useMemo(() => {
-    return footerPages.filter((page) =>
-      ['privacy-policy', 'terms-of-service'].includes(page.slug)
-    );
-  }, [footerPages]);
 
   const renderFooterPageLink = (page, testIdPrefix) => {
     if (page.external_url) {
@@ -137,7 +125,7 @@ export const Footer = () => {
           <div>
             <h3 className="font-heading text-lg mb-6">Help</h3>
             <ul className="space-y-3">
-              {helpPages.map((page) => (
+              {footerPages.map((page) => (
                 <li key={page.id}>{renderFooterPageLink(page, 'footer-help')}</li>
               ))}
               <li>
@@ -184,31 +172,6 @@ export const Footer = () => {
           <p className="text-sm text-muted-foreground">
             © 2024 Mariso Candles. All rights reserved.
           </p>
-          <div className="flex flex-wrap gap-4 sm:gap-6 text-sm text-muted-foreground">
-            {policyPages.map((page) => (
-              <React.Fragment key={page.id}>
-                {page.external_url ? (
-                  <a
-                    href={page.external_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-foreground transition-colors"
-                    data-testid={`footer-policy-${page.slug}`}
-                  >
-                    {page.footer_label}
-                  </a>
-                ) : (
-                  <Link
-                    to={`/pages/${page.slug}`}
-                    className="hover:text-foreground transition-colors"
-                    data-testid={`footer-policy-${page.slug}`}
-                  >
-                    {page.footer_label}
-                  </Link>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
         </div>
       </div>
     </footer>
