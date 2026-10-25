@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getCashfreePaymentStatus, getUserOrders } from '../../lib/api';
+import { getCashfreePaymentStatus, getRazorpayPaymentStatus, getUserOrders } from '../../lib/api';
 import { formatINR } from '../../lib/currency';
 import { Package, Eye, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -51,8 +51,8 @@ const OrdersPage = () => {
     }
   };
 
-  const isPendingCashfreeOrder = (order) => {
-    const isCashfree = order.payment_method === 'cashfree' || order.payment_provider === 'cashfree';
+  const isPendingOnlineOrder = (order) => {
+    const isCashfree = ['cashfree', 'razorpay'].includes(order.payment_provider || order.payment_method);
     const isPendingPayment = order.status === 'pending_payment' || order.payment_status === 'pending';
     return isCashfree && isPendingPayment;
   };
@@ -66,7 +66,8 @@ const OrdersPage = () => {
     setStatusMessages((current) => ({ ...current, [orderId]: '' }));
 
     try {
-      const result = await getCashfreePaymentStatus(orderId);
+      const provider = orders.find((order) => order.id === orderId)?.payment_provider;
+      const result = await (provider === 'razorpay' ? getRazorpayPaymentStatus : getCashfreePaymentStatus)(orderId);
       setOrders((currentOrders) => currentOrders.map((order) => (
         order.id === orderId
           ? { ...order, ...result, id: result.order_id || order.id }
@@ -136,6 +137,14 @@ const OrdersPage = () => {
               <span className={`text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(order.status)}`}>
                 {formatStatus(order.status)}
               </span>
+              {order.payment_provider === 'razorpay' && ['pending', 'expired'].includes(order.payment_status) && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to={`/payment/razorpay/return?order_id=${encodeURIComponent(order.id)}`}>
+                    <RefreshCw className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                    {order.payment_status === 'expired' || (order.stock_reserved_until && Date.parse(order.stock_reserved_until) <= Date.now()) ? 'Buy again' : 'Resume payment'}
+                  </Link>
+                </Button>
+              )}
               <Button asChild variant="outline" size="sm">
                 <Link to={`/account/orders/${order.id}`} data-testid={`view-order-${order.id}`}>
                   <Eye className="h-4 w-4 mr-2" strokeWidth={1.5} />
@@ -165,7 +174,7 @@ const OrdersPage = () => {
             ))}
           </div>
 
-          {isPendingCashfreeOrder(order) && (
+          {isPendingOnlineOrder(order) && (
             <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
               <p className="text-sm text-yellow-900 mb-3">
                 Payment is pending. If you completed payment or the session expired, check the latest status.

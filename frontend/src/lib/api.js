@@ -463,26 +463,6 @@ export const createOrder = async (orderData) => {
   }
 };
 
-export const createCashfreeSession = async (checkoutData) => {
-  try {
-    const response = await axiosInstance.post(`/payments/cashfree/create-session`, checkoutData);
-    return response.data;
-  } catch (error) {
-    console.error('Error creating Cashfree session:', error);
-    throw error;
-  }
-};
-
-export const previewCashfreeCheckout = async (checkoutData) => {
-  try {
-    const response = await axiosInstance.post(`/payments/cashfree/preview`, checkoutData);
-    return response.data;
-  } catch (error) {
-    console.error('Error previewing Cashfree checkout:', error);
-    throw error;
-  }
-};
-
 export const verifyCashfreePayment = async (orderId) => {
   try {
     const response = await axiosInstance.post(`/payments/cashfree/verify`, { order_id: orderId });
@@ -1187,3 +1167,19 @@ export const uploadImage = async (file) => {
   });
   return response.data;
 };
+
+
+export const createRazorpayOrder = async (payload) =>
+  (await axiosInstance.post('/payments/razorpay/create-order', payload)).data;
+export const verifyRazorpayPayment = async (payload) =>
+  (await axiosInstance.post('/payments/razorpay/verify', payload)).data;
+export const getRazorpayPaymentStatus = async (orderId) =>
+  (await axiosInstance.get(`/payments/razorpay/orders/${encodeURIComponent(orderId)}/status`)).data;
+export const previewRazorpayCheckout = async (payload) =>
+  (await axiosInstance.post('/payments/razorpay/preview', payload)).data;
+
+export const retryRazorpayCheckout = async (orderId) =>
+  (await axiosInstance.post(`/payments/razorpay/orders/${encodeURIComponent(orderId)}/retry`)).data;
+
+export const buyAgainRazorpayOrder = async (orderId) =>
+  (await axiosInstance.post(`/payments/razorpay/orders/${encodeURIComponent(orderId)}/buy-again`)).data;

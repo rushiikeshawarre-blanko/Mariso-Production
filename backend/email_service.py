@@ -116,172 +116,21 @@ def _order_tracking_link(order: dict) -> str:
 
 
 def send_order_placed_email(order: dict) -> None:
-    to_email = order.get("billing_email")
-    if not to_email:
-        print("Email skipped: missing billing_email")
-        return
-
-    order_short_id = str(order.get("id", ""))[:8].upper()
-    subject = f"Your Mariso order {order_short_id} is confirmed"
-    order_link = _order_tracking_link(order)
-
-    items_list = build_order_items_html(order.get("items", [])) or "<li>No item details available</li>"
-
-    html = f"""
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1F2937;">
-      <p>Dear {_safe(order.get('billing_name', 'Customer'))},</p>
-
-      <p>
-        Thank you for shopping with <strong>Mariso</strong>! We truly appreciate your order and are excited to bring a touch of beauty to your day.
-      </p>
-
-      <p><strong>Order ID:</strong> {order_short_id}</p>
-
-      <p><strong>Here are the details of your purchase:</strong></p>
-
-      <ul>
-        {items_list}
-      </ul>
-
-      <p>
-        You can view your order details and track its status anytime using the link below:<br/>
-        <strong>View Your Order:</strong>
-        <a href="{order_link}">
-          View Order
-        </a>
-      </p>
-
-      <p>
-        Our team is carefully preparing your order to ensure it reaches you in perfect condition.
-        We’ll notify you once your order is packed and ready to ship.
-      </p>
-
-      <p>
-        If you have any questions or need assistance, feel free to reply to this email - we’re always here to help.
-      </p>
-
-      <p>
-        Thank you once again for choosing Mariso. We look forward to serving you again!
-      </p>
-
-      <p>
-        Warm regards,<br/>
-        <strong>Team Mariso</strong>
-      </p>
-    </div>
-    """
-
-    send_email(subject, to_email, html)
+    from services.order_email_templates import build_order_placed_email
+    subject, html = build_order_placed_email(order)
+    send_email(subject, order.get("billing_email"), html)
 
 
 def send_order_cancellation_confirmation_email(order: dict) -> None:
-    to_email = order.get("billing_email")
-    if not to_email:
-        print("Email skipped: missing billing_email")
-        return
-
-    customer_name = _safe(order.get("billing_name", "Customer"))
-    cancelled_products = build_cancelled_product_names_html(order.get("items", [])) or "<li>No item details available</li>"
-    cancellation_reasons = build_cancellation_reasons_html(order) or "<li>No reason provided</li>"
-
-    html = f"""
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1F2937;">
-      <p>Dear {customer_name},</p>
-
-      <p>We would like to confirm that your cancellation request has been successfully processed.</p>
-
-      <p>The following product(s) from your order have been cancelled:</p>
-      <ul>
-        {cancelled_products}
-      </ul>
-
-      <p><strong>Cancellation reason:</strong></p>
-      <ul>
-        {cancellation_reasons}
-      </ul>
-
-      <p>
-        If a refund is applicable, it will be processed to your original payment method and should reflect within the applicable banking timelines.
-      </p>
-
-      <p>
-        Should you have any questions or require further assistance, please feel free to reply to this email.
-      </p>
-
-      <p>Thank you for choosing Mariso.</p>
-
-      <p>
-        Warm regards,<br/>
-        <strong>Team Mariso</strong>
-      </p>
-    </div>
-    """
-
-    send_email("Mariso Order Cancellation Confirmation", to_email, html)
+    from services.order_email_templates import build_order_cancellation_email
+    subject, html = build_order_cancellation_email(order)
+    send_email(subject, order.get("billing_email"), html)
 
 
 # Admin alert for new order
 def send_admin_new_order_alert(order: dict) -> None:
-    if not ADMIN_EMAIL:
-        print("Admin email skipped: missing ADMIN_EMAIL")
-        return
-
-    order_id = _safe(order.get("id", ""))
-    order_short_id = order_id[:8].upper()
-    customer_name = _safe(order.get("billing_name") or order.get("user_name") or "Customer")
-    customer_email = _safe(order.get("billing_email") or order.get("user_email") or "")
-    customer_phone = _safe(order.get("billing_phone", ""))
-    payment_method = _safe(order.get("payment_method", ""))
-    total_price = _format_currency(order.get("total_price", 0))
-
-    address_parts = [
-        order.get("billing_address"),
-        order.get("billing_city"),
-        order.get("billing_postal_code"),
-    ]
-    shipping_address = _safe(", ".join([str(part) for part in address_parts if part]))
-
-    items_html = build_order_items_html(order.get("items", [])) or "<li>No item details available</li>"
-    admin_orders_url = f"{FRONTEND_URL}/admin/orders"
-
-    subject = f"New Mariso order received - {order_short_id}"
-
-    html = f"""
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1F2937;">
-      <h2 style="margin-bottom: 8px;">New Mariso order received</h2>
-
-      <p>A new order has been placed on <strong>Mariso</strong>.</p>
-
-      <h3>Order Summary</h3>
-      <p>
-        <strong>Order ID:</strong> {order_id}<br/>
-        <strong>Total:</strong> {total_price}<br/>
-        <strong>Payment method:</strong> {payment_method}
-      </p>
-
-      <h3>Customer</h3>
-      <p>
-        <strong>Name:</strong> {customer_name}<br/>
-        <strong>Email:</strong> {customer_email}<br/>
-        <strong>Phone:</strong> {customer_phone}
-      </p>
-
-      <h3>Shipping Address</h3>
-      <p>{shipping_address or "Not available"}</p>
-
-      <h3>Items</h3>
-      <ul>
-        {items_html}
-      </ul>
-
-      <p>
-        <a href="{admin_orders_url}" style="color: #9C6B5B; font-weight: bold;">
-          Open admin dashboard
-        </a>
-      </p>
-    </div>
-    """
-
+    from services.order_email_templates import build_admin_new_order_email
+    subject, html = build_admin_new_order_email(order)
     send_email(subject, ADMIN_EMAIL, html)
 
 

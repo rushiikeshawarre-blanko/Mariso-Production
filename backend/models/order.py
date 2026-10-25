@@ -1,5 +1,6 @@
+from uuid import UUID
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import ConfigDict, BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 CANCELLATION_REASON_DELIVERY_TIMELINE = "Delivery timeline does not meet my requirement"
@@ -65,6 +66,17 @@ class CashfreeCheckoutCreate(BaseModel):
     coupon_code: Optional[str] = None
 
 
+class RazorpayCartItem(CartItem):
+    model_config = ConfigDict(extra="forbid")
+
+
+class RazorpayCheckoutCreate(CashfreeCheckoutCreate):
+    # Reuse address/cart shape, never accept browser totals or provider fields.
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    items: List[RazorpayCartItem] = Field(..., min_length=1, max_length=100)
+
+
 class CashfreeCheckoutPreview(BaseModel):
     items: List[CartItem]
     billing_postal_code: str
@@ -73,9 +85,20 @@ class CashfreeCheckoutPreview(BaseModel):
     gift_packaging: bool = False
     coupon_code: Optional[str] = None
 
+
+class RazorpayCheckoutPreview(CashfreeCheckoutPreview):
+    model_config = ConfigDict(extra="forbid")
+    items: List[RazorpayCartItem] = Field(..., min_length=1, max_length=100)
+
 class OrderPaymentFields(BaseModel):
     payment_provider: Optional[str] = None
     payment_status: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_order_status: Optional[str] = None
+    payment_attempt_id: Optional[str] = None
+    payment_environment: Optional[str] = None
+    amount_paise: Optional[int] = None
+    currency: Optional[str] = None
     cashfree_order_id: Optional[str] = None
     cashfree_cf_order_id: Optional[str] = None
     cashfree_payment_session_id: Optional[str] = None
@@ -120,6 +143,10 @@ class OrderPaymentFields(BaseModel):
     refund_id: Optional[str] = None
     cf_refund_id: Optional[str] = None
     cashfree_refund_status: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_refund_id: Optional[str] = None
+    razorpay_refund_status: Optional[str] = None
+    refund_amount_paise: Optional[int] = None
     refund_initiated_at: Optional[str] = None
     refund_completed_at: Optional[str] = None
     refund_failed_reason: Optional[str] = None

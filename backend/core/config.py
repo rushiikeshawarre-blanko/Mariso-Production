@@ -47,6 +47,21 @@ AUTH0_JWKS_CLIENT = PyJWKClient(
 # features are never enabled by missing or blank configuration.
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "").strip().lower() or "production"
 
+# Phase 1 adds configuration only. Existing checkout remains Cashfree.
+from core.razorpay_config import read_razorpay_settings
+
+_razorpay_settings = read_razorpay_settings(os.environ)
+RAZORPAY_ENABLED = _razorpay_settings.enabled
+# Independent test-only API gate; customer checkout remains unchanged.
+RAZORPAY_CREATE_ORDERS_ENABLED = os.environ.get("RAZORPAY_CREATE_ORDERS_ENABLED", "false").strip().lower() == "true"
+RAZORPAY_ENV = _razorpay_settings.environment
+RAZORPAY_KEY_ID = _razorpay_settings.key_id
+RAZORPAY_KEY_SECRET = _razorpay_settings.key_secret
+RAZORPAY_WEBHOOK_SECRET = _razorpay_settings.webhook_secret
+RAZORPAY_BASE_URL = _razorpay_settings.base_url
+RAZORPAY_CONNECT_TIMEOUT_SECONDS = _razorpay_settings.connect_timeout_seconds
+RAZORPAY_READ_TIMEOUT_SECONDS = _razorpay_settings.read_timeout_seconds
+
 CASHFREE_ENABLED = os.environ.get("CASHFREE_ENABLED", "false").strip().lower() == "true"
 CASHFREE_ENV = os.environ.get("CASHFREE_ENV", "sandbox").strip().lower()
 _cashfree_default_base_url = (
@@ -108,3 +123,18 @@ AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "").strip()
 CLOUDFRONT_BASE_URL = os.environ.get("CLOUDFRONT_BASE_URL", "").strip().rstrip("/")
+
+# Phase 3 evidence intake; independent of new-order creation.
+RAZORPAY_PROCESSING_ENABLED = os.environ.get("RAZORPAY_PROCESSING_ENABLED", "false").strip().lower() == "true"
+
+RAZORPAY_WORKER_ENABLED = os.environ.get("RAZORPAY_WORKER_ENABLED", "false").strip().lower() == "true"
+RAZORPAY_NOTIFICATIONS_ENABLED = os.environ.get("RAZORPAY_NOTIFICATIONS_ENABLED", "false").strip().lower() == "true"
+
+RAZORPAY_ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").strip()
+
+RAZORPAY_EMAIL_ENABLED = os.environ.get("EMAIL_ENABLED", "false").strip().lower() == "true"
+
+RAZORPAY_REFUNDS_ENABLED = os.environ.get("RAZORPAY_REFUNDS_ENABLED", "false").strip().lower() == "true"
+
+# Explicit release gate; never enabled by selecting live credentials alone.
+RAZORPAY_LIVE_ENABLED = os.environ.get("RAZORPAY_LIVE_ENABLED", "false").strip().lower() == "true"

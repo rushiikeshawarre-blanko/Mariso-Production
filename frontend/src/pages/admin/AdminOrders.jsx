@@ -598,6 +598,14 @@ const AdminOrders = () => {
               {selectedOrder.status === 'paid_stock_issue' && (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-900">
                   Payment received, but stock could not be safely confirmed. Please review manually before packing or shipping.
+                  {selectedOrder.payment_provider === 'razorpay' && (
+                    <div className="mt-3">
+                      <Button disabled={updatingCancellation} onClick={() => handleCancellationDecision('approve')}>
+                        Cancel and Prepare Refund
+                      </Button>
+                      <p className="mt-2">Checks that the stock hold was released. Refund initiation remains a separate action.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -628,6 +636,15 @@ const AdminOrders = () => {
                     )}
                     {selectedOrder.cf_refund_id && (
                       <p className="break-all"><span className="text-amber-800">Cashfree Refund ID:</span> {selectedOrder.cf_refund_id}</p>
+                    )}
+                    {selectedOrder.razorpay_refund_id && (
+                      <p><span className="text-amber-800">Razorpay Refund ID:</span> {selectedOrder.razorpay_refund_id}</p>
+                    )}
+                    {selectedOrder.razorpay_refund_status && (
+                      <p><span className="text-amber-800">Razorpay Status:</span> {formatAdminValue(selectedOrder.razorpay_refund_status)}</p>
+                    )}
+                    {selectedOrder.refund_status === 'reconciliation_required' && (
+                      <p>The refund outcome is being checked. Sync its status before taking further action.</p>
                     )}
                     {selectedOrder.cashfree_refund_status && (
                       <p><span className="text-amber-800">Cashfree Status:</span> {formatAdminValue(selectedOrder.cashfree_refund_status)}</p>
@@ -687,7 +704,7 @@ const AdminOrders = () => {
                     )}
 
                   {selectedOrder.refund_id &&
-                    ['initiated', 'processing', 'failed'].includes(selectedOrder.refund_status) && (
+                    ['initiated', 'processing', 'failed', 'reconciliation_required'].includes(selectedOrder.refund_status) && (
                       <div className="mt-4">
                         <Button
                           type="button"

@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.auth import get_current_user
 from core.config import CASHFREE_ORDER_EXPIRY_MINUTES
-from models.order import CashfreeCheckoutCreate, CashfreeCheckoutPreview
+from models.order import CashfreeCheckoutCreate, CashfreeCheckoutPreview, RazorpayCheckoutCreate, RazorpayCheckoutPreview
 from services.cashfree_service import (
     create_cashfree_order_session,
     get_cashfree_order,
@@ -189,50 +189,8 @@ async def create_cashfree_session_route(
     payload: CashfreeCheckoutCreate,
     user: dict = Depends(get_current_user),
 ):
-    pending_order = await create_pending_cashfree_order(payload, user)
-    order_id = pending_order["id"]
-    # Cashfree session expiry must not reuse the shorter inventory hold expiry.
-    cashfree_order_expiry_time = _cashfree_order_expiry_time()
-    logger.info(
-        "Checkout expiries calculated: order_id=%s stock_reserved_until=%s "
-        "cashfree_order_expiry_time=%s cashfree_order_expiry_minutes=%s",
-        order_id,
-        pending_order.get("stock_reserved_until"),
-        cashfree_order_expiry_time,
-        CASHFREE_ORDER_EXPIRY_MINUTES,
-    )
-
-    try:
-        cashfree_data = create_cashfree_order_session(
-            order_id=order_id,
-            order_amount=pending_order["total_price"],
-            customer_name=pending_order["billing_name"],
-            customer_email=pending_order["billing_email"],
-            customer_phone=pending_order["billing_phone"],
-            order_expiry_time=cashfree_order_expiry_time,
-        )
-    except HTTPException as exc:
-        error_context = _cashfree_error_context(exc)
-        logger.warning(
-            "Cashfree create-session failed: order_id=%s final_payable=%s coupon_code=%s item_count=%s "
-            "status_code=%s cashfree_status_code=%s cashfree_error_code=%s cashfree_error_message=%s "
-            "cashfree_error=%s exception_type=%s",
-            order_id,
-            pending_order.get("total_price"),
-            pending_order.get("coupon_code"),
-            len(pending_order.get("items") or []),
-            exc.status_code,
-            error_context.get("cashfree_status_code"),
-            error_context.get("cashfree_error_code"),
-            error_context.get("cashfree_error_message"),
-            error_context.get("cashfree_error"),
-            error_context.get("exception_type"),
-        )
-        await mark_cashfree_order_failed(order_id, "cashfree_create_session_failed")
-        raise exc
-
-    order = await attach_cashfree_session(order_id, cashfree_data)
-    return _payment_result(order)
+    # Old clients must not reserve inventory or create new legacy payments.
+    raise HTTPException(status_code=410, detail="Cashfree checkout has been retired. Refresh the page to pay with Razorpay.")
 
 
 @router.post("/cashfree/preview", response_model=dict)
@@ -263,3 +221,78 @@ async def verify_cashfree_payment_route(
     cashfree_data = get_cashfree_order(payload.order_id)
     order = await finalize_paid_cashfree_order(payload.order_id, cashfree_data, source="verify")
     return _payment_result(order)
+
+
+@router.post("/razorpay/create-order", response_model=dict)
+@limiter.limit("3/minute")
+async def create_razorpay_order_route(
+    request: Request,
+    payload: RazorpayCheckoutCreate,
+    user: dict = Depends(get_current_user),
+):
+    from services.razorpay_order_service import create_checkout_order
+    return await create_checkout_order(payload, user)
+
+
+class RazorpayVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    order_id: str = Field(min_length=1, max_length=100)
+    razorpay_order_id: str = Field(pattern=r"^order_[A-Za-z0-9]{1,100}$")
+    razorpay_payment_id: str = Field(pattern=r"^pay_[A-Za-z0-9]{1,100}$")
+    razorpay_signature: str = Field(pattern=r"^[0-9a-f]{64}$", repr=False)
+
+
+@router.post("/razorpay/verify", response_model=dict)
+@limiter.limit("10/minute")
+async def verify_razorpay_route(request: Request, payload: RazorpayVerifyRequest,
+                               user: dict = Depends(get_current_user)):
+    from services.razorpay_verification_service import verify_checkout
+    return await verify_checkout(payload, user)
+
+
+@router.post("/razorpay/webhook", include_in_schema=False, response_model=dict)
+async def razorpay_webhook_route(request: Request):
+    from services.razorpay_verification_service import receive_webhook, require_processing
+    require_processing()
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 262144:
+            raise HTTPException(413, "Webhook too large")
+    return await receive_webhook(bytes(body), request.headers.get("x-razorpay-signature"),
+                                 request.headers.get("x-razorpay-event-id"))
+
+
+@router.get('/razorpay/orders/{order_id}/status', response_model=dict)
+async def razorpay_order_status_route(order_id: str, user: dict = Depends(get_current_user)):
+    from services.razorpay_verification_service import get_owned_payment_status
+    return await get_owned_payment_status(order_id, user)
+
+
+@router.post('/razorpay/preview', response_model=dict)
+@limiter.limit('10/minute')
+async def razorpay_preview_route(request: Request, payload: RazorpayCheckoutPreview,
+                                user: dict = Depends(get_current_user)):
+    from services.razorpay_service import require_order_creation_enabled
+    from services.razorpay_order_service import build_quote
+    require_order_creation_enabled()
+    quote, _ = await build_quote(payload, user)
+    return {
+        **{key: quote[key] for key in ('shipping_charge', 'shipping_free_reason',
+            'shipping_rate_source', 'shipping_breakdown', 'total_price', 'amount_paise', 'currency')},
+        'total_payable': quote['total_price'],
+    }
+
+
+@router.post('/razorpay/orders/{order_id}/retry', response_model=dict)
+@limiter.limit('3/minute')
+async def retry_razorpay_route(request: Request, order_id: str, user: dict = Depends(get_current_user)):
+    from services.razorpay_retry_service import retry_checkout
+    return await retry_checkout(order_id, user)
+
+
+@router.post('/razorpay/orders/{order_id}/buy-again', response_model=dict)
+@limiter.limit('3/minute')
+async def buy_again_razorpay_route(request: Request, order_id: str, user: dict = Depends(get_current_user)):
+    from services.razorpay_retry_service import retry_checkout
+    return await retry_checkout(order_id, user, buy_again=True)

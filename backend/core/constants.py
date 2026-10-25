@@ -3,6 +3,7 @@ VALID_PAYMENT_METHODS = {"cod", "upi", "card", "netbanking"}
 GIFT_PACKAGING_PRICE = 149
 
 PAYMENT_PROVIDER_CASHFREE = "cashfree"
+PAYMENT_PROVIDER_RAZORPAY = "razorpay"
 PAYMENT_PROVIDER_MANUAL_LEGACY = "manual_legacy"
 
 PAYMENT_STATUS_PENDING = "pending"

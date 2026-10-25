@@ -85,6 +85,8 @@ async def startup_db_check():
     
     await create_indexes(db)
     start_feedback_scheduler()
+    from services.razorpay_recovery_service import start
+    await start()
 
 
 @app.get("/")
@@ -128,5 +130,7 @@ app.include_router(api_router)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    from services.razorpay_recovery_service import stop
+    await stop()
     await stop_feedback_scheduler()
     close_mongo_connection()

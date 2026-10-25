@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -258,6 +259,41 @@ def _format_estimated_delivery_days(courier: dict) -> Optional[str]:
     return text if "day" in text.lower() else f"{text} days"
 
 
+def _parse_display_delivery_days(raw_days: Any) -> Optional[int]:
+    if raw_days in (None, ""):
+        return None
+
+    if isinstance(raw_days, bool):
+        return None
+
+    if isinstance(raw_days, (int, float)):
+        parsed = float(raw_days)
+        if not math.isfinite(parsed) or parsed <= 0:
+            return None
+        return max(7, math.ceil(parsed))
+
+    text = str(raw_days).strip()
+    if not text:
+        return None
+
+    match = re.fullmatch(
+        r"\s*(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?\s*(?:days?)?\s*",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    try:
+        parsed = float(match.group(2) or match.group(1))
+    except ValueError:
+        return None
+
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None
+    return max(7, math.ceil(parsed))
+
+
 def _extract_courier_rate(courier: dict) -> Optional[float]:
     for key in (
         "rate",
@@ -289,13 +325,20 @@ def normalize_shiprocket_serviceability_response(data: dict) -> dict:
             "available": False,
             "enabled": True,
             "estimated_delivery_days": None,
+            "display_delivery_days": None,
             "courier_name": None,
             "shipping_charge": None,
             "message": message,
         }
 
     courier = couriers[0]
+    raw_estimated_days = (
+        courier.get("estimated_delivery_days")
+        or courier.get("estimate_delivery_days")
+        or courier.get("delivery_days")
+    )
     estimated_days = _format_estimated_delivery_days(courier)
+    display_delivery_days = _parse_display_delivery_days(raw_estimated_days)
     courier_name = courier.get("courier_name") or courier.get("courier_company_name")
     shipping_charge = _extract_courier_rate(courier)
     message = "Delivery is available"
@@ -306,6 +349,7 @@ def normalize_shiprocket_serviceability_response(data: dict) -> dict:
         "available": True,
         "enabled": True,
         "estimated_delivery_days": estimated_days,
+        "display_delivery_days": display_delivery_days,
         "courier_name": courier_name,
         "shipping_charge": shipping_charge,
         "message": message,
@@ -372,6 +416,7 @@ def check_shiprocket_serviceability(
         return {
             "available": None,
             "enabled": False,
+            "display_delivery_days": None,
             "message": "Delivery estimate will be available soon.",
         }
 

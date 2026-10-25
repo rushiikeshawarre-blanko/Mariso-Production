@@ -1,3 +1,4 @@
+import { razorpayEnabled, startRazorpayCheckout } from '../lib/razorpay';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
@@ -6,8 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useCart } from '../context/CartContext';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createCashfreeSession, getAvailableCoupons, previewCashfreeCheckout, validateCoupon } from '../lib/api';
-import { loadCashfree } from '../lib/cashfree';
+import { createRazorpayOrder, verifyRazorpayPayment, previewRazorpayCheckout, getAvailableCoupons, validateCoupon } from '../lib/api';
 import { formatINR } from '../lib/currency';
 import { getCitiesForState, INDIA_STATES, withStoredOption } from '../lib/indiaLocations';
 import { cn, getFirstImageUrl, getThumbImage } from '../lib/utils';
@@ -53,6 +53,7 @@ const CheckoutPage = () => {
   const location = useLocation();
   const { couponCode: couponCodeFromCart = '' } = location.state || {};
   const { items } = useCart();
+  const checkoutInFlight = useRef(false);
   const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
   const initialCouponAppliedRef = useRef(false);
@@ -425,7 +426,7 @@ const CheckoutPage = () => {
     const timer = window.setTimeout(async () => {
       try {
         const payload = buildCheckoutPayload();
-        const result = await previewCashfreeCheckout({
+        const result = await previewRazorpayCheckout({
           items: payload.items,
           billing_postal_code: payload.billing_postal_code,
           billing_phone: payload.billing_phone || undefined,
@@ -473,7 +474,7 @@ const CheckoutPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (loading) return;
+    if (loading || checkoutInFlight.current) return;
     
     if (!isAuthenticated) {
       toast.error('Please sign in to place an order');
@@ -498,28 +499,23 @@ const CheckoutPage = () => {
       return;
     }
 
+    checkoutInFlight.current = true;
     setLoading(true);
     try {
       const checkoutPayload = buildCheckoutPayload();
 
-      const session = await createCashfreeSession(checkoutPayload);
-      if (!session?.payment_session_id || !session?.order_id) {
-        throw new Error('Payment session could not be created');
+      if (!razorpayEnabled()) {
+        throw new Error('Online payment is temporarily unavailable. Please try again later.');
       }
-
-      sessionStorage.setItem('pending_cashfree_order_id', session.order_id);
-
-      const cashfree = await loadCashfree();
-      await cashfree.checkout({
-        paymentSessionId: session.payment_session_id,
-        redirectTarget: '_self'
-      });
+      const orderId = await startRazorpayCheckout({ owner: user?.sub, payload: checkoutPayload,
+        cart: items, createOrder: createRazorpayOrder, verifyPayment: verifyRazorpayPayment });
+      navigate(`/payment/razorpay/return?order_id=${encodeURIComponent(orderId)}`);
     } catch (error) {
-      console.error('Error starting Cashfree checkout:', error);
+      // Avoid logging payment payloads, customer details or signatures.
       const detail = error?.response?.data?.detail;
       const message = typeof detail === 'string'
         ? detail
-        : detail?.message || 'Unable to start secure payment. Please try again.';
+        : detail?.message || error.message || 'Unable to start secure payment. Please try again.';
 
       if (appliedCoupon && message.toLowerCase().includes('coupon')) {
         setCouponError(`${message} Remove or reapply the coupon.`);
@@ -528,6 +524,7 @@ const CheckoutPage = () => {
         toast.error(message);
       }
     } finally {
+      checkoutInFlight.current = false;
       setLoading(false);
     }
   };
@@ -725,7 +722,7 @@ const CheckoutPage = () => {
                   <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-muted/20">
                     <CreditCard className="h-5 w-5 text-muted-foreground mt-0.5" strokeWidth={1.5} />
                     <div>
-                      <p className="font-medium">Pay securely with Cashfree</p>
+                      <p className="font-medium">Pay securely with Razorpay</p>
                       <p className="text-sm text-muted-foreground">
                         Choose UPI, cards, net banking, or wallets on the secure payment page.
                       </p>

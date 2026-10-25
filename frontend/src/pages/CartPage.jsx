@@ -18,6 +18,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { Minus, Plus, X, ShoppingBag, ArrowRight, Gift, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getAvailableCoupons, getProducts, validateCoupon } from '../lib/api';
+import { getCartAvailableStock } from '../lib/cartStock';
 import { formatINR } from '../lib/currency';
 import { getFirstImageUrl, getProductPath, getThumbImage } from '../lib/utils';
 
@@ -93,7 +94,6 @@ const CartPage = () => {
 
   const getCartStockKey = useCallback((item) => getCartItemKey(item), [getCartItemKey]);
 
-  const normalizeVariantId = (value) => value ?? null;
 
   const cartSignature = items
     .map((item) => [
@@ -159,26 +159,7 @@ const CartPage = () => {
             return;
           }
 
-          if (item.variantId || item.selectedColorId || item.selectedFlavorId) {
-            const variants = product.variants || [];
-            const variant = variants.find((v) => {
-              if (item.variantId) {
-                return v.is_active !== false && v.id === item.variantId;
-              }
-
-              return (
-                v.is_active !== false &&
-                normalizeVariantId(v.color_id) === normalizeVariantId(item.selectedColorId) &&
-                normalizeVariantId(v.flavor_id) === normalizeVariantId(item.selectedFlavorId)
-              );
-            });
-
-            const stock = variant ? (variant.stock || 0) : 0;
-            latestStockMap[getCartStockKey(item)] = stock;
-          } else {
-            const stock = product.stock || 0;
-            latestStockMap[getCartStockKey(item)] = stock;
-          }
+          latestStockMap[getCartStockKey(item)] = getCartAvailableStock(product, item);
         });
 
         setStockMap(latestStockMap);

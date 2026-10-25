@@ -158,9 +158,9 @@ def send_whatsapp(to_number: str, message: str):
         "to": whatsapp_to,
     }
 
-    logger.info("WhatsApp send request: from=%s to=%s", whatsapp_from, whatsapp_to)
+    logger.info("WhatsApp send request")
     if _twilio_debug_enabled():
-        logger.info("TWILIO_DEBUG WhatsApp request payload: %s", _json_dumps(request_payload))
+        logger.info("TWILIO_DEBUG WhatsApp request prepared (payload redacted)")
 
     try:
         from twilio.base.exceptions import TwilioRestException
@@ -216,15 +216,9 @@ def send_whatsapp_template(to_number: str, content_sid: str, content_variables: 
         "content_variables": content_variables_json,
     }
 
-    logger.info(
-        "WhatsApp template send request: content_sid=%s from=%s to=%s content_variables=%s",
-        content_sid,
-        whatsapp_from,
-        whatsapp_to,
-        content_variables_json,
-    )
+    logger.info("WhatsApp template send request: content_sid=%s", content_sid)
     if _twilio_debug_enabled():
-        logger.info("TWILIO_DEBUG WhatsApp template request payload: %s", _json_dumps(request_payload))
+        logger.info("TWILIO_DEBUG WhatsApp template request prepared (payload redacted)")
 
     try:
         from twilio.base.exceptions import TwilioRestException

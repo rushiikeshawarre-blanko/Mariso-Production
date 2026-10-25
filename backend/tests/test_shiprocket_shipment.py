@@ -166,6 +166,7 @@ def test_serviceability_disabled_returns_safe_response_and_does_not_call_shiproc
     assert result == {
         "available": None,
         "enabled": False,
+        "display_delivery_days": None,
         "message": "Delivery estimate will be available soon.",
     }
 
@@ -211,10 +212,39 @@ def test_serviceability_enabled_success_maps_response(monkeypatch):
         "available": True,
         "enabled": True,
         "estimated_delivery_days": "3-6 days",
+        "display_delivery_days": 7,
         "courier_name": "Delhivery",
         "shipping_charge": None,
         "message": "Delivery available in 3-6 days",
     }
+
+
+@pytest.mark.parametrize(
+    ("raw_eta", "expected_display_days"),
+    [
+        (2, 7),
+        (6, 7),
+        (7, 7),
+        (9, 9),
+        ("3-6", 7),
+        ("3-6 days", 7),
+        ("8-10", 10),
+        ("2 days", 7),
+        (7.2, 8),
+        ("bad eta", None),
+        (None, None),
+    ],
+)
+def test_serviceability_display_delivery_days(raw_eta, expected_display_days):
+    courier = {"courier_name": "Delhivery"}
+    if raw_eta is not None:
+        courier["estimated_delivery_days"] = raw_eta
+
+    result = shiprocket_service.normalize_shiprocket_serviceability_response({
+        "data": {"available_courier_companies": [courier]},
+    })
+
+    assert result["display_delivery_days"] == expected_display_days
 
 
 def test_serviceability_uses_product_package_fields_with_quantity(monkeypatch):
@@ -318,6 +348,7 @@ def test_serviceability_enabled_unavailable_maps_response(monkeypatch):
         "available": False,
         "enabled": True,
         "estimated_delivery_days": None,
+        "display_delivery_days": None,
         "courier_name": None,
         "shipping_charge": None,
         "message": "No courier serviceable for this pickup and delivery pincode",

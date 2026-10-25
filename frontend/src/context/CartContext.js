@@ -155,6 +155,10 @@ const cartReducer = (state, action) => {
         }),
       };
     }
+    case 'RESTORE_ITEMS': {
+      const keys = new Set(action.payload.map(getCartItemKey));
+      return { ...state, items: [...state.items.filter(item => !keys.has(getCartItemKey(item))), ...action.payload] };
+    }
     case 'CLEAR_CART':
       return { ...state, items: [] };
     case 'LOAD_CART':
@@ -229,6 +233,7 @@ export const CartProvider = ({ children }) => {
     <CartContext.Provider value={{
       items: state.items,
       addItem,
+      restoreItems: (items) => dispatch({ type: 'RESTORE_ITEMS', payload: items.map(item => normalizeCartItem(item, item.quantity)) }),
       removeItem,
       updateQuantity,
       updateGiftPackaging,

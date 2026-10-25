@@ -75,6 +75,40 @@ test.describe('Product Page', () => {
     await expect(page.getByTestId('add-to-cart-button')).toBeVisible({ timeout: 10000 });
   });
 
+  test('delivery pincode check shows loading and customer-safe estimate', async ({ page }) => {
+    await page.route('**/api/shiprocket/serviceability**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          available: true,
+          enabled: true,
+          estimated_delivery_days: '3-6 days',
+          display_delivery_days: 7,
+          courier_name: 'DTDC Surface',
+          shipping_charge: null,
+          message: 'Delivery available in 3-6 days',
+        }),
+      });
+    });
+
+    await page.goto('/shop', { waitUntil: 'domcontentloaded' });
+    const productCard = page.locator('[data-testid^="shop-card-"]').first();
+    await expect(productCard).toBeVisible({ timeout: 15000 });
+    await productCard.click();
+
+    await expect(page.getByTestId('delivery-pincode-input')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('delivery-pincode-input').fill('400706');
+    await page.getByTestId('delivery-pincode-check-button').click();
+
+    await expect(page.getByTestId('delivery-pincode-result')).toContainText('Checking delivery availability...');
+    await expect(page.getByText('Unable to check delivery for this pincode right now.')).toHaveCount(0);
+    await expect(page.getByTestId('delivery-pincode-result')).toContainText('Estimated delivery within 7 days');
+    await expect(page.getByTestId('delivery-pincode-result')).not.toContainText('via');
+    await expect(page.getByTestId('delivery-pincode-result')).not.toContainText('DTDC Surface');
+  });
+
   test('product quantity controls work', async ({ page }) => {
     await page.goto('/shop', { waitUntil: 'domcontentloaded' });
     const productCard = page.locator('[data-testid^="shop-card-"]').first();

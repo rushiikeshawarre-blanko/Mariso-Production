@@ -39,7 +39,6 @@ from core.constants import (
     VALID_PAYMENT_METHODS,
 )
 from utils.helpers import format_phone, serialize_mongo_value, get_selected_variant
-from services.admin_service import build_order_period_filter
 from services.cashfree_service import create_cashfree_refund, get_cashfree_order, get_cashfree_refund
 from services.coupon_service import increment_coupon_usage, validate_coupon
 from services.shiprocket_service import (
@@ -555,7 +554,7 @@ def _normalize_order_payment_defaults(order: dict) -> dict:
     return order
 
 
-async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, dict]]:
+async def _build_order_items(order: OrderCreate, *, money_round=_round_money) -> tuple[List[dict], Dict[str, dict]]:
     items_with_details = []
     product_map = {}
 
@@ -731,7 +730,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                     )
 
             gift_quantity = item.gift_packaging.quantity
-            gift_price = _round_money(
+            gift_price = money_round(
                 selected_option.get("price") if selected_option else product.get("gift_packaging_price", GIFT_PACKAGING_PRICE)
             )
             message_enabled = (
@@ -751,7 +750,7 @@ async def _build_order_items(order: OrderCreate) -> tuple[List[dict], Dict[str, 
                 "quantity": gift_quantity,
                 "message_enabled": message_enabled,
                 "message": message,
-                "line_total": _round_money(gift_price * gift_quantity),
+                "line_total": money_round(gift_price * gift_quantity),
             }
 
         items_with_details.append({
@@ -855,7 +854,7 @@ def _product_has_free_shipping(product: Optional[dict]) -> bool:
     return bool(product.get("free_shipping", product.get("show_free_shipping", True)))
 
 
-def _extract_shipping_charge(serviceability: dict) -> Optional[float]:
+def _extract_shipping_charge(serviceability: dict, *, money_round=_round_money) -> Optional[float]:
     for key in ("shipping_charge", "rate", "freight_charge", "courier_charge"):
         value = serviceability.get(key)
         if value in (None, ""):
@@ -865,7 +864,7 @@ def _extract_shipping_charge(serviceability: dict) -> Optional[float]:
         except (TypeError, ValueError):
             continue
         if charge >= 0:
-            return _round_money(charge)
+            return money_round(value)
     return None
 
 
@@ -893,10 +892,11 @@ async def calculate_order_shipping(
     destination_pincode: str,
     discounted_product_subtotal: float,
     product_map: Optional[Dict[str, dict]] = None,
+    money_round=_round_money,
 ) -> dict:
     products_by_id = dict(product_map or {})
 
-    if _round_money(discounted_product_subtotal) >= CART_FREE_SHIPPING_THRESHOLD:
+    if money_round(discounted_product_subtotal) >= CART_FREE_SHIPPING_THRESHOLD:
         return {
             "shipping_charge": 0,
             "shipping_label": "Free",
@@ -947,13 +947,13 @@ async def calculate_order_shipping(
             if serviceability.get("enabled") is False or not serviceability.get("available"):
                 raise HTTPException(status_code=400, detail=SHIPPING_UNAVAILABLE_MESSAGE)
 
-            shipping_charge = _extract_shipping_charge(serviceability)
+            shipping_charge = _extract_shipping_charge(serviceability, money_round=money_round)
             if shipping_charge is None:
                 raise HTTPException(status_code=400, detail=SHIPPING_UNAVAILABLE_MESSAGE)
 
             item_shipping = shipping_charge
             charged_any = True
-            total_shipping = _round_money(total_shipping + item_shipping)
+            total_shipping = money_round(total_shipping + item_shipping)
 
         breakdown.append({
             "product_id": product_id,
@@ -964,7 +964,7 @@ async def calculate_order_shipping(
         })
 
     return {
-        "shipping_charge": _round_money(total_shipping),
+        "shipping_charge": money_round(total_shipping),
         "shipping_label": "Free" if total_shipping == 0 else None,
         "shipping_free_reason": "product" if total_shipping == 0 else None,
         "shipping_rate_source": "shiprocket" if charged_any else None,
@@ -1546,6 +1546,7 @@ async def create_pending_cashfree_order(order_payload: CashfreeCheckoutCreate, u
         existing_pending_orders = await db.orders.find(
             {
                 "user_id": user["id"],
+                "payment_provider": PAYMENT_PROVIDER_CASHFREE,
                 "status": ORDER_STATUS_PENDING_PAYMENT,
                 "stock_reserved": True
             }
@@ -2311,6 +2312,9 @@ async def approve_order_cancellation(
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_provider") == "razorpay":
+        from services.razorpay_refund_service import approve
+        return _normalize_order_payment_defaults(await approve(order_id, decision, admin_id))
     order = _normalize_order_payment_defaults(order)
     should_send_confirmation_email = False
 
@@ -2522,6 +2526,9 @@ async def initiate_order_refund(order_id: str, admin_id: str):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_provider") == "razorpay":
+        from services.razorpay_refund_service import initiate
+        return _normalize_order_payment_defaults(await initiate(order_id, admin_id))
     order = _normalize_order_payment_defaults(order)
 
     if order.get("status") != ORDER_STATUS_CANCELLED or order.get("cancellation_status") != "approved":
@@ -2597,6 +2604,9 @@ async def sync_order_refund(order_id: str, admin_id: str):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_provider") == "razorpay":
+        from services.razorpay_refund_service import sync
+        return _normalize_order_payment_defaults(await sync(order_id, admin_id))
     order = _normalize_order_payment_defaults(order)
     if order.get("status") != ORDER_STATUS_CANCELLED or order.get("cancellation_status") != "approved":
         raise HTTPException(status_code=400, detail="Refund status is available only for approved cancellations")
@@ -2820,6 +2830,8 @@ async def get_all_orders(
     end_date: Optional[str] = None,
     limit: int = MAX_LIMIT,
 ):
+    from services.admin_service import build_order_period_filter
+
     query = build_order_period_filter(period, start_date, end_date, month)
     await sync_stale_pending_orders(query)
     if order_status:
@@ -2880,13 +2892,13 @@ async def update_order_status(order_id: str, status_update: OrderStatusUpdate, a
     if status_update.status == "delivered":
         update_fields["delivered_at"] = update_fields["updated_at"]
 
-    await db.orders.update_one(
-        {"id": order_id},
-        {
-            "$set": update_fields
-        }
-    )
-    
+    query = {"id": order_id}
+    if existing_order.get("payment_provider") == "razorpay":
+        query.update({"status": old_status, "cancellation_status": existing_order.get("cancellation_status")})
+    result = await db.orders.update_one(query, {"$set": update_fields})
+    if existing_order.get("payment_provider") == "razorpay" and result.matched_count != 1:
+        raise HTTPException(409, "Order changed; refresh before updating fulfillment")
+
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

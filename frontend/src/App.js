@@ -1,3 +1,4 @@
+import RazorpayReturnPage from './pages/RazorpayReturnPage';
 import React, { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
@@ -164,6 +165,7 @@ function AppRoutes() {
         }
       />
 
+      <Route path="/payment/razorpay/return" element={<ProtectedRoute><RazorpayReturnPage /></ProtectedRoute>} />
       {/* Account Routes */}
       <Route
         path="/account"

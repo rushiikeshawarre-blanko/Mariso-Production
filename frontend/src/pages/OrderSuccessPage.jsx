@@ -46,6 +46,15 @@ const OrderSuccessPage = () => {
     );
   }
 
+  if (!order || (order.payment_provider === 'razorpay' &&
+      (order.payment_status !== 'paid' || !order.stock_deducted ||
+       !['confirmed', 'packed', 'shipped', 'delivered'].includes(order.status)))) {
+    return <Layout><div className="max-w-2xl mx-auto px-6 py-20 text-center">
+      <h1 className="font-heading text-3xl mb-4">Order confirmation pending</h1>
+      <Link to="/account/orders">Check your orders</Link>
+    </div></Layout>;
+  }
+
   return (
     <Layout>
       <div className="pt-8 pb-24 min-h-screen md:pt-10" data-testid="order-success-page">

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Circle, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, RefreshCw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
-import { getCashfreePaymentStatus, getOrder, requestOrderCancellation } from "../../lib/api";
+import { getCashfreePaymentStatus, getRazorpayPaymentStatus, getOrder, requestOrderCancellation } from "../../lib/api";
 import { formatINR } from "../../lib/currency";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -66,8 +66,8 @@ const OrderDetailsPage = () => {
     return index >= 0 ? index : 0;
   };
 
-  const isPendingCashfreeOrder = (currentOrder) => {
-    const isCashfree = currentOrder?.payment_method === 'cashfree' || currentOrder?.payment_provider === 'cashfree';
+  const isPendingOnlineOrder = (currentOrder) => {
+    const isCashfree = ['cashfree', 'razorpay'].includes(currentOrder?.payment_provider || currentOrder?.payment_method);
     const isPendingPayment = currentOrder?.status === 'pending_payment' || currentOrder?.payment_status === 'pending';
     return isCashfree && isPendingPayment;
   };
@@ -117,7 +117,7 @@ const OrderDetailsPage = () => {
     setPaymentStatusError('');
 
     try {
-      const result = await getCashfreePaymentStatus(order.id);
+      const result = await (order.payment_provider === 'razorpay' ? getRazorpayPaymentStatus : getCashfreePaymentStatus)(order.id);
       setOrder((currentOrder) => ({
         ...currentOrder,
         ...result,
@@ -226,6 +226,7 @@ const OrderDetailsPage = () => {
     pending: 'Refund pending mariso team initiation',
     initiated: 'Refund initiated',
     processing: 'Refund initiated',
+    reconciliation_required: 'Refund status is being checked',
     success: 'Refund completed',
     failed: 'Refund failed, contact support',
   }[order.refund_status];
@@ -371,7 +372,7 @@ const OrderDetailsPage = () => {
       <div className="bg-white rounded-2xl border border-border p-6 mb-6">
         <h2 className="font-heading text-xl mb-4">Order Status</h2>
 
-        {isPendingCashfreeOrder(order) && (
+        {isPendingOnlineOrder(order) && (
           <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
             <p className="text-sm text-yellow-900 mb-3">
               Payment is pending. If you completed payment or the session expired, check the latest status.
@@ -394,6 +395,17 @@ const OrderDetailsPage = () => {
           </div>
         )}
 
+        {order.status === 'cancelled' ? (
+          <div className="flex items-start gap-4">
+            <XCircle className="h-5 w-5 text-muted-foreground mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-foreground">Cancelled</p>
+              <p className="text-sm text-muted-foreground">
+                This order has been cancelled and will not be fulfilled.
+              </p>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-4">
           {statusSteps.map((step, index) => {
             const currentStepIndex = getStatusStepIndex(order.status);
@@ -429,6 +441,7 @@ const OrderDetailsPage = () => {
             );
           })}
         </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-border p-6 mb-6">

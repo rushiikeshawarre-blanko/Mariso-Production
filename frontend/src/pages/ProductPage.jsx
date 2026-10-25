@@ -922,12 +922,11 @@ const ProductPage = () => {
                     }`}
                     data-testid="delivery-pincode-result"
                   >
-                    {deliveryStatus === 'success' && deliveryEstimate?.estimated_delivery_days ? (
+                    {deliveryStatus === 'loading' ? (
+                      <p>Checking delivery availability...</p>
+                    ) : deliveryStatus === 'success' && deliveryEstimate?.display_delivery_days ? (
                       <p>
-                        Estimated delivery: {deliveryEstimate.estimated_delivery_days}
-                        {deliveryEstimate?.courier_name ? (
-                          <span className="text-muted-foreground"> via {deliveryEstimate.courier_name}</span>
-                        ) : null}
+                        Estimated delivery within {deliveryEstimate.display_delivery_days} days
                       </p>
                     ) : (
                       <p>{deliveryMessage || 'Unable to check delivery for this pincode right now.'}</p>

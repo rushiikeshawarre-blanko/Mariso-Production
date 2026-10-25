@@ -314,6 +314,7 @@ def test_cashfree_order_amount_includes_shipping_charge(monkeypatch):
     monkeypatch.setattr(payments, "create_cashfree_order_session", fake_cashfree_session)
     monkeypatch.setattr(payments, "attach_cashfree_session", fake_attach_session)
 
-    asyncio.run(payments.create_cashfree_session_route(object(), {"id": "user-1"}))
-
-    assert captured["order_amount"] == 1160
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(payments.create_cashfree_session_route(object(), {"id": "user-1"}))
+    assert error.value.status_code == 410
+    assert not captured

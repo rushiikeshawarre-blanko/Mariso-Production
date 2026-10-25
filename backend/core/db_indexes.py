@@ -6,7 +6,33 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 logger = logging.getLogger(__name__)
 
 
+async def create_payment_attempt_indexes(db):
+    # _id is the deterministic user/environment/request claim (built-in unique index).
+    await db.payment_attempts.create_index(
+        [("payment_provider", 1), ("environment", 1), ("user_id", 1)],
+        unique=True, partialFilterExpression={"active": True},
+        name="one_active_payment_attempt_per_user",
+    )
+    await db.payment_attempts.create_index(
+        [("payment_provider", 1), ("environment", 1), ("receipt", 1)], unique=True,
+        name="unique_payment_receipt",
+    )
+    await db.payment_attempts.create_index(
+        [("payment_provider", 1), ("environment", 1), ("razorpay_order_id", 1)],
+        unique=True, partialFilterExpression={"razorpay_order_id": {"$type": "string", "$gt": ""}},
+        name="unique_razorpay_order",
+    )
+    await db.payment_attempts.create_index([("state", 1), ("updated_at", 1)])
+    await db.payment_attempts.create_index("order_id", unique=True)
+    await db.razorpay_webhook_inbox.create_index([("environment", 1), ("state", 1), ("next_attempt_at", 1)])
+    await db.razorpay_notification_outbox.create_index([("state", 1), ("next_attempt_at", 1)])
+
+
 async def create_indexes(db):
+    from core import config
+    if config.RAZORPAY_ENABLED and (config.RAZORPAY_CREATE_ORDERS_ENABLED or config.RAZORPAY_PROCESSING_ENABLED):
+        await create_payment_attempt_indexes(db)
+
     await db.categories.create_index("id", unique=True)
     try:
         await db.categories.create_index(

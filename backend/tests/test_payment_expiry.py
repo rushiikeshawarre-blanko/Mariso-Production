@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 
 from core.config import CASHFREE_ORDER_EXPIRY_MINUTES
 from routes import payments
@@ -110,7 +111,7 @@ def test_create_session_sends_gateway_expiry_instead_of_stock_expiry(monkeypatch
     monkeypatch.setattr(payments, "create_cashfree_order_session", fake_cashfree_session)
     monkeypatch.setattr(payments, "attach_cashfree_session", fake_attach_session)
 
-    asyncio.run(payments.create_cashfree_session_route(object(), {"id": "user-1"}))
-
-    assert captured["order_expiry_time"] == gateway_expiry
-    assert captured["order_expiry_time"] != stock_reserved_until
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(payments.create_cashfree_session_route(object(), {"id": "user-1"}))
+    assert error.value.status_code == 410
+    assert not captured
